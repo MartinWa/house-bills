@@ -75,10 +75,14 @@ def record_extraction(
     page_evidence=None,
     vendor=None,
     kind=Invoice.Kind.INVOICE,
+    routing=None,
+    needs_review=False,
 ):
     """Retain even invalid/partial results without changing approved invoice values."""
     document = Document.objects.select_for_update().get(pk=document_id)
     payload = candidate.to_dict() if candidate is not None else {}
+    if routing is not None:
+        payload["routing"] = routing
     if candidate is not None:
         layout_family = candidate.layout_family
         layout_version = candidate.layout_version
@@ -96,10 +100,19 @@ def record_extraction(
         error=error,
     )
     document.extraction_revision = attempt.revision
-    document.state = Document.State.FAILED if error else Document.State.REVIEW
-    document.processing_message = error or "Extraction is ready for review."
+    document.state = Document.State.FAILED if error and not needs_review else Document.State.REVIEW
+    document.processing_message = error or (
+        "Extracted values need correction before approval."
+        if candidate is not None and candidate.issues
+        else "Extraction is ready for review."
+    )
     document.save(update_fields=["extraction_revision", "state", "processing_message"])
-    if candidate is not None and vendor is not None and candidate.reference:
+    if (
+        candidate is not None
+        and vendor is not None
+        and candidate.reference
+        and len(candidate.reference.strip()) <= Invoice._meta.get_field("reference").max_length
+    ):
         register_invoice_identity(
             document_id, vendor=vendor, reference=candidate.reference, kind=kind
         )

@@ -16,6 +16,7 @@ from django.conf import settings
 from django.core.checks import run_checks
 
 from .check_http import NoRedirect, get, wait_for_server
+from .synthetic_pdf import invoice_pdf
 
 
 def check_ingestion_http():
@@ -23,7 +24,23 @@ def check_ingestion_http():
     from django.contrib.auth import get_user_model
     from django.test import Client
 
-    from bills.models import Charge, Document, Usage
+    from bills.models import (
+        Charge,
+        Document,
+        Invoice,
+        Property,
+        Usage,
+        Vendor,
+        VendorIssuerIdentifier,
+        VendorLayoutFamily,
+    )
+
+    house = Property.objects.create(name="Synthetic House", slug="synthetic-house")
+    vendor = Vendor.objects.create(
+        name="Synthetic Utilities", slug="synthetic-utilities", default_property=house
+    )
+    VendorIssuerIdentifier.objects.create(vendor=vendor, kind="vat", value="SE000000999901")
+    VendorLayoutFamily.objects.create(vendor=vendor, family="layout_02")
 
     user = get_user_model().objects.create_user("synthetic-container-uploader")
     session = Client()
@@ -50,7 +67,7 @@ def check_ingestion_http():
         assert response.status == 200
         cookie = SimpleCookie(response.headers["Set-Cookie"])
         cookies[settings.CSRF_COOKIE_NAME] = cookie[settings.CSRF_COOKIE_NAME].value
-    original = b"%PDF-1.7\n% Synthetic container upload; extraction deferred.\n%%EOF\n"
+    original = invoice_pdf()
 
     def multipart(*, csrf=True, payload=original):
         token = (
@@ -80,6 +97,20 @@ def check_ingestion_http():
         assert response.status == 302 and response.headers["Location"] == location
     document = Document.objects.get()
     assert document.storage_state == "inbox" and document.state == "review"
+    attempt = document.extractions.get()
+    assert (attempt.layout_family, attempt.layout_version, attempt.parser_revision) == (
+        "layout_02",
+        "v1",
+        "2",
+    )
+    assert attempt.candidate["issues"] == [] and attempt.candidate["invoice_total_minor"] == 12500
+    assert attempt.candidate["routing"]["section_properties"] == {"section_01": house.pk}
+    assert [u["quantity_milli"] for u in attempt.candidate["sections"][0]["usages"]] == [100000]
+    assert Invoice.objects.get().status == "review"
+    with request(location) as response:
+        page = response.read()
+        assert response.status == 200 and b"Extracted proposal" in page
+        assert b"125,00 SEK" in page and b"100,000 kWh" in page
     assert not Charge.objects.exists() and not Usage.objects.exists()
     with request(location + "source/") as response:
         assert response.status == 200 and response.read() == original
@@ -91,7 +122,16 @@ def check_ingestion_http():
         assert response.status == 404
     with request("/upload/", multipart(payload=b"synthetic invalid PDF")) as response:
         assert response.status == 400
-    print("Production upload, exact duplicate, CSRF and private original HTTP checks passed.")
+    with request("/upload/", multipart(payload=b"%PDF-1.7 damaged")) as response:
+        assert response.status == 302
+        failed_location = response.headers["Location"]
+    failed = Document.objects.exclude(pk=document.pk).get()
+    assert failed.state == "review" and failed.extractions.get().state == "failed"
+    with request(failed_location + "source/") as response:
+        assert response.status == 200 and response.read() == b"%PDF-1.7 damaged"
+    print(
+        "Production parsing, review proposals, duplicates, CSRF and private source checks passed."
+    )
 
 
 def run_server(*, migrate, trust_proxy):

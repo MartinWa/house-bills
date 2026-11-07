@@ -20,9 +20,9 @@ POST and CSRF protection.
    cannot belong to two vendors.
 3. Select the vendor's **Invoice formats**. One vendor may use both `layout_01` and
    `layout_02`; vendors remain stable when a layout version changes. The installed
-   metadata currently lists `v1`, revision `1`, for each prototype. Configuration does
-   not provide extraction rules for unfamiliar layouts; production recognition and
-   parser routing come later.
+   registry supplies coexisting versions and implementation revisions; see
+   [deterministic parsing](parsing.md). Configuration enables installed extraction
+   rules; an unfamiliar structure requires review and a parser update.
 4. Map installation or contract identifiers to each house. These keys are scoped by
    vendor and identifier kind. Installation and vendor identification numbers ignore
    spaces and hyphens; vendor numbers also normalize case. Contract keys preserve
@@ -83,6 +83,9 @@ review without changing approved allocations.
 
 `record_extraction()` appends a private proposal with page evidence and parser metadata.
 Every successful extraction remains in review; errors can retain partial candidates.
+Production parsing also records proposed vendor/property assignments and full
+readable page evidence. Unknown, ambiguous and unreadable sources remain visible
+review items even when their extraction attempt failed.
 Re-parsing never updates approved charges or usage.
 
 `resolve_section_property()` checks saved mappings for each billing section and returns

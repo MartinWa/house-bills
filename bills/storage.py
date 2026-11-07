@@ -255,7 +255,12 @@ def ingest_pdf(source, *, filename):
     # transaction is held while receiving bytes or waiting for the storage lock.
     with originals_lock():
         receipt = _stage(source, filename)
-        return _accept_receipt(receipt)
+        document, duplicate = _accept_receipt(receipt)
+    from .processing import parse_document
+
+    parse_document(document.pk)
+    document.refresh_from_db()
+    return document, duplicate
 
 
 def _approved_path(document):
@@ -328,7 +333,11 @@ def retry_document(document_id):
                 and not document.invoices.exclude(status="approved").exists()
             ):
                 document = publish_original(document_id)
-        return document
+    from .processing import parse_document
+
+    parse_document(document.pk)
+    document.refresh_from_db()
+    return document
 
 
 def recover_originals():
@@ -345,15 +354,13 @@ def recover_originals():
             except ValueError, KeyError, TypeError, ValidationError:
                 # Keep malformed receipts and bytes for operator inspection.
                 invalid += 1
-        documents = [
-            retry_document(pk)
-            for pk in Document.objects.order_by("pk").values_list("pk", flat=True)
-        ]
         if invalid:
             raise ValidationError(
                 f"{invalid} invalid staging receipts remain; inspect private storage."
             )
-        return documents
+    return [
+        retry_document(pk) for pk in Document.objects.order_by("pk").values_list("pk", flat=True)
+    ]
 
 
 def open_original(document_id):

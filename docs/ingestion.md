@@ -12,11 +12,16 @@ status messages, identity conflicts when recognized, the original download and
 signed-in session, check the stored checksum and use attachment and private/no-store
 headers. No static or media URL serves the originals.
 
-At this milestone uploads wait for invoice review; production parser routing is
-step 5 and review forms are step 6. Intake creates no invoice costs or usage. The
-existing review service can approve a proposal and publish its original. PDF header
-validation does not prove readability: unknown, damaged or password-protected PDFs
-retain their original bytes for the later parsing/review workflow.
+The document page also shows the latest **Extracted proposal**, with invoice fields,
+property/service costs, signed usage and issues needing attention. Missing fields
+are marked unknown. These are read-only candidate values; review forms follow in step 6.
+
+After storing the original, intake runs versioned deterministic parsing and retains
+private review proposals. Recognized identities can create review records; intake
+creates no approved costs or usage. Unknown, damaged, textless or password-protected
+PDFs retain their original bytes and a visible review reason. Review forms remain
+step 6; the existing review service can approve a corrected proposal and publish its
+original. See [parsing and selected re-parsing](parsing.md).
 
 ## Limits and paths
 
@@ -48,7 +53,10 @@ reviewed path. The authenticated download URL stays stable.
 ## Recovery and backup coordination
 
 `bills.storage.ingest_pdf(stream, filename=...)` is the shared intake service for web
-uploads and the later folder importer. It returns `(document, duplicate)`.
+uploads and the later folder importer. It stores the original, runs initial parsing
+and returns `(document, duplicate)`. Exact duplicates retain the existing attempt.
+Storage recovery resumes initial parsing when no attempt was committed; selected
+re-parsing creates a new proposal and preserves approved values.
 `register_invoice_identity()` and the optional vendor argument to `record_extraction()`
 register recognized identities without approved allocations. Different files with
 the same vendor/reference/kind remain proposals and show source links for review.

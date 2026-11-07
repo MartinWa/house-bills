@@ -1,10 +1,16 @@
-"""Installed layout metadata. Recognition and parser routing come later."""
+"""Installed versions coexist; structural matches never depend on invoice date."""
 
-LAYOUTS = {
-    "layout_01": {"v1": "1"},
-    "layout_02": {"v1": "1"},
-}
+from . import layout_01, layout_02, layout_02_v2
+
+PARSERS = (layout_01, layout_02, layout_02_v2)
+LAYOUTS = {}
+for parser in PARSERS:
+    LAYOUTS.setdefault(parser.FAMILY, {})[parser.VERSION] = parser.REVISION
 
 
 def layout_family_choices():
     return [(family, family) for family in LAYOUTS]
+
+
+def match_layouts(pages, families):
+    return [parser for parser in PARSERS if parser.FAMILY in families and parser.matches(pages)]

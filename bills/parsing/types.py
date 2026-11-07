@@ -61,14 +61,14 @@ class Candidate:
     layout_version: str
     parser_revision: str
     reference: str
-    invoice_date: date
-    due_date: date
+    invoice_date: date | None
+    due_date: date | None
     currency: str
-    net_minor: int
-    vat_minor: int
-    rounding_minor: int
-    invoice_total_minor: int
-    amount_due_minor: int
+    net_minor: int | None
+    vat_minor: int | None
+    rounding_minor: int | None
+    invoice_total_minor: int | None
+    amount_due_minor: int | None
     header_evidence: dict[str, Evidence]
     identifiers: list[Identifier] = field(default_factory=list)
     sections: list[Section] = field(default_factory=list)

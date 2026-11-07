@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 
 from bills.parsing import layout_01, layout_02
-from bills.parsing.common import last_money, reconcile
+from bills.parsing.common import allocate_vat, last_money, reconcile
 from bills.parsing.normalization import money, quantity, source_date, source_period
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Evidence
@@ -97,8 +97,11 @@ def test_water_price_quantity_does_not_imply_measured_usage(tmp_path, reading_la
 def test_missing_required_header_does_not_return_a_valid_candidate(tmp_path):
     pages = shared_supply()
     pages[0] = [line for line in pages[0] if not line.startswith("Fakturadatum")]
-    with pytest.raises(ValueError, match="Missing required field"):
-        parse_synthetic(tmp_path, pages, layout_02)
+    candidate = parse_synthetic(tmp_path, pages, layout_02)
+    assert candidate.invoice_date is None
+    assert candidate.reference == "880003" and len(candidate.sections) == 2
+    assert "Missing or invalid invoice_date" in candidate.issues
+    assert candidate.requires_review
 
 
 def test_shared_invoice_keeps_installations_and_counts_repeated_kwh_once(tmp_path):
@@ -183,6 +186,17 @@ def test_printed_vat_rounding_is_retained_but_large_discrepancies_fail(tmp_path)
     water.vat_minor += 100
     water.gross_minor += 100
     assert "VAT mismatch in section_01" in reconcile(candidate).issues
+
+
+def test_mismatched_section_net_does_not_allocate_a_large_vat_difference(tmp_path):
+    candidate = parse_synthetic(tmp_path, shared_supply(), layout_02)
+    section = candidate.sections[0]
+    section.net_minor = 10**12
+    section.vat_minor = section.net_minor // 4
+    section.charges = [replace(c, vat_minor=None, gross_minor=None) for c in section.charges]
+    result = reconcile(allocate_vat(candidate))
+    assert "Net charge mismatch in section_01" in result.issues
+    assert all(c.vat_minor is None for c in section.charges)
 
 
 @pytest.mark.parametrize(

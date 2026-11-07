@@ -3,12 +3,13 @@
 The framework-independent types in `bills/parsing/types.py` describe extraction
 candidates. These prototypes were validated locally against a multi-service invoice,
 a shared electricity invoice and a water correction. That establishes the representative
-results; full current-format coverage and production routing remain later work.
+results; full current-format coverage remains later work. Production routing and
+proposal persistence are described in [deterministic parsing](parsing.md).
 
 `reader.read_pdf()` returns text lines with one-based page numbers and PDF-point
 bounding boxes `(x0, top, x1, bottom)`. A four-point vertical tolerance keeps totals
 together when labels and amounts have slightly different baselines. Reading does not
-recognize vendors or assign properties. Call a selected prototype explicitly:
+recognize vendors or assign properties. Call an installed parser explicitly:
 
 ```python
 from bills.parsing import layout_01
@@ -22,14 +23,16 @@ private_result = candidate.to_dict()
 sections continuing onto another page and dated water reversals. It accepts the two
 validated header arrangements. `layout_02/v1` extracts electricity supply specifications
 with a separate installation on each billing page. Neither module contains vendor names
-or private identifiers. Both currently record implementation revision `1`.
+or private identifiers. Both currently record implementation revision `2`.
+`layout_02/v2`, revision `1`, retains a separate replacement signature with synthetic
+coverage. The registry selects by structure and keeps v1 available for older invoices.
 
 ## Structure and precision
 
 | Candidate value | Convention |
 | --- | --- |
 | Header | Invoice reference, invoice/due dates, SEK, net, VAT, rounding, invoice total and amount due, with field evidence. |
-| Identifiers | Customer account is supporting evidence only. Each billing section retains its contract or installation keys; network sections retain both. Property mapping follows later. |
+| Identifiers | Customer account is supporting evidence only. Each section retains its contract or installation keys; network sections retain both. Proposed property mapping is separate routing metadata. |
 | Section | One service and contract/installation allocation, with explicit net, VAT and gross totals. Shared invoices retain multiple sections in one candidate. |
 | Charge | One signed net amount and its own service period. Derived VAT and gross amounts retain `vat_basis="allocated_from_section"`. |
 | Usage | Signed integer thousandths, unit, utility, period and basis: `measured`, `estimated`, `reversal`, `billed` or `billed_weight`. |
@@ -73,8 +76,9 @@ exactly. Service allocations plus explicit invoice rounding equal the invoice to
 The combined printed waste subtotal is checked across its contract sections.
 
 The representative documents have no carried balance, so invoice total and amount due
-coincide. A separate balance or unsupported charge is outside these prototypes and must
-be handled by review during production integration. Parser failures currently raise
-`ValueError`; ingestion must preserve the source and candidates when adding the review
-workflow. Vendor recognition, structural matching, duplicate detection, persisted parse
-attempts and approval are subsequent milestones.
+coincide. An explicit invoice-total field is retained separately when present; a
+difference needs review. Unsupported charges also require review. Missing or invalid
+headers retain nulls, issues and independent candidate values. Section failures retain
+previously extracted fields; ingestion preserves the original and readable page
+evidence. Vendor recognition, structural matching, duplicate detection and immutable
+attempt persistence are integrated. Explicit review forms remain a later milestone.

@@ -6,8 +6,9 @@ The current application provides authenticated login/logout, staff configuration
 houses, vendors and identifier mappings, and a validated invoice data model. Private
 extraction attempts and approved review revisions are stored separately. Authenticated
 PDF uploads preserve private originals, reuse exact duplicates and expose recoverable
-storage status. Two extraction prototypes use the normalized candidate format.
-Production parser routing, review forms and Grafana reporting are subsequent milestones.
+storage status. Versioned deterministic parsers recognize configured vendors, match
+invoice structures and propose costs, usage and property assignments with private
+evidence. Review forms and Grafana reporting are subsequent milestones.
 
 Development, tests and production use Linux containers with Python 3.14.10, Django 5.2
 LTS and checksum-pinned SQLite 3.51.3. A running Docker daemon is required. Start local
@@ -28,7 +29,8 @@ needed to run them. Real documents, extraction evidence, checked expectations an
 planning notes belong in the ignored `test-data/`, `private/` and `planning/` directories.
 
 See [the parser result contract](docs/parser-results.md) for units, service periods,
-tax allocation, evidence and the boundaries of the parser prototypes.
+tax allocation and evidence. See [deterministic parsing](docs/parsing.md) for installed
+versions, review-only outcomes, retries and selected-document re-parsing.
 See [configuration and the data model](docs/data-model.md) for house mappings,
 invoice allocations, validation and revision history.
 See [uploads and private originals](docs/ingestion.md) for limits, duplicate handling,

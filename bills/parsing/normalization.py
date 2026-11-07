@@ -15,6 +15,30 @@ DATE = r"(?:\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-zåäö]+\s+\d{4})"
 PERIOD = re.compile(rf"(?P<start>{DATE})\s+-\s+(?P<end>{DATE})", re.I)
 
 
+def normalized_text(value: str) -> str:
+    return " ".join(value.replace("–", "-").replace("—", "-").split())
+
+
+def text(line) -> str:
+    """Match normalized whitespace without replacing the original evidence."""
+    return normalized_text(line.text)
+
+
+def anchor(line, label: str) -> bool:
+    return text(line).casefold().rstrip(".:") == label.casefold().rstrip(".:")
+
+
+def starts(line, *labels: str) -> bool:
+    return text(line).casefold().startswith(tuple(label.casefold() for label in labels))
+
+
+def unit(value: str) -> str:
+    try:
+        return {"kwh": "kWh", "m3": "m3", "m³": "m3", "kg": "kg"}[value.casefold()]
+    except KeyError:
+        raise ValueError("Unsupported usage unit") from None
+
+
 def decimal_number(value: str) -> Decimal:
     value = value.strip().replace("−", "-")
     if not re.fullmatch(NUMBER, value):
@@ -51,7 +75,7 @@ def source_date(value: str) -> date:
 
 
 def source_period(value: str, *, end_inclusive: bool = False) -> tuple[date, date]:
-    match = PERIOD.search(value)
+    match = PERIOD.search(normalized_text(value))
     if not match:
         raise ValueError("Missing explicit service period")
     start, end = source_date(match["start"]), source_date(match["end"])

@@ -11,6 +11,7 @@ from filelock import Timeout
 
 from .forms import UploadForm
 from .models import Document
+from .presentation import extraction_summary
 from .services import invoice_identity_conflicts
 from .storage import ingest_pdf, open_original, retry_document
 
@@ -70,6 +71,7 @@ def document(request, pk):
         "bills/document.html",
         {
             "document": source,
+            "proposal": extraction_summary(source.extractions.order_by("-revision").first()),
             "conflicts": Document.objects.filter(pk__in=conflicts).order_by("pk"),
         },
     )

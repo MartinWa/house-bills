@@ -136,7 +136,7 @@ def multi_service(*, correction: bool = False) -> list[list[str | tuple[str, str
     return [cover, summary, water + waste + waste_end, ["FAKTURASPECIFIKATION"] + garden + network]
 
 
-def shared_supply() -> list[list[str | tuple[str, str]]]:
+def shared_supply(*, version="v1") -> list[list[str | tuple[str, str]]]:
     cover = [
         "Samfaktura.",
         "Fakturadatum: 2024-03-05",
@@ -174,4 +174,10 @@ def shared_supply() -> list[list[str | tuple[str, str]]]:
                 "Statistik för föregående månad: 50000 kWh",
             ]
         )
+    if version == "v2":
+        for page in specifications:
+            label = page.index("Anläggningsid: Produkt: Uppsägningstid:")
+            identifier = page[label + 1].split()[0]
+            page[label : label + 2] = [f"Anläggnings-ID: {identifier}"]
+            page[page.index("Fakturaspecifikation.")] = "Fakturaspecifikation elhandel"
     return [cover, *specifications]

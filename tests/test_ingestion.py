@@ -489,7 +489,7 @@ def test_reparse_failure_and_candidates_survive_duplicate_upload(pdf, user):
     duplicate, reused = ingest(pdf)
     assert reused and duplicate.state == "failed"
     assert duplicate.processing_message == "Synthetic unsupported replacement"
-    assert duplicate.extractions.count() == 2 and duplicate.invoices.get().status == "approved"
+    assert duplicate.extractions.count() == 3 and duplicate.invoices.get().status == "approved"
 
 
 def test_database_failure_after_move_keeps_journal_and_approval_recoverable(pdf, user, monkeypatch):

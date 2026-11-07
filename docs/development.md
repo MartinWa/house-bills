@@ -23,8 +23,9 @@ can use the admin, subject to model permissions. Configure houses under **Proper
 then vendors with their identification numbers, invoice formats and property
 mappings. See [configuration and the data model](data-model.md). The domain app is
 `bills`. Use **Upload invoice** to store a PDF privately and **Documents** to inspect
-status or download its original. Production parsing and review forms come later;
-see [uploads and private originals](ingestion.md).
+status or download its original. Uploads now produce versioned parsing proposals;
+review forms come later. See [deterministic parsing](parsing.md) and
+[uploads and private originals](ingestion.md).
 For a vendor that always bills one house, set its optional **Default property**;
 specific property mappings take precedence.
 
@@ -67,14 +68,18 @@ usage constraints, shared invoices, dated corrections, identity conflicts, prese
 extraction evidence, revision checks, rollback and authenticated configuration forms.
 Ingestion tests cover actual upload byte limits, CSRF, exact duplicates, invoice
 identity conflicts, shared original publication, collision handling, interruption
-recovery, concurrent intake and a coordinated database/original snapshot.
+recovery, concurrent intake and a coordinated database/original snapshot. Parsing
+tests cover issuer recognition, version coexistence, unsupported/ambiguous structures,
+partial fields, invalid units/totals, property routing, initial processing concurrency
+and re-parsing that preserves approved corrections.
 
 `.github/workflows/ci.yml` implements **Checks (Linux)** and **Container (Linux)**.
 The first verifies dependency exports, Ruff, Django, migration drift, clean development
 startup and tests. The second validates workflow syntax and builds and probes production
 with no network, a read-only root filesystem and disposable writable `/data` and `/tmp`.
 The probe starts Waitress, checks migrations, non-root execution, HTTPS/proxy behavior,
-static assets, actual upload/duplicate/private-source HTTP flows and absence of
+static assets, parsed upload/duplicate/private-source HTTP flows, failed extraction
+routed to review and absence of
 development dependencies/private state. Weekly and manual
 CI rebuilds bypass the image cache. Browser flows, dependency/image audits, release
 publishing and repository protections remain later milestones.

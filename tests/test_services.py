@@ -232,7 +232,7 @@ def test_reparse_proposes_changes_and_correction_keeps_prior_approved_revision(s
     proposed = copy.deepcopy(setup["candidate"])
     section = proposed.sections[0]
     section.usages[0] = replace(section.usages[0], quantity_milli=141000)
-    proposed.parser_revision = "2"
+    proposed.parser_revision = "3"
     attempt = record_extraction(setup["document"].pk, proposed)
     approved.refresh_from_db()
     assert approved.review_revision == 1
@@ -254,7 +254,7 @@ def test_reparse_proposes_changes_and_correction_keeps_prior_approved_revision(s
         == 140250
     )
     original.refresh_from_db()
-    assert original.parser_revision == "1" and attempt.parser_revision == "2"
+    assert original.parser_revision == "2" and attempt.parser_revision == "3"
     with pytest.raises(StaleReviewError):
         approve(setup, expected_revision=1)
     assert corrected.reviews.count() == 2

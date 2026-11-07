@@ -57,7 +57,7 @@ RUN python -m pip uninstall --yes pip \
 COPY manage.py /app/manage.py
 COPY house_bills /app/house_bills
 COPY bills /app/bills
-COPY tools/__init__.py tools/check_production.py tools/check_http.py /app/tools/
+COPY tools/__init__.py tools/check_production.py tools/check_http.py tools/synthetic_pdf.py /app/tools/
 RUN HOUSE_BILLS_SECRET_KEY=synthetic-build-only-key-never-for-runtime-000000000000000000 \
     HOUSE_BILLS_ALLOWED_HOSTS=build.invalid python manage.py collectstatic --noinput
 USER 1000:1000
