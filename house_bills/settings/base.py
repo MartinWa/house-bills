@@ -103,7 +103,10 @@ if not 1 <= MAX_PDF_UPLOAD_BYTES <= 100 * 1024 * 1024:
     raise ImproperlyConfigured("HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES must be between 1 and 104857600.")
 MAX_UPLOAD_REQUEST_BYTES = MAX_PDF_UPLOAD_BYTES + 64 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 256 * 1024
-DATA_UPLOAD_MAX_MEMORY_SIZE = 64 * 1024
+# A full review has 20 allocations, 60 usages and 60 identifiers (over 1,100 fields).
+# Include management/CSRF fields and URL-encoded Unicode values at their maximum lengths.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 512 * 1024
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1500
 DATA_UPLOAD_MAX_NUMBER_FILES = 1
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"

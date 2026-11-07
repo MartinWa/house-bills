@@ -158,16 +158,18 @@ pinned Trivy download before use.
 
 Use uv 0.13.7 for lockfile/export tooling. It can run on the editing host without running
 the Django application there. Edit the exact direct dependency pins in `pyproject.toml`,
-then regenerate the lock and hash-pinned container exports:
+then regenerate the lock:
 
 ```sh
 uv lock
-uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file requirements.txt
-uv export --locked --only-group dev --no-emit-project --format requirements-txt --output-file requirements-dev.txt
 ```
 
-Rebuild the affected targets and run the relevant checks. Keep Python's patch pin aligned
-in `.python-version`, `Dockerfile` and `tools/check_runtime.py`. Development dependencies
+Rebuild the affected targets and run the relevant checks. Docker generates hash-pinned
+requirement exports directly from `uv.lock`; exports are build artifacts, so Dependabot
+updates need only change `pyproject.toml` and `uv.lock`. The Dockerfile owns Python's exact
+patch pin, while `requires-python` controls the supported series for uv on the editing host.
+The build records that interpreter version and the locked pdfplumber version for
+`tools/check_runtime.py` to verify in every image target. Development dependencies
 are installed without resolution into a virtualenv that shares the image's application
 dependencies. Production excludes the test toolchain and removes pip.
 

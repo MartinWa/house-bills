@@ -38,6 +38,7 @@ remain review proposals. Dates and filenames never select the newest parser.
 | `layout_04/v1` | Electricity supply; cover totals and one installation specification. | `1` |
 | `layout_05/v1` | Electricity supply; explicit consumption table beside a historical chart. | `1` |
 | `layout_06/v1` | Monthly network and energy tax; repeated billed kWh quantities. | `1` |
+| `layout_07/v1` | Electricity supply; area-labelled consumption and inclusive VAT totals. | `1` |
 
 The v1 families have representative source validation and wholly synthetic regressions.
 The v2 replacement demonstrates coexistence using synthetic examples. This does not

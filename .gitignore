@@ -1,6 +1,8 @@
 planning/
 test-data/
 .venv/
+requirements.txt
+requirements-dev.txt
 __pycache__/
 *.py[cod]
 .pytest_cache/

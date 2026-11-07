@@ -38,12 +38,11 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: false
-      - name: Verify lockfile and hash-pinned Docker dependencies
+      - name: Verify lockfile and generate hash-pinned dependency exports
         run: |
           uv lock --check
-          uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file requirements.txt > /dev/null
-          uv export --locked --only-group dev --no-emit-project --format requirements-txt --output-file requirements-dev.txt > /dev/null
-          git diff --exit-code -- requirements.txt requirements-dev.txt
+          uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/requirements.txt" > /dev/null
+          uv export --locked --only-group dev --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/requirements-dev.txt" > /dev/null
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build development and test image

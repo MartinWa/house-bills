@@ -13,9 +13,6 @@ updates:
     ignore:
       - dependency-name: django
         versions: [">=5.3"]
-    exclude-paths:
-      - requirements.txt
-      - requirements-dev.txt
   - package-ecosystem: npm
     directory: /
     schedule:

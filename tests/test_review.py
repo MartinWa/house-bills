@@ -3,13 +3,14 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import date
 from threading import Barrier
+from urllib.parse import urlencode
 
 import pytest
 from django.core import signing
-from django.core.exceptions import ValidationError
+from django.core.exceptions import RequestDataTooBig, TooManyFieldsSent, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connections
-from django.test import Client
+from django.test import Client, RequestFactory
 
 from bills.models import (
     BillingSection,
@@ -24,7 +25,7 @@ from bills.models import (
     VendorLayoutFamily,
 )
 from bills.presentation import warning_details
-from bills.review_forms import ScaledNumberField
+from bills.review_forms import IdentifierFormSet, ScaledNumberField, SectionFormSet, UsageFormSet
 from bills.reviewing import current_review_context
 from bills.storage import private_path
 
@@ -197,6 +198,149 @@ def manual_fields(data, vendor, house):
         "sections-0-end": "2024-02-29",
         "note": "Manually entered from the unsupported synthetic source.",
     }
+
+
+def full_review_fields(data, vendor, house):
+    data = manual_fields(data, vendor, house)
+    data.update({"reference": "🧾" * 120, "note": "🧾" * 2000, "csrfmiddlewaretoken": "x" * 64})
+    section_ids = ["🧾" * 117 + f"{index:03}" for index in range(SectionFormSet.absolute_max)]
+    for index, section_id in enumerate(section_ids):
+        row = {
+            field: data[f"sections-0-{field}"]
+            for field in SectionFormSet.form.base_fields
+            if field != "DELETE"
+        }
+        row["section_id"] = section_id
+        if index:
+            row.update(net_minor="0,00", vat_minor="0,00", gross_minor="0,00")
+        data.update({f"sections-{index}-{field}": value for field, value in row.items()})
+        data[f"sections-{index}-DELETE"] = ""
+    for index in range(UsageFormSet.absolute_max):
+        row = {
+            "section": section_ids[index % len(section_ids)],
+            "utility": "water",
+            "subcategory": "",
+            "unit": "m3",
+            "quantity_milli": "-1,250",
+            "start": "2024-02-29",
+            "end": "2024-02-29",
+            "basis": "billed",
+            "page": "1",
+            "DELETE": "",
+        }
+        data.update({f"usages-{index}-{field}": value for field, value in row.items()})
+    for index in range(IdentifierFormSet.absolute_max):
+        row = {
+            "scope": section_ids[index % len(section_ids)],
+            "kind": "delivery_address",
+            "value": "🧾" * 197 + f"{index:03}",
+            "page": "1",
+            "DELETE": "",
+        }
+        data.update({f"identifiers-{index}-{field}": value for field, value in row.items()})
+    for prefix, formset in (
+        ("sections", SectionFormSet),
+        ("usages", UsageFormSet),
+        ("identifiers", IdentifierFormSet),
+    ):
+        data[f"{prefix}-TOTAL_FORMS"] = str(formset.absolute_max)
+        data[f"{prefix}-MAX_NUM_FORMS"] = str(formset.absolute_max)
+    return data
+
+
+@pytest.mark.parametrize("encoding", ["urlencoded", "multipart"])
+def test_full_review_saves_and_retains_entries_after_validation_errors(
+    configured, client, tmp_path, settings, encoding
+):
+    _, vendor, houses = configured
+    document, _ = upload(client, tmp_path, [["Unsupported synthetic invoice"]])
+    path, initial = review_data(client, document)
+    data = full_review_fields(initial, vendor, houses[0])
+    assert 1000 < len(data) <= settings.DATA_UPLOAD_MAX_NUMBER_FIELDS
+    assert 64 * 1024 < len(urlencode(data).encode()) <= settings.DATA_UPLOAD_MAX_MEMORY_SIZE
+
+    def submit(values):
+        if encoding == "urlencoded":
+            return client.post(
+                path, urlencode(values), content_type="application/x-www-form-urlencoded"
+            )
+        return client.post(path, values)
+
+    invalid = submit({**data, "invoice_date": "invalid"})
+    assert invalid.status_code == 400 and b"Your entries are retained below" in invalid.content
+    retained = posted_fields(invalid)
+    assert all(
+        retained[key] == value
+        for key, value in {**data, "invoice_date": "invalid"}.items()
+        if key in retained
+    )
+    assert not document.invoices.exists()
+
+    saved = submit(data)
+    assert saved.status_code == 302, saved.content.decode()
+    invoice = document.invoices.get()
+    assert invoice.sections.count() == SectionFormSet.absolute_max
+    assert Usage.objects.count() == UsageFormSet.absolute_max
+    assert sum(len(section.identifiers) for section in invoice.sections.all()) == (
+        IdentifierFormSet.absolute_max
+    )
+    assert invoice.reviews.get().note == data["note"]
+    _, correction = review_data(client, document)
+    assert submit(correction).status_code == 302
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2
+
+
+@pytest.mark.parametrize("prefix", ["sections", "usages", "identifiers"])
+def test_review_rejects_one_row_over_each_limit_and_retains_entries(
+    configured, client, tmp_path, prefix
+):
+    _, vendor, houses = configured
+    document, _ = upload(client, tmp_path, [["Unsupported synthetic invoice"]])
+    path, initial = review_data(client, document)
+    data = full_review_fields(initial, vendor, houses[0])
+    limit = int(data[f"{prefix}-TOTAL_FORMS"])
+    data[f"{prefix}-TOTAL_FORMS"] = str(limit + 1)
+    response = client.post(path, urlencode(data), content_type="application/x-www-form-urlencoded")
+    assert response.status_code == 400
+    assert f"at most {limit} forms".encode() in response.content
+    assert b"Your entries are retained below" in response.content
+    assert posted_fields(response)["note"] == data["note"]
+    assert not document.invoices.exists()
+
+
+def test_request_body_size_boundary(settings):
+    factory = RequestFactory()
+    for extra in (0, 1):
+        request = factory.post(
+            "/",
+            "note=" + "x" * (settings.DATA_UPLOAD_MAX_MEMORY_SIZE - 5 + extra),
+            content_type="application/x-www-form-urlencoded",
+        )
+        if extra:
+            with pytest.raises(RequestDataTooBig):
+                _ = request.POST
+        else:
+            assert len(request.POST["note"]) == settings.DATA_UPLOAD_MAX_MEMORY_SIZE - 5
+
+
+@pytest.mark.parametrize("encoding", ["urlencoded", "multipart"])
+def test_request_field_count_boundary(settings, encoding):
+    factory = RequestFactory()
+    for extra in (0, 1):
+        data = {
+            f"field-{index}": "x" for index in range(settings.DATA_UPLOAD_MAX_NUMBER_FIELDS + extra)
+        }
+        request = (
+            factory.post("/", urlencode(data), content_type="application/x-www-form-urlencoded")
+            if encoding == "urlencoded"
+            else factory.post("/", data)
+        )
+        if extra:
+            with pytest.raises(TooManyFieldsSent):
+                _ = request.POST
+        else:
+            assert len(request.POST) == settings.DATA_UPLOAD_MAX_NUMBER_FIELDS
 
 
 def test_supported_upload_approval_list_detail_and_private_original(client, configured, tmp_path):

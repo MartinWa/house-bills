@@ -1,7 +1,9 @@
 name: Dependabot auto-merge
 
 on:
-  pull_request:
+  # Metadata only: a SHA-pinned action and gh; no PR checkout, code or artifacts.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, reopened, synchronize]
 
 permissions: {}
 
@@ -14,6 +16,8 @@ jobs:
     name: Auto-merge patch updates
     if: >-
       github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main' &&
       github.repository == 'MartinWa/house-bills'
     runs-on: ubuntu-24.04
     timeout-minutes: 10

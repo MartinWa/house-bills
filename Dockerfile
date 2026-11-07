@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS browser-node
+FROM ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv-bin
 
 FROM python:3.14.10-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b AS os-base
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
@@ -15,8 +16,19 @@ RUN tar -xzf /tmp/sqlite.tar.gz -C /tmp \
     && ./configure --prefix=/opt/sqlite --enable-threadsafe --disable-static \
     && make -j2 && make install
 
+FROM os-base AS dependency-exports
+COPY --from=uv-bin /uv /bin/uv
+WORKDIR /build
+COPY pyproject.toml uv.lock ./
+COPY tools/runtime_pins.py ./runtime_pins.py
+RUN uv export --locked --no-dev --no-emit-project --format requirements-txt \
+        --output-file requirements.txt > /dev/null \
+    && uv export --locked --only-group dev --no-emit-project --format requirements-txt \
+        --output-file requirements-dev.txt > /dev/null \
+    && python runtime_pins.py uv.lock runtime-pins.json
+
 FROM os-base AS python-build
-COPY requirements.txt /tmp/requirements.txt
+COPY --from=dependency-exports /build/requirements.txt /tmp/requirements.txt
 RUN python -m pip install --no-cache-dir --require-hashes \
     --prefix=/opt/python -r /tmp/requirements.txt
 
@@ -27,12 +39,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 \
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LD_LIBRARY_PATH=/opt/sqlite/lib
 COPY --from=sqlite-build /opt/sqlite/lib /opt/sqlite/lib
 COPY --from=python-build /opt/python /usr/local
+COPY --from=dependency-exports /build/runtime-pins.json /opt/house-bills/runtime-pins.json
 COPY tools/check_runtime.py /usr/local/bin/house-bills-check-runtime.py
 RUN python /usr/local/bin/house-bills-check-runtime.py
 WORKDIR /app
 
 FROM runtime-base AS development
-COPY requirements-dev.txt /opt/requirements-dev.txt
+COPY --from=dependency-exports /build/requirements-dev.txt /opt/requirements-dev.txt
 RUN python -m venv --system-site-packages /state/venv \
     && /state/venv/bin/python -m pip install --no-cache-dir --require-hashes --no-deps \
        -r /opt/requirements-dev.txt \

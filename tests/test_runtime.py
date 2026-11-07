@@ -9,6 +9,29 @@ from bills.checks import sqlite_runtime_check
 from bills.db.backends.sqlite3.base import DatabaseWrapper
 from house_bills import server
 from house_bills.runtime import wal_runtime_is_fixed
+from tools import check_runtime, runtime_pins
+
+
+@pytest.mark.parametrize("mismatch", [None, "python", "pdfplumber"])
+def test_runtime_pins_follow_dependency_updates_and_reject_mismatches(
+    monkeypatch, tmp_path, mismatch
+):
+    lockfile = tmp_path / "uv.lock"
+    lockfile.write_text('[[package]]\nname = "pdfplumber"\nversion = "0.11.11"\n', encoding="utf-8")
+    pins_path = tmp_path / "runtime-pins.json"
+    monkeypatch.setattr(runtime_pins.platform, "python_version", lambda: "3.14.11")
+    runtime_pins.write_runtime_pins(lockfile, pins_path)
+    monkeypatch.setattr(check_runtime.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(check_runtime.pdfplumber, "__version__", "0.11.11")
+    if mismatch == "python":
+        monkeypatch.setattr(check_runtime.platform, "python_version", lambda: "3.14.10")
+    elif mismatch == "pdfplumber":
+        monkeypatch.setattr(check_runtime.pdfplumber, "__version__", "0.11.10")
+    if mismatch:
+        with pytest.raises(AssertionError):
+            check_runtime.check_runtime(pins_path)
+    else:
+        check_runtime.check_runtime(pins_path)
 
 
 @pytest.mark.parametrize(
@@ -51,6 +74,14 @@ def test_proxy_trust_is_explicit_and_only_accepts_forwarded_scheme(monkeypatch):
     monkeypatch.setenv("HOUSE_BILLS_TRUST_PROXY", "invalid")
     with pytest.raises(ImproperlyConfigured):
         server.server_options()
+
+
+@pytest.mark.parametrize("upload_limit", [64 * 1024, 20 * 1024 * 1024])
+def test_server_request_limit_covers_reviews_and_pdf_uploads(settings, upload_limit):
+    settings.MAX_UPLOAD_REQUEST_BYTES = upload_limit
+    assert server.server_options()["max_request_body_size"] == max(
+        upload_limit, settings.DATA_UPLOAD_MAX_MEMORY_SIZE
+    )
 
 
 @pytest.mark.django_db(transaction=True)
