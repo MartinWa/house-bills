@@ -1,0 +1,66 @@
+"""Exact normalization of numbers and explicit source date conventions."""
+
+import re
+from datetime import date, timedelta
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
+MONTHS = {
+    name: i
+    for i, name in enumerate(
+        ("jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"), 1
+    )
+}
+NUMBER = r"[−+-]?(?:\d{1,3}(?:[ \u00a0\u202f]\d{3})+|\d+)(?:[,.]\d+)?"
+DATE = r"(?:\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-zåäö]+\s+\d{4})"
+PERIOD = re.compile(rf"(?P<start>{DATE})\s+-\s+(?P<end>{DATE})", re.I)
+
+
+def decimal_number(value: str) -> Decimal:
+    value = value.strip().replace("−", "-")
+    if not re.fullmatch(NUMBER, value):
+        raise ValueError("Invalid Swedish number")
+    try:
+        return Decimal(re.sub(r"[ \u00a0\u202f]", "", value).replace(",", "."))
+    except InvalidOperation as exc:
+        raise ValueError("Invalid number") from exc
+
+
+def scaled_integer(value: str, scale: int) -> int:
+    scaled = decimal_number(value) * scale
+    if scaled != scaled.to_integral_value():
+        raise ValueError(f"Value exceeds precision for scale {scale}")
+    return int(scaled)
+
+
+def money(value: str) -> int:
+    return scaled_integer(value, 100)
+
+
+def quantity(value: str) -> int:
+    return scaled_integer(value, 1000)
+
+
+def source_date(value: str) -> date:
+    value = value.strip().lower()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return date.fromisoformat(value)
+    day, month, year = value.split()
+    if month[:3] not in MONTHS:
+        raise ValueError("Unknown Swedish month")
+    return date(int(year), MONTHS[month[:3]], int(day))
+
+
+def source_period(value: str, *, end_inclusive: bool = False) -> tuple[date, date]:
+    match = PERIOD.search(value)
+    if not match:
+        raise ValueError("Missing explicit service period")
+    start, end = source_date(match["start"]), source_date(match["end"])
+    if end_inclusive:
+        end += timedelta(days=1)
+    if start >= end:
+        raise ValueError("Service period must have positive duration")
+    return start, end
+
+
+def rounded_vat(net_minor: int, rate: Decimal) -> int:
+    return int((Decimal(net_minor) * rate).quantize(Decimal(1), rounding=ROUND_HALF_UP))
