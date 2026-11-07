@@ -1,0 +1,37 @@
+{% extends "bills/base.html" %}
+{% load static %}
+{% block title %}Review invoice · House Bills{% endblock %}
+{% block content %}
+  <h2>{% if invoice.review_revision and from_proposal %}Review extracted changes{% elif invoice.review_revision %}Correct invoice{% else %}Review invoice{% endif %}</h2>
+  <p><a href="{% url 'bills:document' document.pk %}">{{ document.original_filename }}</a>{% if document.original_path %} · <a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' document.pk %}">Download original PDF</a>{% endif %}</p>
+  {% if invoice.review_revision %}<p><a href="{% url 'bills:invoice' invoice.pk %}">Approved revision {{ invoice.review_revision }}</a> is retained until you save this correction.</p>{% endif %}
+  {% if invoice.review_revision and from_proposal %}{% include "bills/_differences.html" %}{% endif %}
+  {% if warnings %}
+    <section class="notice" aria-labelledby="warnings-heading"><h3 id="warnings-heading">Extraction warnings</h3>
+      {% include "bills/_warning_list.html" %}
+      <p>Check the original PDF and fill in or correct the values below.</p>
+    </section>
+  {% endif %}
+  {% if show_errors %}<div role="alert" class="notice"><p>The invoice was not saved. Your entries are retained below.</p>{{ review.header.non_field_errors }}{% if stale %}<p><a href="{% url 'bills:review' document.pk %}{% if from_proposal %}?proposal=latest{% endif %}">Reload the latest review</a> before applying your changes.</p>{% endif %}</div>{% endif %}
+  <form method="post" id="review-form" novalidate>
+    {% csrf_token %}
+    {% for field in review.header.hidden_fields %}{{ field }}{% if show_errors %}{{ field.errors }}{% endif %}{% endfor %}
+    <fieldset><legend>Invoice fields</legend><div class="field-grid">
+      {% for field in review.header.visible_fields %}<div class="field{% if field.field.widget.input_type == 'checkbox' %} checkbox-field{% endif %}">{{ field.label_tag }}{{ field }}{% if show_errors %}{{ field.errors }}{% endif %}</div>{% endfor %}
+    </div></fieldset>
+    <p>Enter amounts in SEK with up to two decimal places and consumption with up to three. Commas and decimal points are accepted. Billed periods include both dates shown.</p>
+    {% for group_name, label, formset in review.groups %}
+      <section data-formset="{{ group_name }}" data-limit="{{ formset.absolute_max }}">
+        <h3>{{ label }}</h3>
+        {% if group_name == 'sections' %}<p>Check each property/service total and billing period. Allocations plus rounding must match the invoice total.</p>{% elif group_name == 'usages' %}<p>Add billed consumption once for each period and source service. Preserve negative corrections.</p>{% else %}<p>Keep installation and contract identifiers with their allocation. Customer accounts are supporting invoice information. These edits apply to this invoice.</p>{% endif %}
+        {{ formset.management_form }}{% if show_errors %}{{ formset.non_form_errors }}{% endif %}
+        <div data-formset-rows>{% for row in formset %}{% include "bills/_review_row.html" with number=forloop.counter %}{% endfor %}</div>
+        <template data-empty-form>{% include "bills/_review_row.html" with row=formset.empty_form number="New" show_errors=False %}</template>
+        <button type="submit" name="add_row" value="{{ group_name }}" formnovalidate data-add-row>Add {% if group_name == 'sections' %}allocation{% elif group_name == 'usages' %}consumption{% else %}identifier{% endif %}</button>
+        <p role="status" data-formset-status></p>
+      </section>
+    {% endfor %}
+    <p><button type="submit">{% if invoice.review_revision %}Save correction{% else %}Approve invoice{% endif %}</button> <a href="{% url 'bills:document' document.pk %}">Cancel</a></p>
+  </form>
+{% endblock %}
+{% block scripts %}<script src="{% static 'bills/review.js' %}" defer></script>{% endblock %}

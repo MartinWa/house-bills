@@ -23,8 +23,10 @@ can use the admin, subject to model permissions. Configure houses under **Proper
 then vendors with their identification numbers, invoice formats and property
 mappings. See [configuration and the data model](data-model.md). The domain app is
 `bills`. Use **Upload invoice** to store a PDF privately and **Documents** to inspect
-status or download its original. Uploads now produce versioned parsing proposals;
-review forms come later. See [deterministic parsing](parsing.md) and
+status or open its original. Choose **Review and approve invoice** to check a proposal
+or enter an unsupported invoice manually. **Invoices** lists approved records and
+provides correction forms. See [review and correction](review.md),
+[deterministic parsing](parsing.md) and
 [uploads and private originals](ingestion.md).
 For a vendor that always bills one house, set its optional **Default property**;
 specific property mappings take precedence.
@@ -72,16 +74,27 @@ recovery, concurrent intake and a coordinated database/original snapshot. Parsin
 tests cover issuer recognition, version coexistence, unsupported/ambiguous structures,
 partial fields, invalid units/totals, property routing, initial processing concurrency
 and re-parsing that preserves approved corrections.
+Review tests exercise supported and manual approval through HTTP, signed money and
+consumption, explicit row removal, validation feedback, identity conflicts, immutable
+evidence, stale extraction/review forms and competing saves, including first manual
+entry. The repeatable [Chromium browser check](../tests/browser/README.md) uses a fresh
+isolated Compose project and covers configuration, upload, duplicates, review,
+correction, re-parsing, source privacy and mobile layout.
+
+Cost-total regressions cover ignored fee amounts, independent costs when usage is invalid,
+legacy proposals, preserved immutable history and rejection of older review tokens.
+A disposable migration test verifies archival of old fee rows, unchanged approvals/usage
+and reversal back to the old schema.
 
 `.github/workflows/ci.yml` implements **Checks (Linux)** and **Container (Linux)**.
 The first verifies dependency exports, Ruff, Django, migration drift, clean development
 startup and tests. The second validates workflow syntax and builds and probes production
 with no network, a read-only root filesystem and disposable writable `/data` and `/tmp`.
 The probe starts Waitress, checks migrations, non-root execution, HTTPS/proxy behavior,
-static assets, parsed upload/duplicate/private-source HTTP flows, failed extraction
-routed to review and absence of
-development dependencies/private state. Weekly and manual
-CI rebuilds bypass the image cache. Browser flows, dependency/image audits, release
+static assets, parsed upload/duplicate/private-source HTTP flows, failed extraction,
+manual entry, approval, correction, stale forms and explicit re-parsing acceptance.
+It also checks absence of development dependencies/private state. Weekly and manual
+CI rebuilds bypass the image cache. Browser CI integration, dependency/image audits, release
 publishing and repository protections remain later milestones.
 
 ## Dependency updates

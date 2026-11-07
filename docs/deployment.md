@@ -1,10 +1,10 @@
 # Private deployment
 
 The application provides one Waitress process with two threads, Django authentication,
-staff billing configuration, private PDF uploads and a validated invoice data model
-in host-local SQLite. Production parsing, invoice review forms, reporting, operational
-backup/restore and release publishing remain later milestones. Use synthetic data
-for this stage.
+staff billing configuration, private PDF uploads, deterministic parsing, manual review
+and correction, and approved invoice screens in host-local SQLite. Reporting,
+operational backup/restore and release publishing remain later milestones. Use
+synthetic data for deployment checks at this stage.
 
 ## Runtime and storage
 
@@ -16,7 +16,7 @@ without the WAL-reset fix; fixed upstream/backport series are 3.51.3+, 3.50.7 wi
 
 Every application connection enables WAL and `synchronous=FULL`, with a 10-second busy
 timeout. Explicit transactions use IMMEDIATE; request-wide transactions are disabled.
-Keep future parsing and file processing outside short database writes. Store the whole
+Keep PDF reading and file processing outside short database writes. Store the whole
 database directory on the server's local filesystem, including its WAL and shared-memory
 files. Do not put SQLite on a network share or the Windows development bind mount.
 
@@ -102,6 +102,11 @@ restarts and image updates. See [configuration and the data model](data-model.md
 Originals live in `/data/invoices`, with authenticated downloads and resumable staging
 and publication. See [uploads and private originals](ingestion.md) for recovery and
 the shared-lock contract required by the future backup integration.
+
+Migration `0007_cost_totals` replaces individual fee records with dated service totals.
+Existing fee rows are archived privately before removing their table. Invoice identities,
+approved totals, usage and immutable extraction/review history are preserved. Older
+proposals can still be reviewed without re-parsing; see [the data model](data-model.md).
 
 ## Disposable production probe
 

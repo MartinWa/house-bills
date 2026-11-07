@@ -26,7 +26,9 @@ def write_pdf(path: Path, pages: list[list[str | tuple[str, str]]]) -> Path:
     return path
 
 
-def multi_service(*, correction: bool = False) -> list[list[str | tuple[str, str]]]:
+def multi_service(
+    *, correction: bool = False, split_network_readings: bool = False
+) -> list[list[str | tuple[str, str]]]:
     reference = "880002" if correction else "880001"
     if correction:
         cover = [
@@ -108,12 +110,20 @@ def multi_service(*, correction: bool = False) -> list[list[str | tuple[str, str
         "Moms 25 % på 80,00 kr 20,00 kr",
         ("Summa Hushållsavfall", "239,50 kr"),
     ]
+    readings = (
+        [
+            "Avläsning 15 feb 2024 121,125 kWh 8121,125",
+            "Avläsning 1 mar 2024 200 kWh 8321,125",
+        ]
+        if split_network_readings
+        else ["Avläsning 1 mar 2024 321,125 kWh 8321,125"]
+    )
     network = [
         "Elnät avtal 9904 Nätavtal",
         "Beräknad årsförbrukning 9999.999 kWh",
         "Mätarnummer 909093",
         "Föregående avläsning 1 feb 2024 0 kWh 8000",
-        "Avläsning 1 mar 2024 321,125 kWh 8321,125",
+        *readings,
         "Avstämd period 1 feb 2024 - 1 mar 2024",
         "Grundavgift 16 A 1 feb 2024 - 1 mar 2024 29 dgr 1200,00 kr/år 100,00 kr",
         "Effektavgift 1 feb 2024 - 1 mar 2024 3 kW 50,00 kr/kW 150,00 kr",

@@ -1,0 +1,11 @@
+<section aria-labelledby="differences-heading">
+  <h3 id="differences-heading">Proposed differences</h3>
+  {% if differences %}
+    <div class="table-scroll"><table>
+      <thead><tr><th scope="col">Field</th><th scope="col">Approved</th><th scope="col">Extracted</th></tr></thead>
+      <tbody>{% for difference in differences %}
+        <tr><th scope="row">{{ difference.field }}</th><td>{{ difference.approved }}</td><td>{{ difference.proposed }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  {% else %}<p>The extracted values match the approved values.</p>{% endif %}
+</section>

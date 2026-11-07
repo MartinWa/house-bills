@@ -7,21 +7,24 @@ upload opens the existing document, even if its filename or source house folder
 differs. Filenames never assign a property.
 
 **Documents** shows processing and storage states. The document page provides
-status messages, identity conflicts when recognized, the original download and
-**Retry storage** for interrupted storage operations. Downloads require an active
-signed-in session, check the stored checksum and use attachment and private/no-store
-headers. No static or media URL serves the originals.
+status messages, identity conflicts when recognized, review/re-parsing actions and
+**Retry storage** for interrupted storage operations. **View original PDF** and
+**Download original PDF** require an active signed-in session and check the stored
+checksum. Viewing uses inline disposition; downloading uses attachment disposition.
+Both use private/no-store headers. No static or media URL serves the originals.
 
 The document page also shows the latest **Extracted proposal**, with invoice fields,
 property/service costs, signed usage and issues needing attention. Missing fields
-are marked unknown. These are read-only candidate values; review forms follow in step 6.
+are marked unknown. Choose **Review and approve invoice** to fill in or correct the
+values. Approved invoices provide **Correct approved values** and **Review extracted
+changes**. See [review and correction](review.md).
 
 After storing the original, intake runs versioned deterministic parsing and retains
 private review proposals. Recognized identities can create review records; intake
 creates no approved costs or usage. Unknown, damaged, textless or password-protected
-PDFs retain their original bytes and a visible review reason. Review forms remain
-step 6; the existing review service can approve a corrected proposal and publish its
-original. See [parsing and selected re-parsing](parsing.md).
+PDFs retain their original bytes and a visible review reason. They can be entered
+manually through the review form. Explicit approval validates the complete proposal
+and publishes its original. See [parsing and selected re-parsing](parsing.md).
 
 ## Limits and paths
 
@@ -49,6 +52,8 @@ reference determine the filename and all invoices must have the same vendor.
 An occupied or reserved destination adds a numeric suffix; differing bytes are never
 overwritten. Explicit approved corrections can move the same original to its new
 reviewed path. The authenticated download URL stays stable.
+The current parsers and review screens produce one invoice per document; re-parsing
+an approved invoice proposes changes to that invoice and preserves its approved identity.
 
 ## Recovery and backup coordination
 

@@ -5,8 +5,8 @@ from datetime import date
 
 import pytest
 
-from bills.parsing import layout_01, layout_02
-from bills.parsing.common import allocate_vat, last_money, reconcile
+from bills.parsing import layout_01, layout_02, layout_02_v2
+from bills.parsing.common import last_money, reconcile
 from bills.parsing.normalization import money, quantity, source_date, source_period
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Evidence
@@ -58,10 +58,94 @@ def test_multi_service_pdf_preserves_contracts_costs_and_billed_usage(tmp_path):
     )
     assert candidate.requires_review
     assert candidate.identifiers[0].value == "9900"
-    for section in candidate.sections:
-        assert sum(c.gross_minor for c in section.charges) == section.gross_minor
-        assert sum(c.vat_minor for c in section.charges) == section.vat_minor
+    assert all(
+        (section.start, section.end) == (date(2024, 2, 1), date(2024, 3, 1))
+        for section in candidate.sections
+    )
+    assert all("charges" not in section for section in candidate.to_dict()["sections"])
     assert json.loads(json.dumps(candidate.to_dict()))["invoice_date"] == "2024-03-05"
+
+
+def test_network_readings_keep_billed_intervals_without_repeating_price_quantities(tmp_path):
+    candidate = parse_synthetic(tmp_path, multi_service(split_network_readings=True))
+    assert candidate.issues == []
+    network = candidate.sections[-1]
+    assert [(row.quantity_milli, row.start, row.end, row.basis) for row in network.usages] == [
+        (121125, date(2024, 2, 1), date(2024, 2, 15), "measured"),
+        (200000, date(2024, 2, 15), date(2024, 3, 1), "measured"),
+    ]
+    assert sum(row.quantity_milli for row in network.usages) == 321125
+    assert all(row.evidence.page == 4 for row in network.usages)
+    assert all(row.evidence.text.startswith("Avläsning") for row in network.usages)
+    assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
+    assert candidate.parser_revision == "4" and candidate.requires_review
+
+
+@pytest.mark.parametrize(
+    "readings,warning",
+    [
+        ([], "Missing billed electricity consumption"),
+        (["Avläsning 15 feb 2024 321,125 kWh 8321,125"], "Incomplete electricity reading periods"),
+        (
+            [
+                "Avläsning 15 feb 2024 121,125 kWh 8121,125",
+                "Avläsning 15 feb 2024 200 kWh 8321,125",
+            ],
+            "Ambiguous electricity reading periods",
+        ),
+        (["Avläsning 2 mar 2024 321,125 kWh 8321,125"], "Ambiguous electricity reading periods"),
+        (
+            [
+                "Avläsning 1 mar 2024 200 kWh 8321,125",
+                "Avläsning 15 feb 2024 121,125 kWh 8121,125",
+            ],
+            "Ambiguous electricity reading periods",
+        ),
+        (["Avläsning 31 feb 2024 321,125 kWh 8321,125"], "Invalid billed electricity consumption"),
+        (["Avläsning 1 mar 2024 321,125 kg 8321,125"], "Invalid billed electricity consumption"),
+        (["Avläsning 1 mar 2024 321,1251 kWh 8321,125"], "Invalid billed electricity consumption"),
+    ],
+)
+def test_invalid_network_readings_name_consumption_and_preserve_valid_costs(
+    tmp_path, readings, warning
+):
+    pages = multi_service()
+    pages[-1] = [
+        line for line in pages[-1] if not (isinstance(line, str) and line.startswith("Avläsning"))
+    ]
+    pages[-1].extend(readings)
+    candidate = parse_synthetic(tmp_path, pages)
+    network = candidate.sections[-1]
+    assert candidate.issues == [f"{warning} in section_04"]
+    assert network.usages == []
+    assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
+    assert (network.start, network.end) == (date(2024, 2, 1), date(2024, 3, 1))
+    assert candidate.requires_review
+
+
+@pytest.mark.parametrize(
+    "label,old,new",
+    [
+        ("Avläsning 1 mar", "200 kWh", "201 kWh"),
+        ("Energiskatt", "321,125 kWh", "322,125 kWh"),
+        ("Energiavgift", "321,125 kWh", "321,1251 kWh"),
+        ("Energiavgift", "321,125 kWh", "321,125 kg"),
+    ],
+)
+def test_network_reading_sum_is_checked_against_each_billed_price_quantity(
+    tmp_path, label, old, new
+):
+    pages = multi_service(split_network_readings=True)
+    pages[-1] = [
+        line.replace(old, new) if isinstance(line, str) and line.startswith(label) else line
+        for line in pages[-1]
+    ]
+    candidate = parse_synthetic(tmp_path, pages)
+    assert candidate.issues == ["Inconsistent billed kWh in section_04"]
+    assert sum(row.quantity_milli for row in candidate.sections[-1].usages) == (
+        322125 if label.startswith("Avläsning") else 321125
+    )
+    assert candidate.requires_review
 
 
 def test_water_correction_keeps_signed_usage_and_separate_periods(tmp_path):
@@ -75,10 +159,9 @@ def test_water_correction_keeps_signed_usage_and_separate_periods(tmp_path):
         (-12000, "reversal", date(2023, 12, 1), date(2024, 1, 1)),
         (-14000, "reversal", date(2024, 1, 1), date(2024, 2, 1)),
     ]
-    assert [c.net_minor for c in water.charges] == [10000, 20000, 45000, 2000, -12000, -14000]
-    assert [c.gross_minor for c in water.charges][-2:] == [-15000, -17500]
-    assert candidate.sections[1].charges[0].evidence.page == 2
-    assert candidate.sections[1].charges[-1].evidence.page == 3
+    assert (water.start, water.end) == (date(2023, 12, 1), date(2024, 3, 1))
+    assert water.period_evidence.page == 2
+    assert [u.evidence.page for u in candidate.sections[1].usages] == [3, 3]
 
 
 @pytest.mark.parametrize("reading_label,basis", [("Beräknad", "estimated"), ("Okänd", "billed")])
@@ -123,12 +206,108 @@ def test_shared_invoice_keeps_installations_and_counts_repeated_kwh_once(tmp_pat
         [140250],
         [510000],
     ]
-    assert candidate.sections[1].charges[2].net_minor == -500
+    assert [(s.start, s.end) for s in candidate.sections] == [
+        (date(2024, 2, 1), date(2024, 3, 1)),
+        (date(2024, 2, 1), date(2024, 3, 1)),
+    ]
     assert all(
         (u.start, u.end) == (date(2024, 2, 1), date(2024, 3, 1))
         for s in candidate.sections
         for u in s.usages
     )
+
+
+@pytest.mark.parametrize("change", ["rename", "remove", "malformed"])
+def test_multi_service_fee_details_do_not_affect_totals_or_consumption(tmp_path, change):
+    pages = multi_service(correction=True, split_network_readings=True)
+    expected = parse_synthetic(tmp_path, pages).to_dict()
+    fee_labels = (
+        "Grundavgift",
+        "Bostadsenhetsavgift",
+        "Dagvattenavgift",
+        "Effektavgift",
+        "Hämtningsavgift",
+        "Trädgårdsavfall",
+    )
+    for page in pages:
+        for index in range(len(page) - 1, -1, -1):
+            line = page[index]
+            if isinstance(line, str) and line.startswith(fee_labels):
+                if change == "remove":
+                    page.pop(index)
+                elif change == "rename":
+                    page[index] = "Synthetic renamed fee " + line.split(" ", 1)[1]
+                else:
+                    page[index] = "Synthetic fee with unreadable amounts ?? kr"
+            elif (
+                change == "malformed"
+                and isinstance(line, str)
+                and line.startswith(
+                    ("Förbrukning", "Matavfall", "Restavfall", "Energiavgift", "Energiskatt")
+                )
+            ):
+                # Retain required quantities and periods; fee amounts are optional.
+                page[index] = line.rsplit(" ", 2)[0] + " ?? kr"
+    candidate = parse_synthetic(tmp_path, pages)
+    actual = candidate.to_dict()
+
+    def facts(value):
+        if isinstance(value, dict):
+            return {key: facts(item) for key, item in value.items() if not key.endswith("evidence")}
+        if isinstance(value, list):
+            return [facts(item) for item in value]
+        return value
+
+    # Removing PDF rows changes geometry but must preserve the core billing facts.
+    assert facts(actual) == facts(expected)
+    assert candidate.issues == []
+
+
+@pytest.mark.parametrize("parser,version", [(layout_02, "v1"), (layout_02_v2, "v2")])
+@pytest.mark.parametrize("change", ["remove_fixed_fee", "malformed_amounts"])
+def test_supply_fee_amounts_are_optional_when_totals_and_kwh_are_valid(
+    tmp_path, parser, version, change
+):
+    pages = shared_supply(version=version)
+    expected = parse_synthetic(tmp_path, pages, parser)
+    for page in pages[1:]:
+        for index in range(len(page) - 1, -1, -1):
+            line = page[index]
+            if not isinstance(line, str) or not line.startswith(
+                ("Medelspotpris", "Rörliga kostnader", "Fasta påslag", "Fast avgift")
+            ):
+                continue
+            if change == "remove_fixed_fee" and line.startswith("Fast avgift"):
+                page.pop(index)
+            elif change == "malformed_amounts":
+                page[index] = line.rsplit(" ", 2)[0] + " ?? kr"
+    candidate = parse_synthetic(tmp_path, pages, parser)
+    assert candidate.issues == []
+    assert [
+        (s.net_minor, s.vat_minor, s.gross_minor, s.start, s.end) for s in candidate.sections
+    ] == [(s.net_minor, s.vat_minor, s.gross_minor, s.start, s.end) for s in expected.sections]
+    assert [
+        [(u.quantity_milli, u.start, u.end, u.basis) for u in s.usages] for s in candidate.sections
+    ] == [
+        [(u.quantity_milli, u.start, u.end, u.basis) for u in s.usages] for s in expected.sections
+    ]
+
+
+@pytest.mark.parametrize("parser,version", [(layout_02, "v1"), (layout_02_v2, "v2")])
+def test_supply_invalid_consumption_keeps_independent_printed_cost_totals(
+    tmp_path, parser, version
+):
+    pages = shared_supply(version=version)
+    pages[1] = [
+        line.replace("140,250 kWh", "140,2501 kWh") if isinstance(line, str) else line
+        for line in pages[1]
+    ]
+    candidate = parse_synthetic(tmp_path, pages, parser)
+    section = candidate.sections[0]
+    assert section.usages == []
+    assert (section.net_minor, section.vat_minor, section.gross_minor) == (11055, 2764, 13819)
+    assert (section.start, section.end) == (date(2024, 2, 1), date(2024, 3, 1))
+    assert "Invalid billed electricity consumption in section_01" in candidate.issues
 
 
 def test_conflicting_supply_quantities_require_review(tmp_path):
@@ -172,31 +351,36 @@ def test_water_pdf_with_wrong_unit_preserves_cost_and_flags_usage(tmp_path):
         for line in pages[2]
     ]
     candidate = parse_synthetic(tmp_path, pages)
-    assert "Invalid water quantity in section_01" in candidate.issues
+    assert "Invalid water quantity or period in section_01" in candidate.issues
     assert candidate.sections[0].usages == []
     assert candidate.sections[0].gross_minor == 55000
 
 
-def test_printed_vat_rounding_is_retained_but_large_discrepancies_fail(tmp_path):
+def test_printed_vat_is_retained_without_inference_from_individual_fees(tmp_path):
     candidate = parse_synthetic(tmp_path, multi_service())
     water = candidate.sections[0]
-    water.vat_minor += 1
-    water.gross_minor += 1
-    assert "VAT mismatch in section_01" not in reconcile(candidate).issues
-    water.vat_minor += 100
-    water.gross_minor += 100
-    assert "VAT mismatch in section_01" in reconcile(candidate).issues
+    water.vat_minor += 101
+    water.gross_minor += 101
+    candidate.vat_minor += 101
+    candidate.invoice_total_minor += 101
+    candidate.amount_due_minor += 101
+    assert reconcile(candidate).issues == []
+    assert (water.net_minor, water.vat_minor, water.gross_minor) == (44000, 11101, 55101)
 
 
-def test_mismatched_section_net_does_not_allocate_a_large_vat_difference(tmp_path):
+def test_mismatched_cost_totals_are_flagged_without_rewriting_printed_values(tmp_path):
     candidate = parse_synthetic(tmp_path, shared_supply(), layout_02)
     section = candidate.sections[0]
     section.net_minor = 10**12
     section.vat_minor = section.net_minor // 4
-    section.charges = [replace(c, vat_minor=None, gross_minor=None) for c in section.charges]
-    result = reconcile(allocate_vat(candidate))
-    assert "Net charge mismatch in section_01" in result.issues
-    assert all(c.vat_minor is None for c in section.charges)
+    result = reconcile(candidate)
+    assert "Gross total mismatch in section_01" in result.issues
+    assert "Invoice net mismatch" in result.issues and "Invoice VAT mismatch" in result.issues
+    assert (section.net_minor, section.vat_minor, section.gross_minor) == (
+        10**12,
+        10**12 // 4,
+        13819,
+    )
 
 
 @pytest.mark.parametrize(

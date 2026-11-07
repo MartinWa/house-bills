@@ -185,6 +185,7 @@ class Document(ValidatedModel):
     processing_message = models.TextField(blank=True)
     state = models.CharField(max_length=20, choices=State, default=State.PENDING)
     extraction_revision = models.PositiveBigIntegerField(default=0, editable=False)
+    legacy_charge_details = models.JSONField(default=list, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -450,6 +451,9 @@ class BillingSection(AllocationModel):
     net_minor = ScaledIntegerField(null=True, blank=True)
     vat_minor = ScaledIntegerField(null=True, blank=True)
     gross_minor = ScaledIntegerField(null=True, blank=True)
+    start = models.DateField(null=True, blank=True)
+    end = models.DateField(null=True, blank=True)
+    period_evidence = models.JSONField(default=dict, blank=True, validators=[validate_evidence])
     tax_evidence = models.JSONField(default=dict, blank=True, validators=[validate_evidence])
     total_evidence = models.JSONField(default=dict, blank=True, validators=[validate_evidence])
 
@@ -463,6 +467,11 @@ class BillingSection(AllocationModel):
                 name="section_service_valid",
             ),
             total_constraint("section_total_reconciles"),
+            models.CheckConstraint(
+                condition=Q(start__isnull=True, end__isnull=True)
+                | Q(start__isnull=False, end__isnull=False, start__lt=F("end")),
+                name="section_billing_period_valid",
+            ),
             *[
                 integer_constraint(field, f"section_{field}_integer")
                 for field in ["net_minor", "vat_minor", "gross_minor"]
@@ -474,60 +483,6 @@ class BillingSection(AllocationModel):
 
     def __str__(self):
         return f"{self.invoice}: {self.section_id}"
-
-
-class Charge(AllocationModel):
-    class VATBasis(models.TextChoices):
-        UNALLOCATED = "unallocated", "Unknown"
-        ALLOCATED = "allocated_from_section", "Allocated from section"
-        PRINTED = "printed", "Printed"
-        MANUAL = "manual", "Manual"
-
-    section = models.ForeignKey(BillingSection, on_delete=models.CASCADE, related_name="charges")
-    position = models.PositiveIntegerField()
-    description = models.CharField(max_length=300)
-    start = models.DateField()
-    end = models.DateField()
-    net_minor = ScaledIntegerField(null=True, blank=True)
-    vat_minor = ScaledIntegerField(null=True, blank=True)
-    gross_minor = ScaledIntegerField(null=True, blank=True)
-    vat_basis = models.CharField(max_length=24, choices=VATBasis, default=VATBasis.UNALLOCATED)
-    evidence = models.JSONField(default=dict, blank=True, validators=[validate_evidence])
-
-    class Meta:
-        ordering = ["position", "pk"]
-        constraints = [
-            models.UniqueConstraint(fields=["section", "position"], name="charge_position_unique"),
-            models.CheckConstraint(condition=Q(start__lt=F("end")), name="charge_period_valid"),
-            models.CheckConstraint(
-                condition=Q(
-                    vat_basis__in=["unallocated", "allocated_from_section", "printed", "manual"]
-                ),
-                name="charge_vat_basis_valid",
-            ),
-            models.CheckConstraint(
-                condition=(
-                    Q(vat_basis="unallocated", vat_minor__isnull=True, gross_minor__isnull=True)
-                    | (
-                        ~Q(vat_basis="unallocated")
-                        & Q(
-                            net_minor__isnull=False,
-                            vat_minor__isnull=False,
-                            gross_minor__isnull=False,
-                        )
-                    )
-                ),
-                name="charge_vat_allocation_valid",
-            ),
-            total_constraint("charge_total_reconciles"),
-            *[
-                integer_constraint(field, f"charge_{field}_integer")
-                for field in ["net_minor", "vat_minor", "gross_minor"]
-            ],
-        ]
-
-    def _invoice(self):
-        return Invoice.objects.get(sections__pk=self.section_id)
 
 
 class Usage(AllocationModel):

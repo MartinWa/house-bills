@@ -12,7 +12,7 @@ from django.db import OperationalError, connection, connections, transaction
 
 from bills import processing, storage
 from bills.models import (
-    Charge,
+    BillingSection,
     Document,
     Invoice,
     Property,
@@ -74,6 +74,12 @@ def upload(tmp_path, pages, *, issuer=ISSUER, filename="synthetic.pdf"):
     [
         (multi_service, "layout_01", "v1", [12000, 12000, 7500, 321125]),
         (
+            lambda: multi_service(split_network_readings=True),
+            "layout_01",
+            "v1",
+            [12000, 12000, 7500, 121125, 200000],
+        ),
+        (
             lambda: multi_service(correction=True),
             "layout_01",
             "v1",
@@ -99,7 +105,7 @@ def test_supported_uploads_persist_proposals_without_approved_rows(
         range(1, len(factory()) + 1)
     )
     assert document.invoices.get().status == "review"
-    assert Charge.objects.count() == Usage.objects.count() == 0
+    assert BillingSection.objects.count() == Usage.objects.count() == 0
     assert storage.private_path(document.original_path).read_bytes() == pdf.read_bytes()
 
 
@@ -136,7 +142,7 @@ def test_replacement_version_and_later_uploaded_old_invoice_coexist(tmp_path, co
     assert new.layout_version == "v2" and old.layout_version == "v1"
     assert new.candidate["routing"]["vendor_id"] == old.candidate["routing"]["vendor_id"]
     assert [s["usages"] for s in new.candidate["sections"]][0][0]["end"] == "2024-03-01"
-    assert Invoice.objects.count() == 2 and Charge.objects.count() == 0
+    assert Invoice.objects.count() == 2 and BillingSection.objects.count() == 0
 
 
 def test_invalid_long_reference_still_persists_extraction(tmp_path, configured):
@@ -168,7 +174,7 @@ def test_unsupported_and_ambiguous_versions_preserve_header_for_review(
         attempt.candidate["reference"] == "880003"
         and attempt.candidate["invoice_total_minor"] == 44700
     )
-    assert attempt.page_evidence and not Charge.objects.exists()
+    assert attempt.page_evidence and not BillingSection.objects.exists()
 
 
 def test_single_page_production_fixture_separates_header_and_billing_totals(configured):
@@ -176,7 +182,7 @@ def test_single_page_production_fixture_separates_header_and_billing_totals(conf
     candidate = document.extractions.get().candidate
     assert candidate["issues"] == [] and candidate["invoice_total_minor"] == 12500
     assert candidate["sections"][0]["usages"][0]["quantity_milli"] == 100000
-    assert document.extractions.get().page_evidence and not Charge.objects.exists()
+    assert document.extractions.get().page_evidence and not BillingSection.objects.exists()
 
 
 @pytest.mark.parametrize("issuer,reason", [(None, "unknown"), ("SE000000999902", "unknown")])
@@ -224,7 +230,7 @@ def test_bounded_tax_footer_recognizes_issuer_and_ignores_unlabelled_body_tokens
         ("invalid_money", "amount_due_minor"),
         ("wrong_total", "Header total mismatch"),
         ("wrong_unit", "Invalid electricity unit"),
-        ("precision", "Incomplete or invalid billing fields"),
+        ("precision", "Invalid billed electricity consumption"),
         ("conflicting_usage", "Inconsistent billed kWh"),
         ("duplicate_reference", "Ambiguous reference"),
         ("foreign_currency", "Unsupported currency"),
@@ -263,7 +269,7 @@ def test_invalid_fields_keep_candidates_and_cannot_be_approved(
             section_properties={},
             actor=django_user_model.objects.create_user("reviewer"),
         )
-    assert not Charge.objects.exists() and not Usage.objects.exists()
+    assert not BillingSection.objects.exists() and not Usage.objects.exists()
 
 
 @pytest.mark.parametrize("data", [b"%PDF-1.7 damaged", None])
@@ -477,7 +483,7 @@ def test_authenticated_web_upload_runs_parsing_and_shows_review_status(
     document = Document.objects.get()
     assert response.status_code == 302 and document.extractions.get().candidate["issues"] == []
     assert b"ready for review" in client.get(response.url).content
-    assert document.invoices.get().status == "review" and not Charge.objects.exists()
+    assert document.invoices.get().status == "review" and not BillingSection.objects.exists()
 
 
 def test_document_displays_exact_allocations_and_signed_correction_usage(
@@ -500,7 +506,7 @@ def test_document_displays_exact_allocations_and_signed_correction_usage(
     ):
         assert value in response.content.decode()
     assert "VAT-nr" not in response.content.decode()
-    assert not Charge.objects.exists() and not Usage.objects.exists()
+    assert not BillingSection.objects.exists() and not Usage.objects.exists()
     client.logout()
     assert client.get(f"/documents/{document.pk}/").status_code == 302
 

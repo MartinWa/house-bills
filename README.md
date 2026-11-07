@@ -7,8 +7,15 @@ houses, vendors and identifier mappings, and a validated invoice data model. Pri
 extraction attempts and approved review revisions are stored separately. Authenticated
 PDF uploads preserve private originals, reuse exact duplicates and expose recoverable
 storage status. Versioned deterministic parsers recognize configured vendors, match
-invoice structures and propose costs, usage and property assignments with private
-evidence. Review forms and Grafana reporting are subsequent milestones.
+invoice structures and propose service cost totals, billing periods, usage and property
+assignments with private
+evidence. Review forms support manual entry, approval, corrections and acceptance of
+re-parsed proposals, with stale-save protection and retained approval history.
+Invoice screens show approved allocations and consumption with private PDF viewing
+and download. Grafana reporting is the next milestone.
+
+Individual fee rows stay in the original PDF and extraction evidence. Parsing and
+review use invoice totals, dated property/service allocations and billed consumption.
 
 Development, tests and production use Linux containers with Python 3.14.10, Django 5.2
 LTS and checksum-pinned SQLite 3.51.3. A running Docker daemon is required. Start local
@@ -29,9 +36,10 @@ needed to run them. Real documents, extraction evidence, checked expectations an
 planning notes belong in the ignored `test-data/`, `private/` and `planning/` directories.
 
 See [the parser result contract](docs/parser-results.md) for units, service periods,
-tax allocation and evidence. See [deterministic parsing](docs/parsing.md) for installed
+printed VAT and evidence. See [deterministic parsing](docs/parsing.md) for installed
 versions, review-only outcomes, retries and selected-document re-parsing.
 See [configuration and the data model](docs/data-model.md) for house mappings,
 invoice allocations, validation and revision history.
 See [uploads and private originals](docs/ingestion.md) for limits, duplicate handling,
 approved paths and storage recovery.
+See [review and correction](docs/review.md) for supported and manual invoice workflows.

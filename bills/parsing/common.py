@@ -1,10 +1,8 @@
 """Shared candidate header extraction and reconciliation; no acceptance side effects."""
 
 import re
-from dataclasses import replace
-from decimal import Decimal
 
-from .normalization import DATE, NUMBER, money, rounded_vat, source_date, text
+from .normalization import DATE, NUMBER, money, source_date, text
 from .types import Candidate, Evidence, Identifier
 
 AMOUNT = re.compile(rf"(?<![\w,.])(?P<amount>{NUMBER})\s+kr\b", re.I)
@@ -115,69 +113,22 @@ def header(pages: list[list[Evidence]], family: str, version="v1", revision="2")
     return candidate
 
 
-def allocate_vat(candidate: Candidate) -> Candidate:
-    """Allocate explicit section VAT to period-bearing rows using stable remainders.
-
-    Allocated line VAT is derived evidence, never a claim of a printed line tax amount.
-    A discrepancy beyond the displayed-line rounding bound leaves allocation unknown.
-    """
-    rate = Decimal("0.25")
-    for section in candidate.sections:
-        if not section.charges or section.vat_minor is None or section.net_minor is None:
-            continue
-        if sum(charge.net_minor for charge in section.charges) != section.net_minor:
-            continue  # Reconciliation flags the mismatch; do not allocate an unbounded delta.
-        if (
-            abs(rounded_vat(section.net_minor, rate) - section.vat_minor)
-            > (len(section.charges) + 1) // 2
-        ):
-            continue
-        taxes = [rounded_vat(charge.net_minor, rate) for charge in section.charges]
-        delta = section.vat_minor - sum(taxes)
-        residuals = [
-            Decimal(charge.net_minor) * rate - tax
-            for charge, tax in zip(section.charges, taxes, strict=True)
-        ]
-        order = sorted(range(len(taxes)), key=lambda i: residuals[i], reverse=delta > 0)
-        for offset in range(abs(delta)):
-            taxes[order[offset % len(order)]] += 1 if delta > 0 else -1
-        section.charges = [
-            replace(
-                charge,
-                vat_minor=tax,
-                gross_minor=charge.net_minor + tax,
-                vat_basis="allocated_from_section",
-            )
-            for charge, tax in zip(section.charges, taxes, strict=True)
-        ]
-    return candidate
-
-
 def reconcile(candidate: Candidate) -> Candidate:
-    """Exact allocations; explicit printed VAT is authoritative within rounding bounds."""
+    """Reconcile authoritative service totals, billing periods and billed usage."""
     if not candidate.sections:
         candidate.issues.append("No billing sections")
     for section in candidate.sections:
-        if not section.charges or None in (
+        if None in (
             section.net_minor,
             section.vat_minor,
             section.gross_minor,
         ):
             candidate.issues.append(f"Incomplete section {section.section_id}")
             continue
-        if sum(c.net_minor for c in section.charges) != section.net_minor:
-            candidate.issues.append(f"Net charge mismatch in {section.section_id}")
         if section.net_minor + section.vat_minor != section.gross_minor:
             candidate.issues.append(f"Gross total mismatch in {section.section_id}")
-        if all(c.gross_minor is not None for c in section.charges):
-            if sum(c.gross_minor for c in section.charges) != section.gross_minor:
-                candidate.issues.append(f"Gross charge allocation mismatch in {section.section_id}")
-            if sum(c.vat_minor for c in section.charges) != section.vat_minor:
-                candidate.issues.append(f"VAT allocation mismatch in {section.section_id}")
-        # Each displayed line can lose half an öre before tax calculation.
-        tolerance = (len(section.charges) + 1) // 2
-        if abs(rounded_vat(section.net_minor, Decimal("0.25")) - section.vat_minor) > tolerance:
-            candidate.issues.append(f"VAT mismatch in {section.section_id}")
+        if section.start is None or section.end is None or section.start >= section.end:
+            candidate.issues.append(f"Missing or invalid billing period in {section.section_id}")
         expected_unit = {
             "water": "m3",
             "waste": "kg",

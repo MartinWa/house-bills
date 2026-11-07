@@ -1,0 +1,36 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #172c34; background: #f4f6f7; }
+body { margin: 0; }
+main { max-width: 1120px; margin: auto; padding: 1.5rem; }
+nav { line-height: 2; margin-bottom: 1.5rem; }
+a { color: #145969; }
+button, .button { border: 1px solid #145969; border-radius: .25rem; background: #145969; color: white; padding: .6rem .85rem; font: inherit; cursor: pointer; text-decoration: none; display: inline-block; }
+button:hover, .button:hover { background: #0d414e; }
+input, select, textarea { font: inherit; padding: .45rem; border: 1px solid #8b9da3; border-radius: .2rem; box-sizing: border-box; max-width: 100%; background: white; color: inherit; }
+input[type="checkbox"] { width: 1.1rem; height: 1.1rem; }
+fieldset { min-width: 0; background: white; border: 1px solid #c9d3d7; border-radius: .3rem; margin: 1rem 0; padding: 1rem; }
+legend { font-weight: 650; padding: 0 .35rem; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1rem; }
+.field > label { display: block; margin-bottom: .3rem; }
+.field > input:not([type="checkbox"]), .field > select, .field > textarea { width: 100%; }
+.checkbox-field { display: flex; gap: .5rem; align-items: start; }
+.checkbox-field > input { flex: 0 0 auto; }
+.notice { border-left: 4px solid #b07512; background: #fff8e6; padding: .25rem 1rem; margin: 1rem 0; }
+.errorlist { color: #9a2323; padding-left: 1.2rem; }
+[aria-invalid="true"] { border-color: #9a2323; }
+table { width: 100%; border-collapse: collapse; background: white; }
+th, td { text-align: left; vertical-align: top; border-bottom: 1px solid #d5dde0; padding: .65rem; }
+thead { background: #e7edef; }
+td ul { padding-left: 1rem; margin: 0; }
+.table-scroll { overflow-x: auto; margin: 1rem 0; }
+dl { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .5rem 1.5rem; }
+dt { font-weight: 600; }
+dd { margin: 0; }
+.filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+.filters label { display: block; margin-bottom: .25rem; }
+.review-row.is-removed { opacity: .7; }
+.review-row.is-removed > .field-grid { display: none; }
+.review-row:target { outline: 2px solid #145969; outline-offset: .2rem; scroll-margin-top: 1rem; }
+.remove-row { margin-bottom: 0; }
+small { display: block; }
+:focus-visible { outline: 3px solid #277989; outline-offset: 2px; }
+@media (max-width: 600px) { main { padding: 1rem; } dl { grid-template-columns: 1fr; } dd { margin-bottom: .5rem; } }

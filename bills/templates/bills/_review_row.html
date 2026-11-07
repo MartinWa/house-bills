@@ -1,0 +1,11 @@
+<fieldset id="{{ row.prefix }}" class="review-row{% if row.DELETE.value %} is-removed{% endif %}" data-review-row>
+  <legend>{% if group_name == 'sections' %}Allocation{% elif group_name == 'usages' %}Consumption{% else %}Identifier{% endif %} <span data-row-number>{{ number|default:"New" }}</span></legend>
+  {% for field in row.hidden_fields %}{{ field }}{% if show_errors %}{{ field.errors }}{% endif %}{% endfor %}
+  {% if show_errors %}{{ row.non_field_errors }}{% endif %}
+  <div class="field-grid">
+    {% for field in row.visible_fields %}{% if field.name != 'DELETE' %}
+      <div class="field">{{ field.label_tag }}{{ field }}{% if show_errors %}{{ field.errors }}{% endif %}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}</div>
+    {% endif %}{% endfor %}
+  </div>
+  <p class="remove-row"><label>{{ row.DELETE }} Remove this row</label></p>
+</fieldset>

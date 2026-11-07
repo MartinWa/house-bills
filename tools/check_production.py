@@ -6,9 +6,11 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from html.parser import HTMLParser
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, build_opener
 
 import django
@@ -19,13 +21,64 @@ from .check_http import NoRedirect, get, wait_for_server
 from .synthetic_pdf import invoice_pdf
 
 
+class ReviewFields(HTMLParser):
+    """Read rendered form values, including signed context, over real HTTP."""
+
+    def __init__(self, page):
+        super().__init__()
+        self.values = {}
+        self.active = False
+        self.templates = 0
+        self.select = None
+        self.textarea = None
+        self.feed(page.decode())
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "form":
+            self.active = attrs.get("id") == "review-form"
+        if tag == "template":
+            self.templates += 1
+        if not self.active or self.templates:
+            return
+        if tag == "input" and attrs.get("name"):
+            if attrs.get("type") != "checkbox" or "checked" in attrs:
+                self.values[attrs["name"]] = attrs.get(
+                    "value", "on" if attrs.get("type") == "checkbox" else ""
+                )
+        elif tag == "select":
+            self.select = attrs.get("name")
+        elif tag == "option" and self.select:
+            if self.select not in self.values or "selected" in attrs:
+                self.values[self.select] = attrs.get("value", "")
+        elif tag == "textarea":
+            self.textarea = attrs.get("name")
+            if self.textarea:
+                self.values[self.textarea] = ""
+
+    def handle_endtag(self, tag):
+        if tag == "template":
+            self.templates -= 1
+        elif tag == "form":
+            self.active = False
+        elif tag == "select":
+            self.select = None
+        elif tag == "textarea":
+            self.textarea = None
+
+    def handle_data(self, value):
+        if self.active and not self.templates and self.textarea:
+            self.values[self.textarea] += value
+
+
 def check_ingestion_http():
     """Exercise the shipped upload/download paths through actual Waitress HTTP."""
     from django.contrib.auth import get_user_model
+    from django.templatetags.static import static
     from django.test import Client
 
     from bills.models import (
-        Charge,
+        BillingSection,
         Document,
         Invoice,
         Property,
@@ -47,14 +100,16 @@ def check_ingestion_http():
     session.force_login(user)
     cookies = {settings.SESSION_COOKIE_NAME: session.cookies[settings.SESSION_COOKIE_NAME].value}
 
-    def request(path, data=None):
+    def request(
+        path, data=None, *, content_type="multipart/form-data; boundary=synthetic-boundary"
+    ):
         headers = {
             "Host": "ci.invalid",
             "X-Forwarded-Proto": "https",
             "Cookie": "; ".join(f"{name}={value}" for name, value in cookies.items()),
         }
         if data is not None:
-            headers["Content-Type"] = "multipart/form-data; boundary=synthetic-boundary"
+            headers["Content-Type"] = content_type
             headers["Origin"] = "https://ci.invalid"
         try:
             return build_opener(NoRedirect).open(
@@ -62,6 +117,24 @@ def check_ingestion_http():
             )
         except HTTPError as response:
             return response
+
+    def post_review(path, values):
+        return request(
+            path,
+            urlencode(values).encode(),
+            content_type="application/x-www-form-urlencoded",
+        )
+
+    def review_values(path):
+        with request(path) as response:
+            assert response.status == 200
+            fields = ReviewFields(response.read()).values
+            assert "review_token" in fields and "csrfmiddlewaretoken" in fields
+            return fields
+
+    for asset in ("bills/app.css", "bills/review.js"):
+        with request(static(asset)) as response:
+            assert response.status == 200 and len(response.read()) > 100
 
     with request("/upload/") as response:
         assert response.status == 200
@@ -101,7 +174,7 @@ def check_ingestion_http():
     assert (attempt.layout_family, attempt.layout_version, attempt.parser_revision) == (
         "layout_02",
         "v1",
-        "2",
+        "3",
     )
     assert attempt.candidate["issues"] == [] and attempt.candidate["invoice_total_minor"] == 12500
     assert attempt.candidate["routing"]["section_properties"] == {"section_01": house.pk}
@@ -111,7 +184,7 @@ def check_ingestion_http():
         page = response.read()
         assert response.status == 200 and b"Extracted proposal" in page
         assert b"125,00 SEK" in page and b"100,000 kWh" in page
-    assert not Charge.objects.exists() and not Usage.objects.exists()
+    assert not BillingSection.objects.exists() and not Usage.objects.exists()
     with request(location + "source/") as response:
         assert response.status == 200 and response.read() == original
         assert "no-store" in response.headers["Cache-Control"]
@@ -120,6 +193,48 @@ def check_ingestion_http():
         assert response.status == 302 and response.headers["Location"].startswith("/login/")
     with request("/private-files/" + document.original_path) as response:
         assert response.status == 404
+
+    review_path = location + "review/"
+    values = review_values(review_path)
+    with post_review(review_path, values) as response:
+        assert response.status == 302
+        invoice_location = response.headers["Location"]
+    invoice = document.invoices.get()
+    assert invoice.status == "approved" and invoice.review_revision == 1
+    assert Usage.objects.get().quantity_milli == 100000 and BillingSection.objects.count() == 1
+    document.refresh_from_db()
+    assert document.storage_state == "approved"
+    with request(invoice_location) as response:
+        assert response.status == 200 and b"100,000 kWh" in response.read()
+    corrected = review_values(review_path)
+    corrected["usages-0-quantity_milli"] = "101,125"
+    corrected["note"] = "Synthetic production consumption correction."
+    with post_review(review_path, corrected) as response:
+        assert response.status == 302
+    with post_review(review_path, corrected) as response:
+        assert response.status == 409 and b"Your entries are retained" in response.read()
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2 and Usage.objects.get().quantity_milli == 101125
+    with post_review(
+        location + "reparse/",
+        {"extraction_revision": 1, "csrfmiddlewaretoken": cookies[settings.CSRF_COOKIE_NAME]},
+    ) as response:
+        assert response.status == 302
+    assert document.extractions.count() == 2 and document.invoices.count() == 1
+    assert review_values(review_path)["usages-0-quantity_milli"] == "101,125"
+    proposed = review_values(review_path + "?proposal=latest")
+    assert proposed["usages-0-quantity_milli"] == "100,000"
+    with post_review(review_path, proposed) as response:
+        assert response.status == 302
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 3 and invoice.reviews.count() == 3
+    with request(location + "view/") as response:
+        assert response.status == 200 and response.read() == original
+        assert response.headers["Content-Disposition"].startswith("inline;")
+    with request("/upload/", multipart()) as response:
+        assert response.status == 302 and response.headers["Location"] == location
+    assert document.invoices.count() == 1 and Usage.objects.get().quantity_milli == 100000
+
     with request("/upload/", multipart(payload=b"synthetic invalid PDF")) as response:
         assert response.status == 400
     with request("/upload/", multipart(payload=b"%PDF-1.7 damaged")) as response:
@@ -129,8 +244,56 @@ def check_ingestion_http():
     assert failed.state == "review" and failed.extractions.get().state == "failed"
     with request(failed_location + "source/") as response:
         assert response.status == 200 and response.read() == b"%PDF-1.7 damaged"
+    manual_path = failed_location + "review/"
+    manual = review_values(manual_path)
+    manual.update(
+        {
+            "vendor": vendor.pk,
+            "reference": "SYNTHETIC-MANUAL-CREDIT-001",
+            "kind": "credit",
+            "invoice_date": "2024-03-05",
+            "net_minor": "-8,00",
+            "vat_minor": "-2,00",
+            "rounding_minor": "0,00",
+            "invoice_total_minor": "-10,00",
+            "amount_due_minor": "-10,00",
+            "warnings_confirmed": "on",
+            "sections-0-property": house.pk,
+            "sections-0-service": "water",
+            "sections-0-net_minor": "-8,00",
+            "sections-0-vat_minor": "-2,00",
+            "sections-0-gross_minor": "-10,00",
+            "sections-0-start": "2024-02-29",
+            "sections-0-end": "2024-02-29",
+            "add_row": "usages",
+        }
+    )
+    with post_review(manual_path, manual) as response:
+        assert response.status == 200
+        manual = ReviewFields(response.read()).values
+    manual.update(
+        {
+            "usages-0-utility": "water",
+            "usages-0-unit": "m3",
+            "usages-0-quantity_milli": "-1,250",
+            "usages-0-start": "2024-02-29",
+            "usages-0-end": "2024-02-29",
+            "usages-0-basis": "reversal",
+        }
+    )
+    with post_review(manual_path, manual) as response:
+        assert response.status == 302
+        manual_location = response.headers["Location"]
+    assert failed.invoices.get().status == "approved"
+    assert Usage.objects.get(section__invoice__document=failed).quantity_milli == -1250
+    with request(manual_location) as response:
+        assert response.status == 200 and b"-1,250 m" in response.read()
+    for path in ("/invoices/", invoice_location, manual_path, failed_location + "view/"):
+        with get(path, host="ci.invalid", secure=True) as response:
+            assert response.status == 302 and response.headers["Location"].startswith("/login/")
     print(
-        "Production parsing, review proposals, duplicates, CSRF and private source checks passed."
+        "Production upload, manual entry, approval, correction, stale review, "
+        "re-parsing, duplicates, CSRF and private source checks passed."
     )
 
 

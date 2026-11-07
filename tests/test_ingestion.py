@@ -18,7 +18,7 @@ from django.db import OperationalError, connection, connections
 from django.test import Client
 
 from bills import storage
-from bills.models import Charge, Document, Invoice, Property, Usage, Vendor
+from bills.models import BillingSection, Document, Invoice, Property, Usage, Vendor
 from bills.parsing import layout_02
 from bills.parsing.reader import read_pdf
 from bills.services import (
@@ -93,7 +93,7 @@ def test_original_bytes_deduplicate_across_house_folders_and_names(pdf, original
     same, duplicate = ingest(pdf, "house-two/renamed.PDF")
     assert duplicate and same.pk == document.pk and same.original_filename == "first.pdf"
     assert Document.objects.count() == 1 and Invoice.objects.count() == 0
-    assert Charge.objects.count() == Usage.objects.count() == 0
+    assert BillingSection.objects.count() == Usage.objects.count() == 0
     assert len(list(original_root.rglob("*.pdf"))) == 1
     assert not list(original_root.rglob("*.json"))
     assert document.state == "review" and document.storage_state == "inbox"
@@ -211,7 +211,8 @@ def test_approval_publishes_one_shared_original_and_duplicate_preserves_costs(
     assert same.state == "ready" and same.storage_state == "approved"
     assert Invoice.objects.count() == 1 and Usage.objects.count() == 2
     assert (
-        sum(Charge.objects.values_list("gross_minor", flat=True)) + invoice.rounding_minor == 44700
+        sum(BillingSection.objects.values_list("gross_minor", flat=True)) + invoice.rounding_minor
+        == 44700
     )
     assert invoice.review_revision == 1 and invoice.reviews.count() == 1
 

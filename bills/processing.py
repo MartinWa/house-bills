@@ -12,11 +12,11 @@ from .parsing.normalization import anchor
 from .parsing.reader import PDFReadError, read_pdf
 from .parsing.recognition import recognize_vendor
 from .parsing.registry import LAYOUTS, match_layouts
-from .services import record_extraction, resolve_section_property
+from .services import StaleReviewError, record_extraction, resolve_section_property
 from .storage import open_original, private_path
 
 
-def parse_document(document_id, *, force=False):
+def parse_document(document_id, *, force=False, expected_revision=None):
     """Append an immutable proposal; initial processing is idempotent across workers.
 
     Explicit re-parsing preserves every approved value and review revision.
@@ -29,6 +29,12 @@ def parse_document(document_id, *, force=False):
     lock_path = private_path(f".parse-{source.sha256}.lock")
     with FileLock(str(lock_path), timeout=10, mode=0o600):
         source.refresh_from_db()
+        if expected_revision is not None and (
+            type(expected_revision) is not int or source.extraction_revision != expected_revision
+        ):
+            raise StaleReviewError(
+                "This document has a newer extraction; reload before re-parsing."
+            )
         if source.extraction_revision and not force:
             return source.extractions.order_by("-revision").first()
         if not source.original_path or source.storage_state == Document.StorageState.FAILED:

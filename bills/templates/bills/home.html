@@ -1,8 +1,7 @@
 {% extends "bills/base.html" %}
 {% block content %}
   <p>Signed in as {{ user.get_username }}.</p>
-  <p>Uploaded invoices are parsed into review proposals. <a href="{% url 'bills:documents' %}">Open a document</a> to see its extracted invoice details, property allocations and billed usage.</p>
-  {% if user.is_staff %}<p><a href="{% url 'admin:index' %}">Administration</a></p>{% endif %}
+  <p><a href="{% url 'bills:documents' %}">Review uploaded documents</a> to check extracted values or enter an invoice manually. Approved invoices show their property allocations, costs and consumption in <a href="{% url 'bills:invoices' %}">Invoices</a>.</p>
   <form method="post" action="{% url 'logout' %}">
     {% csrf_token %}
     <button type="submit">Sign out</button>

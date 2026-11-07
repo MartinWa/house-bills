@@ -1,0 +1,24 @@
+{% extends "bills/base.html" %}
+{% load bill_values %}
+{% block title %}Invoices · House Bills{% endblock %}
+{% block content %}
+  <h2>Invoices</h2>
+  <p>Approved invoices with their property and service allocations.</p>
+  <form method="get" class="filters">
+    {{ form.as_p }}<button type="submit">Filter invoices</button> <a href="{% url 'bills:invoices' %}">Clear filters</a>
+  </form>
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">Invoice date</th><th scope="col">Vendor</th><th scope="col">Reference</th><th scope="col">Allocations</th><th scope="col">Invoice total</th><th scope="col">Source</th></tr></thead>
+    <tbody>{% for invoice in page %}
+      <tr>
+        <td>{{ invoice.invoice_date|date:"Y-m-d" }}</td><td>{{ invoice.vendor.name }}</td>
+        <td><a href="{% url 'bills:invoice' invoice.pk %}">{{ invoice.reference }}</a>{% if invoice.kind == 'credit' %} (credit){% endif %}</td>
+        <td><ul>{% for section in invoice.sections.all %}<li>{{ section.property.name }} · {{ section.get_service_display }}: {{ section.gross_minor|money }} {{ invoice.currency }}</li>{% endfor %}</ul></td>
+        <td>{{ invoice.invoice_total_minor|money }} {{ invoice.currency }}</td>
+        <td><a href="{% url 'bills:source_view' invoice.document_id %}" target="_blank" rel="noopener">View PDF</a></td>
+      </tr>
+    {% empty %}<tr><td colspan="6">No approved invoices match these filters. <a href="{% url 'bills:documents' %}">Review uploaded documents</a>.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if page.has_previous %}<a href="?{{ filter_query }}&amp;page={{ page.previous_page_number }}">Previous</a>{% endif %}
+  {% if page.has_next %}<a href="?{{ filter_query }}&amp;page={{ page.next_page_number }}">Next</a>{% endif %}
+{% endblock %}

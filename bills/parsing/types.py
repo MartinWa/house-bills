@@ -19,18 +19,6 @@ class Identifier:
 
 
 @dataclass(frozen=True)
-class Charge:
-    description: str
-    start: date
-    end: date
-    net_minor: int
-    evidence: Evidence
-    vat_minor: int | None = None
-    gross_minor: int | None = None
-    vat_basis: str = "unallocated"
-
-
-@dataclass(frozen=True)
 class Usage:
     utility: str
     unit: str
@@ -46,8 +34,10 @@ class Section:
     section_id: str
     service: str
     identifiers: list[Identifier]
-    charges: list[Charge] = field(default_factory=list)
     usages: list[Usage] = field(default_factory=list)
+    start: date | None = None
+    end: date | None = None
+    period_evidence: Evidence | None = None
     net_minor: int | None = None
     vat_minor: int | None = None
     gross_minor: int | None = None

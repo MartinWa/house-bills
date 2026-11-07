@@ -8,7 +8,6 @@ from django.db import IntegrityError, connection, transaction
 
 from bills.models import (
     BillingSection,
-    Charge,
     Document,
     Invoice,
     Property,
@@ -55,6 +54,8 @@ def section(invoice, property):
         net_minor=100,
         vat_minor=25,
         gross_minor=125,
+        start=date(2024, 2, 1),
+        end=date(2024, 3, 1),
     )
 
 
@@ -116,26 +117,17 @@ def test_database_guards_header_and_section_totals(invoice, section):
         BillingSection.objects.filter(pk=section.pk).update(gross_minor=126)
 
 
-def test_charge_preserves_negative_values_and_tax_basis(section):
-    charge = Charge.objects.create(
-        section=section,
-        position=0,
-        description="Synthetic correction",
-        start=date(2024, 2, 1),
-        end=date(2024, 3, 1),
-        net_minor=-100,
-        vat_minor=-25,
-        gross_minor=-125,
-        vat_basis="manual",
-    )
-    charge.refresh_from_db()
-    assert (charge.net_minor, charge.vat_minor, charge.gross_minor) == (-100, -25, -125)
+def test_cost_allocation_preserves_negative_totals_and_guards_billing_period(section):
+    section.net_minor, section.vat_minor, section.gross_minor = -100, -25, -125
+    section.save()
+    section.refresh_from_db()
+    assert (section.net_minor, section.vat_minor, section.gross_minor) == (-100, -25, -125)
     with pytest.raises(IntegrityError), transaction.atomic():
-        Charge.objects.filter(pk=charge.pk).update(gross_minor=-124)
+        BillingSection.objects.filter(pk=section.pk).update(gross_minor=-124)
     with pytest.raises(IntegrityError), transaction.atomic():
-        Charge.objects.filter(pk=charge.pk).update(vat_basis="unallocated")
+        BillingSection.objects.filter(pk=section.pk).update(end=None)
     with pytest.raises(IntegrityError), transaction.atomic():
-        Charge.objects.filter(pk=charge.pk).update(end=charge.start)
+        BillingSection.objects.filter(pk=section.pk).update(end=section.start)
 
 
 def test_usage_guards_units_precision_periods_and_reversal_signs(usage):

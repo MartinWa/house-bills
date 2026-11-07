@@ -10,7 +10,7 @@ from .layout_02 import ITEM, extract_supply
 from .normalization import anchor, text
 from .types import Identifier
 
-FAMILY, VERSION, REVISION = "layout_02", "v2", "1"
+FAMILY, VERSION, REVISION = "layout_02", "v2", "2"
 TITLE = "Fakturaspecifikation elhandel"
 INSTALLATION = re.compile(r"^Anläggnings-ID:\s*([\d ]+)\s*$", re.I)
 

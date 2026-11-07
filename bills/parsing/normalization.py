@@ -50,10 +50,13 @@ def decimal_number(value: str) -> Decimal:
 
 
 def scaled_integer(value: str, scale: int) -> int:
-    scaled = decimal_number(value) * scale
-    if scaled != scaled.to_integral_value():
+    # Decimal multiplication uses the active precision context. Large valid
+    # integer amounts must not round away an overprecise fractional remainder.
+    numerator, denominator = decimal_number(value).as_integer_ratio()
+    scaled, remainder = divmod(numerator * scale, denominator)
+    if remainder:
         raise ValueError(f"Value exceeds precision for scale {scale}")
-    return int(scaled)
+    return scaled
 
 
 def money(value: str) -> int:

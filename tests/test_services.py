@@ -4,6 +4,7 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import date
 from threading import Barrier
 
 import pytest
@@ -12,7 +13,6 @@ from django.db import IntegrityError, connection, connections, transaction
 
 from bills.models import (
     BillingSection,
-    Charge,
     Document,
     Invoice,
     Property,
@@ -97,9 +97,10 @@ def test_shared_account_maps_sections_individually_and_preserves_source_evidence
         sum(invoice.sections.values_list("gross_minor", flat=True)) + invoice.rounding_minor
         == 44700
     )
-    assert Charge.objects.filter(net_minor=-500, gross_minor=-625).exists()
+    assert list(invoice.sections.values_list("gross_minor", flat=True)) == [13819, 30875]
     assert invoice.document_id == attempt.document_id and Document.objects.count() == 1
-    assert attempt.candidate["sections"][0]["charges"][0]["vat_basis"] == "allocated_from_section"
+    assert all("charges" not in section for section in attempt.candidate["sections"])
+    assert all(section.start == date(2024, 2, 1) for section in invoice.sections.all())
     assert len(attempt.page_evidence) > 0
     assert invoice.reviews.get().snapshot["properties"] == {
         section.section_id: house.pk
@@ -232,7 +233,7 @@ def test_reparse_proposes_changes_and_correction_keeps_prior_approved_revision(s
     proposed = copy.deepcopy(setup["candidate"])
     section = proposed.sections[0]
     section.usages[0] = replace(section.usages[0], quantity_milli=141000)
-    proposed.parser_revision = "3"
+    proposed.parser_revision = "4"
     attempt = record_extraction(setup["document"].pk, proposed)
     approved.refresh_from_db()
     assert approved.review_revision == 1
@@ -254,14 +255,14 @@ def test_reparse_proposes_changes_and_correction_keeps_prior_approved_revision(s
         == 140250
     )
     original.refresh_from_db()
-    assert original.parser_revision == "2" and attempt.parser_revision == "3"
+    assert original.parser_revision == "3" and attempt.parser_revision == "4"
     with pytest.raises(StaleReviewError):
         approve(setup, expected_revision=1)
     assert corrected.reviews.count() == 2
 
 
 @pytest.mark.parametrize(
-    "fault", ["unit", "total", "property", "usage_overlap", "incomplete_charge"]
+    "fault", ["unit", "total", "property", "usage_overlap", "incomplete_cost", "period"]
 )
 def test_invalid_corrections_roll_back_all_previously_approved_values(setup, fault):
     approved = approve(setup)
@@ -271,15 +272,15 @@ def test_invalid_corrections_roll_back_all_previously_approved_values(setup, fau
     if fault == "unit":
         section.usages[0] = replace(section.usages[0], unit="kg")
     elif fault == "total":
-        section.charges[0] = replace(section.charges[0], net_minor=100)
+        section.net_minor = 100
     elif fault == "property":
         properties[section.section_id] = None
     elif fault == "usage_overlap":
         proposed.sections[1].identifiers = section.identifiers
+    elif fault == "period":
+        section.end = section.start
     else:
-        section.charges[0] = replace(
-            section.charges[0], vat_minor=None, gross_minor=None, vat_basis="unallocated"
-        )
+        section.vat_minor = None
     old_ids = list(approved.sections.values_list("pk", flat=True))
     with pytest.raises(ValidationError):
         approve(setup, candidate=proposed, expected_revision=1, section_properties=properties)
@@ -345,10 +346,9 @@ def test_dated_water_reversals_survive_model_persistence(setup, tmp_path):
     assert list(reversals.values_list("quantity_milli", "start", "end")) == [
         (usage.quantity_milli, usage.start, usage.end) for usage in candidate.sections[0].usages[1:]
     ]
-    assert list(Charge.objects.filter(net_minor__lt=0).values_list("gross_minor", flat=True)) == [
-        -15000,
-        -17500,
-    ]
+    water = approved.sections.get(service="water")
+    assert (water.net_minor, water.vat_minor, water.gross_minor) == (51000, 12750, 63750)
+    assert (water.start, water.end) == (date(2023, 12, 1), date(2024, 3, 1))
 
 
 def test_extraction_cannot_be_attached_to_a_different_document(setup):
@@ -361,7 +361,7 @@ def test_extraction_cannot_be_attached_to_a_different_document(setup):
 def test_approved_rows_and_audit_attempts_reject_direct_model_edits(setup):
     attempt = record_extraction(setup["document"].pk, setup["candidate"])
     approved = approve(setup, extraction=attempt)
-    rows = [approved, approved.sections.first(), Charge.objects.first(), Usage.objects.first()]
+    rows = [approved, approved.sections.first(), Usage.objects.first()]
     for row in rows:
         with pytest.raises(ValidationError, match="review service"):
             row.save()

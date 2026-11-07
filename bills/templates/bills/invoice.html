@@ -1,0 +1,43 @@
+{% extends "bills/base.html" %}
+{% load bill_values %}
+{% block title %}{{ invoice.reference }} · House Bills{% endblock %}
+{% block content %}
+  <h2>{{ invoice.vendor.name }} · {{ invoice.reference }}</h2>
+  <p>{{ invoice.get_kind_display }} · Approved revision {{ invoice.review_revision }} by {{ invoice.approved_by.get_username }} on {{ invoice.approved_at }}.</p>
+  <p><a href="{% url 'bills:review' invoice.document_id %}">Correct invoice</a> · <a href="{% url 'bills:document' invoice.document_id %}">Document and extraction</a></p>
+  <p><a href="{% url 'bills:source_view' invoice.document_id %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' invoice.document_id %}">Download original PDF</a></p>
+  <dl>
+    <dt>Invoice date</dt><dd>{{ invoice.invoice_date|date:"Y-m-d" }}</dd>
+    <dt>Due date</dt><dd>{{ invoice.due_date|date:"Y-m-d"|default:"Unknown" }}</dd>
+    <dt>Net</dt><dd>{{ invoice.net_minor|money }} {{ invoice.currency }}</dd>
+    <dt>VAT</dt><dd>{{ invoice.vat_minor|money }} {{ invoice.currency }}</dd>
+    <dt>Rounding</dt><dd>{{ invoice.rounding_minor|money }} {{ invoice.currency }}</dd>
+    <dt>Invoice total</dt><dd>{{ invoice.invoice_total_minor|money }} {{ invoice.currency }}</dd>
+    <dt>Amount due</dt><dd>{{ invoice.amount_due_minor|money }} {{ invoice.currency }}</dd>
+  </dl>
+  {% if invoice.amount_due_minor != invoice.invoice_total_minor %}<p>The amount due differs from the invoice total. This difference was confirmed during review.</p>{% endif %}
+  {% if invoice.identifiers %}
+    <h3>Invoice identifiers</h3><ul>{% for identifier in invoice.identifiers %}<li>{{ identifier.kind }}: {{ identifier.value }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% for section in invoice.sections.all %}
+    <section>
+      <h3>{{ section.property.name }} · {{ section.get_service_display }}</h3>
+      <p>Net {{ section.net_minor|money }} {{ invoice.currency }} · VAT {{ section.vat_minor|money }} {{ invoice.currency }} · Cost including VAT {{ section.gross_minor|money }} {{ invoice.currency }}</p>
+      <p>Billed period {{ section.start|date:"Y-m-d" }} to {{ section.end|final_day }}</p>
+      {% if section.identifiers %}<ul>{% for identifier in section.identifiers %}<li>{{ identifier.kind }}: {{ identifier.value }}</li>{% endfor %}</ul>{% endif %}
+      <h4>Consumption</h4>
+      {% if section.usages.all %}
+        <div class="table-scroll"><table>
+          <thead><tr><th scope="col">Utility</th><th scope="col">Billed period</th><th scope="col">Quantity</th><th scope="col">Measurement basis</th></tr></thead>
+          <tbody>{% for usage in section.usages.all %}
+            <tr><td>{{ usage.get_utility_display }}</td><td>{{ usage.start|date:"Y-m-d" }} to {{ usage.end|final_day }}</td><td>{{ usage.quantity_milli|quantity }} {{ usage.get_unit_display }}</td><td>{{ usage.get_basis_display }}</td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+      {% else %}<p>No billed consumption recorded for this allocation.</p>{% endif %}
+    </section>
+  {% endfor %}
+  <h3>Approval history</h3>
+  <ul>{% for revision in history %}
+    <li>Revision {{ revision.revision }} · {{ revision.actor.get_username }} · {{ revision.created_at }}{% if revision.note %}<p>{{ revision.note }}</p>{% endif %}</li>
+  {% endfor %}</ul>
+{% endblock %}

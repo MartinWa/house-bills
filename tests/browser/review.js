@@ -1,0 +1,234 @@
+async page => {
+  const base = new URL(page.url()).origin;
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const assert = (value, message) => { if (!value) throw new Error(message); };
+  const text = async (value, target = page) => assert((await target.locator("body").innerText()).includes(value), `Missing text: ${value}`);
+  const fill = async (name, value, target = page) => target.locator(`[name="${name}"]`).fill(value);
+  const select = async (name, value, target = page) => target.locator(`[name="${name}"]`).selectOption(value);
+  const submit = async (name, status = 302, target = page) => {
+    const response = target.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).origin === base);
+    await target.getByRole("button", { name, exact: true }).click();
+    assert((await response).status() === status, `Unexpected save status for ${name}`);
+    await target.waitForLoadState("domcontentloaded");
+  };
+
+  await page.goto(`${base}/login/`);
+  await page.getByLabel("Username").fill("synthetic-browser-reviewer");
+  await page.getByLabel("Password").fill("synthetic-browser-password");
+  await submit("Sign in");
+  for (const [name, slug] of [["Browser House One", "browser-house-one"], ["Browser House Two", "browser-house-two"]]) {
+    await page.goto(`${base}/admin/bills/property/add/`);
+    await page.getByLabel("Name:", { exact: true }).fill(name);
+    await page.getByLabel("Name:", { exact: true }).press("Tab");
+    await page.getByLabel("Slug:", { exact: true }).fill(slug);
+    await submit("Save");
+    await text(name);
+  }
+  await page.goto(`${base}/admin/bills/vendor/add/`);
+  await page.getByLabel("Name:", { exact: true }).fill("Browser Utilities");
+  await page.getByLabel("Name:", { exact: true }).press("Tab");
+  await page.getByLabel("Slug:", { exact: true }).fill("browser-utilities");
+  await select("default_property", { label: "Browser House One" });
+  const houseOne = await page.locator('[name="default_property"]').inputValue();
+  await select("issuer_identifiers-0-kind", "vat");
+  await fill("issuer_identifiers-0-value", "SE000000999901");
+  await select("layout_families-0-family", "layout_01");
+  await page.locator("#layout_families-group .add-row a").click();
+  await select("layout_families-1-family", "layout_02");
+  await select("property_identifiers-0-property", { label: "Browser House One" });
+  await select("property_identifiers-0-kind", "installation");
+  await fill("property_identifiers-0-value", "000 000 000 000 000 001");
+  await page.locator("#property_identifiers-group .add-row a").click();
+  await select("property_identifiers-1-property", { label: "Browser House Two" });
+  const houseTwo = await page.locator('[name="property_identifiers-1-property"]').inputValue();
+  await select("property_identifiers-1-kind", "installation");
+  await fill("property_identifiers-1-value", "000 000 000 000 000 002");
+  await submit("Save");
+  await page.locator("#result_list").getByRole("link", { name: "Browser Utilities", exact: true }).click();
+  assert(await page.locator('[name="default_property"]').inputValue() === houseOne, "Default property did not persist");
+  assert(await page.locator('[name="property_identifiers-1-value"]').inputValue() === "000000000000000002", "Identifier normalization did not persist");
+  assert(await page.getByRole("heading", { name: "Invoice formats", exact: true }).count() === 1, "Invoice formats are not visible");
+
+  const upload = async filename => {
+    await page.goto(`${base}/upload/`);
+    const input = page.locator('input[type="file"]');
+    await input.setInputFiles(`.playwright-cli/fixtures/${filename}`);
+    const bytes = await input.evaluate(async input => Array.from(new Uint8Array(await input.files[0].arrayBuffer())));
+    await submit("Upload PDF");
+    return { url: page.url(), bytes };
+  };
+  const supported = await upload("shared.pdf");
+  await text("Browser House One");
+  await text("Browser House Two");
+  await text("140,250 kWh");
+  await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+  assert(await page.locator('[name^="charges-"]').count() === 0, "Review still requires itemized fee fields");
+  const allocationGross = page.locator('[name="sections-0-gross_minor"]');
+  const originalAllocationGross = await allocationGross.inputValue();
+  await allocationGross.fill("1,00");
+  await submit("Approve invoice", 400);
+  await text("Net plus VAT must equal cost including VAT.");
+  await allocationGross.fill(originalAllocationGross);
+  await fill("sections-0-end", "2024-01-31");
+  await submit("Approve invoice", 400);
+  await text("Last billed day must be on or after the first day.");
+  await fill("sections-0-end", "2024-02-29");
+  await fill("usages-0-quantity_milli", "140,2501");
+  await submit("Approve invoice", 400);
+  await text("Enter a number with at most 3 decimal places.");
+  assert(await page.locator('[name="usages-0-quantity_milli"]').inputValue() === "140,2501", "Invalid input was lost");
+  await fill("usages-0-quantity_milli", "140,250");
+  await submit("Approve invoice");
+  const supportedInvoice = page.url();
+  await text("Approved revision 1");
+  await text("308,75 SEK");
+  const duplicate = await upload("shared.pdf");
+  assert(duplicate.url === supported.url, "Duplicate upload created a new document");
+  await text("This PDF is already stored.");
+  await page.getByRole("link", { name: "Open approved invoice" }).click();
+  await text("Approved revision 1");
+
+  await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
+  const stale = await page.context().newPage();
+  await stale.goto(page.url());
+  await fill("usages-0-quantity_milli", "141,125");
+  await fill("note", "Synthetic browser consumption correction.");
+  await submit("Save correction");
+  await text("Approved revision 2");
+  await text("141,125 kWh");
+  await fill("usages-0-quantity_milli", "143,000", stale);
+  await submit("Save correction", 409, stale);
+  await text("Your entries are retained", stale);
+  assert(await stale.locator('[name="usages-0-quantity_milli"]').inputValue() === "143,000", "Stale entries were lost");
+  await stale.close();
+  await page.reload();
+  await text("141,125 kWh");
+  await page.getByRole("link", { name: "Document and extraction" }).click();
+  await submit("Re-parse document");
+  await text("Proposed differences");
+  await text("141,125 kWh");
+  await text("140,250 kWh");
+  await page.getByRole("link", { name: "Correct approved values" }).click();
+  assert(await page.locator('[name="usages-0-quantity_milli"]').inputValue() === "141,125", "Re-parsing replaced the correction form");
+  await page.getByRole("link", { name: "Cancel", exact: true }).click();
+  await page.getByRole("link", { name: "Review extracted changes" }).click();
+  assert(await page.locator('[name="usages-0-quantity_milli"]').inputValue() === "140,250", "Extraction proposal was not loaded separately");
+  await submit("Save correction");
+  await text("Approved revision 3");
+  await text("140,250 kWh");
+  assert(page.url() === supportedInvoice, "Accepting the proposal created another invoice");
+
+  const manual = await upload("unsupported.pdf");
+  await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+  assert(await page.locator('[name^="charges-"]').count() === 0, "Manual entry still requires itemized fees");
+  await text("Extraction warnings");
+  await select("vendor", { label: "Browser Utilities" });
+  await fill("reference", "BROWSER-MANUAL-CREDIT-001");
+  await select("kind", "credit");
+  await fill("invoice_date", "2024-03-05");
+  for (const [name, value] of [["net_minor", "-100,00"], ["vat_minor", "-25,00"], ["rounding_minor", "0,00"], ["invoice_total_minor", "-125,00"], ["amount_due_minor", "-115,00"]]) await fill(name, value);
+  await page.getByLabel("I confirm any difference").check();
+  await select("sections-0-property", houseTwo);
+  await select("sections-0-service", "water");
+  for (const [suffix, value] of [["net_minor", "-100,00"], ["vat_minor", "-25,00"], ["gross_minor", "-125,00"]]) {
+    await fill(`sections-0-${suffix}`, value);
+  }
+  await fill("sections-0-start", "2024-02-29");
+  await fill("sections-0-end", "2024-02-29");
+  await page.getByRole("button", { name: "Add consumption", exact: true }).click();
+  await select("usages-0-utility", "water");
+  await select("usages-0-unit", "m3");
+  await fill("usages-0-quantity_milli", "-1,250");
+  await fill("usages-0-start", "2024-02-29");
+  await fill("usages-0-end", "2024-02-29");
+  await select("usages-0-basis", "reversal");
+  await page.getByRole("button", { name: "Add identifier", exact: true }).click();
+  await select("identifiers-0-scope", "manual-1");
+  await select("identifiers-0-kind", "contract");
+  await fill("identifiers-0-value", "BROWSER-MANUAL-KEY");
+
+  // Added allocations update the related selectors. Removing a row is explicit.
+  await page.getByRole("button", { name: "Add allocation", exact: true }).click();
+  await select("sections-1-property", houseOne);
+  await select("sections-1-service", "waste");
+  for (const suffix of ["net_minor", "vat_minor", "gross_minor"]) await fill(`sections-1-${suffix}`, "0,00");
+  await fill("sections-1-start", "2024-02-29");
+  await fill("sections-1-end", "2024-02-29");
+  await page.locator('[name="sections-1-DELETE"]').check();
+  await submit("Approve invoice", 400);
+  await text("This field is required.");
+  await page.getByLabel("I checked the source and resolved").check();
+  await submit("Approve invoice");
+  const manualInvoice = page.url();
+  await text("Credit invoice");
+  await text("Browser House Two");
+  await text("-1,250 m³");
+  await text("2024-02-29 to 2024-02-29");
+  await text("The amount due differs from the invoice total.");
+  assert(!(await page.locator("body").innerText()).includes("Browser House One"), "Removed allocation was approved");
+
+  const source = await page.context().request.get(`${manual.url}view/`);
+  assert(source.status() === 200 && source.headers()["content-disposition"].startsWith("inline"), "Private viewer failed");
+  assert((await source.body()).equals(Buffer.from(manual.bytes)), "Manual source bytes changed after publication");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Download original PDF", exact: true }).click();
+  const download = await downloadPromise;
+  assert(download.suggestedFilename() === "unsupported.pdf", "Download filename changed");
+  await download.saveAs(".playwright-cli/step6-original.pdf");
+  await page.screenshot({ path: ".playwright-cli/step6-invoice.png", fullPage: true });
+  await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Review form overflows on mobile");
+  await page.screenshot({ path: ".playwright-cli/step6-review-mobile.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${base}/invoices/`);
+  await select("property", houseTwo);
+  await select("service", "water");
+  await page.getByRole("button", { name: "Filter invoices", exact: true }).click();
+  await text("BROWSER-MANUAL-CREDIT-001");
+  assert(!(await page.locator("tbody").innerText()).includes("880003"), "Invoice filters joined unrelated allocations");
+
+  const warningSource = await upload("section-warning.pdf");
+  const allocationLabel = "Allocation 4 · Browser House One · Electricity network";
+  const documentWarning = page.locator(".extraction-warnings");
+  assert((await documentWarning.innerText()).includes("Missing billed electricity consumption"), "Consumption failure was described as an allocation totals error");
+  assert(!(await documentWarning.innerText()).includes("section_04"), "Internal section ID is visible in the warning");
+  await documentWarning.getByRole("link", { name: allocationLabel, exact: true }).click();
+  assert(page.url().endsWith("#sections-3"), "Warning did not link to the review allocation");
+  const allocation = page.locator("#sections-3");
+  assert(await allocation.locator('[name="sections-3-property"]').inputValue() === houseOne, "Warning linked to another property");
+  assert(await allocation.locator('[name="sections-3-service"]').inputValue() === "electricity_network", "Warning linked to another service");
+  const reviewWarning = page.locator(".extraction-warnings");
+  await reviewWarning.getByRole("link", { name: allocationLabel, exact: true }).click();
+  assert(await allocation.evaluate(element => element.matches(":target")), "Allocation was not highlighted after following its warning");
+  assert(await reviewWarning.getByRole("link", { name: "PDF page 4", exact: true }).getAttribute("href") === `${new URL(warningSource.url).pathname}view/#page=4`, "Warning linked to another PDF page");
+
+  await upload("multiple-readings.pdf");
+  assert(await page.locator(".extraction-warnings").count() === 0, "Valid multiple network readings produced an extraction warning");
+  await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+  const networkReadings = page.locator('[data-formset="usages"] [data-review-row]').filter({ has: page.locator('select[name$="-section"] option[value="section_04"]:checked') });
+  assert(await networkReadings.count() === 2, "Multiple network readings were lost or duplicated");
+  assert(await networkReadings.nth(0).locator('[name$="-quantity_milli"]').inputValue() === "121,125", "First network consumption was changed");
+  assert(await networkReadings.nth(1).locator('[name$="-quantity_milli"]').inputValue() === "200,000", "Second network consumption was changed");
+  assert(await networkReadings.nth(0).locator('[name$="-end"]').inputValue() === "2024-02-14", "First reading interval included the next period");
+  assert(await networkReadings.nth(1).locator('[name$="-start"]').inputValue() === "2024-02-15", "Second reading interval overlapped the first");
+  await submit("Approve invoice");
+  await text("121,125 kWh");
+  await text("200,000 kWh");
+
+  const anonymous = await page.context().browser().newContext();
+  try {
+    for (const url of [`${base}/invoices/`, manualInvoice, manual.url, `${manual.url}review/`, `${manual.url}source/`, `${manual.url}view/`]) {
+      const response = await anonymous.request.get(url, { maxRedirects: 0 });
+      assert(response.status() === 302 && response.headers().location.startsWith("/login/"), `Anonymous access was allowed: ${url}`);
+    }
+    const visitor = await anonymous.newPage();
+    await visitor.goto(`${manual.url}view/`);
+    assert(visitor.url().includes("/login/"), "Private source did not redirect an anonymous browser");
+  } finally {
+    await anonymous.close();
+  }
+  assert(errors.length === 0, `Browser script errors: ${errors.join(", ")}`);
+  return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, mobile layout and private source checks passed.";
+}

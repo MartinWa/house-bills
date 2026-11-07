@@ -9,12 +9,26 @@
     <p role="alert">Different files share this invoice identity. Review the sources before approving costs.</p>
     <ul>{% for other in conflicts %}<li><a href="{% url 'bills:document' other.pk %}">{{ other.original_filename }}</a></li>{% endfor %}</ul>
   {% endif %}
-  {% if document.original_path %}<p><a href="{% url 'bills:source' document.pk %}">Download original PDF</a></p>{% endif %}
+  {% if document.original_path %}<p><a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' document.pk %}">Download original PDF</a></p>{% endif %}
+  {% if invoice.review_revision %}
+    <p><a href="{% url 'bills:invoice' invoice.pk %}">Open approved invoice</a> · <a href="{% url 'bills:review' document.pk %}">Correct approved values</a></p>
+    <p>Approved revision {{ invoice.review_revision }} is retained until you save a correction.</p>
+    {% if proposal %}<p><a href="{% url 'bills:review' document.pk %}?proposal=latest">Review extracted changes</a></p>{% endif %}
+  {% else %}
+    <p><a class="button" href="{% url 'bills:review' document.pk %}">Review and approve invoice</a></p>
+    <p>You can fill in missing values or enter an unsupported invoice manually.</p>
+  {% endif %}
+  {% if document.original_path %}
+    <form method="post" action="{% url 'bills:reparse' document.pk %}">
+      {% csrf_token %}{{ reparse_form }}<button type="submit">Re-parse document</button>
+    </form>
+  {% endif %}
   {% if document.storage_error or document.staging_path or document.publication_path %}
     <form method="post" action="{% url 'bills:retry_storage' document.pk %}">
       {% csrf_token %}<button type="submit">Retry storage</button>
     </form>
   {% endif %}
+  {% if invoice.review_revision and proposal %}{% include "bills/_differences.html" %}{% endif %}
   {% if proposal %}
     <section aria-labelledby="proposal-heading">
       <h3 id="proposal-heading">Extracted proposal</h3>
@@ -30,14 +44,14 @@
       </dl>
       {% if proposal.issues %}
         <h4>Needs attention</h4>
-        <ul>{% for issue in proposal.issues %}<li>{{ issue }}</li>{% endfor %}</ul>
+        {% include "bills/_warning_list.html" with warning_details=proposal.warning_details link_to_review=True %}
       {% endif %}
       {% if proposal.sections %}
         <h4>Property and service allocations</h4>
         <table>
-          <thead><tr><th scope="col">Property</th><th scope="col">Service</th><th scope="col">Cost including VAT</th></tr></thead>
+          <thead><tr><th scope="col">Property</th><th scope="col">Service</th><th scope="col">Billed period</th><th scope="col">Cost including VAT</th></tr></thead>
           <tbody>{% for section in proposal.sections %}
-            <tr><td>{{ section.property }}</td><td>{{ section.service }}</td><td>{{ section.gross }} {{ proposal.currency }}</td></tr>
+            <tr><td>{{ section.property }}</td><td>{{ section.service }}</td><td>{{ section.start }} to {{ section.final_day }}</td><td>{{ section.gross }} {{ proposal.currency }}</td></tr>
           {% endfor %}</tbody>
         </table>
       {% else %}<p>No billing sections could be extracted.</p>{% endif %}

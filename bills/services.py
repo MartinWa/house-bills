@@ -9,7 +9,6 @@ from filelock import Timeout
 
 from .models import (
     BillingSection,
-    Charge,
     Document,
     ExtractionAttempt,
     Invoice,
@@ -127,6 +126,13 @@ def invoice_identity_conflicts(invoice):
     ).exclude(document_id=invoice.document_id)
 
 
+def invoice_for_review(document_id):
+    """Current parsers yield one invoice; prefer its retained approved revision."""
+    return (
+        Invoice.objects.filter(document_id=document_id).order_by("-review_revision", "pk").first()
+    )
+
+
 @coordinated_write
 @transaction.atomic
 def register_invoice_identity(document_id, *, vendor, reference, kind=Invoice.Kind.INVOICE):
@@ -134,10 +140,22 @@ def register_invoice_identity(document_id, *, vendor, reference, kind=Invoice.Ki
     reference = reference.strip()
     if not reference:
         raise ValidationError("An invoice reference is required for identity matching.")
-    invoice, _ = Invoice.objects.get_or_create(
-        document_id=document_id, vendor=vendor, reference=reference, kind=kind
-    )
-    if invoice_identity_conflicts(invoice).exists():
+    Document.objects.select_for_update().get(pk=document_id)
+    invoice = invoice_for_review(document_id)
+    if invoice is None:
+        invoice = Invoice.objects.create(
+            document_id=document_id, vendor=vendor, reference=reference, kind=kind
+        )
+    elif invoice.status != Invoice.Status.APPROVED:
+        invoice.vendor, invoice.reference, invoice.kind = vendor, reference, kind
+        invoice.save(update_fields=["vendor", "reference", "kind"])
+    # A changed identity from re-parsing is a proposal for the same invoice. It
+    # must neither rewrite an approval nor create another bill for its original.
+    if (
+        Invoice.objects.filter(vendor=vendor, reference=reference, kind=kind)
+        .exclude(document_id=document_id)
+        .exists()
+    ):
         Document.objects.filter(pk=document_id).update(
             state=Document.State.REVIEW,
             processing_message="Different files share this invoice identity. Review the sources.",
@@ -145,10 +163,48 @@ def register_invoice_identity(document_id, *, vendor, reference, kind=Invoice.Ki
     return invoice
 
 
+@coordinated_write
+@transaction.atomic
+def approve_document_review(
+    document_id,
+    *,
+    expected_invoice_id,
+    expected_extraction_revision,
+    expected_revision,
+    **review,
+):
+    """Create a manual invoice and approve once, or correct the observed invoice."""
+    document = Document.objects.select_for_update().get(pk=document_id)
+    if (
+        type(expected_extraction_revision) is not int
+        or document.extraction_revision != expected_extraction_revision
+    ):
+        raise StaleReviewError("This document has a newer extraction; reload before saving.")
+    invoice = invoice_for_review(document_id)
+    if (invoice.pk if invoice else None) != expected_invoice_id:
+        raise StaleReviewError("This document has a newer invoice review; reload before saving.")
+    if invoice is None:
+        invoice = Invoice.objects.create(document=document)
+    if (
+        Invoice.objects.filter(
+            vendor=review["vendor"],
+            reference=review["candidate"].reference.strip(),
+            kind=review.get("kind", Invoice.Kind.INVOICE),
+            status=Invoice.Status.APPROVED,
+        )
+        .exclude(pk=invoice.pk)
+        .exists()
+    ):
+        raise ValidationError(
+            {"reference": "An approved invoice already uses this vendor, reference and type."}
+        )
+    return approve_review(invoice.pk, expected_revision=expected_revision, **review)
+
+
 def validate_allocations(invoice):
     """Cross-row checks run before promotion, inside the same write transaction."""
     invoice.full_clean()
-    sections = list(invoice.sections.prefetch_related("charges", "usages"))
+    sections = list(invoice.sections.prefetch_related("usages"))
     if not sections:
         raise ValidationError("An approved invoice needs at least one billing section.")
     totals = {"net_minor": 0, "vat_minor": 0, "gross_minor": 0}
@@ -157,17 +213,12 @@ def validate_allocations(invoice):
         section.full_clean()
         if section.property_id is None:
             raise ValidationError("Every billing section needs a property assignment.")
-        charges = list(section.charges.all())
-        if not charges:
-            raise ValidationError("Every billing section needs charges.")
-        for charge in charges:
-            charge.full_clean()
-            if None in (charge.net_minor, charge.vat_minor, charge.gross_minor):
-                raise ValidationError("Every approved charge needs net, VAT and gross values.")
+        if section.start is None or section.end is None:
+            raise ValidationError("Every billing section needs its billing period.")
         for field in totals:
             amount = getattr(section, field)
-            if amount is None or sum(getattr(charge, field) for charge in charges) != amount:
-                raise ValidationError(f"Section {section.section_id} does not reconcile ({field}).")
+            if amount is None:
+                raise ValidationError(f"Section {section.section_id} needs complete cost totals.")
             totals[field] += amount
         for usage in section.usages.all():
             usage.full_clean()
@@ -215,7 +266,7 @@ def approve_review(
 
     `section_properties` is keyed by section ID. Missing keys use saved identifier
     mappings; a human can explicitly correct a mapping for this invoice only.
-    This is the persistence boundary for the later review screens, not auto-approval.
+    The web forms and other explicit review clients use this persistence boundary.
     """
     if not actor.is_authenticated or not actor.is_active:
         raise ValidationError("An active authenticated reviewer is required.")
@@ -275,22 +326,12 @@ def approve_review(
             net_minor=source.net_minor,
             vat_minor=source.vat_minor,
             gross_minor=source.gross_minor,
+            start=source.start,
+            end=source.end,
+            period_evidence=source_payload["period_evidence"] or {},
             tax_evidence=source_payload["tax_evidence"] or {},
             total_evidence=source_payload["total_evidence"] or {},
         )
-        for position, charge in enumerate(source.charges):
-            Charge.objects.create(
-                section=section,
-                position=position,
-                description=charge.description,
-                start=charge.start,
-                end=charge.end,
-                net_minor=charge.net_minor,
-                vat_minor=charge.vat_minor,
-                gross_minor=charge.gross_minor,
-                vat_basis=charge.vat_basis,
-                evidence=asdict(charge.evidence),
-            )
         for position, usage in enumerate(source.usages):
             Usage.objects.create(
                 section=section,

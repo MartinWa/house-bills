@@ -23,8 +23,9 @@ private_result = candidate.to_dict()
 sections continuing onto another page and dated water reversals. It accepts the two
 validated header arrangements. `layout_02/v1` extracts electricity supply specifications
 with a separate installation on each billing page. Neither module contains vendor names
-or private identifiers. Both currently record implementation revision `2`.
-`layout_02/v2`, revision `1`, retains a separate replacement signature with synthetic
+or private identifiers. Layout 01 records implementation revision `4`; layout 02 v1
+records revision `3`.
+`layout_02/v2`, revision `2`, retains a separate replacement signature with synthetic
 coverage. The registry selects by structure and keeps v1 available for older invoices.
 
 ## Structure and precision
@@ -33,8 +34,7 @@ coverage. The registry selects by structure and keeps v1 available for older inv
 | --- | --- |
 | Header | Invoice reference, invoice/due dates, SEK, net, VAT, rounding, invoice total and amount due, with field evidence. |
 | Identifiers | Customer account is supporting evidence only. Each section retains its contract or installation keys; network sections retain both. Proposed property mapping is separate routing metadata. |
-| Section | One service and contract/installation allocation, with explicit net, VAT and gross totals. Shared invoices retain multiple sections in one candidate. |
-| Charge | One signed net amount and its own service period. Derived VAT and gross amounts retain `vat_basis="allocated_from_section"`. |
+| Section | One service and contract/installation allocation, with explicit signed net, VAT and gross totals, an overall billing period and period/tax/total evidence. Shared invoices retain multiple sections in one candidate. |
 | Usage | Signed integer thousandths, unit, utility, period and basis: `measured`, `estimated`, `reversal`, `billed` or `billed_weight`. |
 | Evidence | Original extracted text, page and bounding box. Treat the complete serialized result as private. |
 | Review | `requires_review=True` for every result, including financially reconciled results. `issues` contains consistency failures. |
@@ -46,39 +46,41 @@ additional precision in evidence. Missing information is unknown, rather than ze
 
 Periods are start-inclusive/end-exclusive. Layout 01 uses reading boundaries directly;
 layout 02's printed inclusive final day becomes the following date. Invoice dates,
-reading dates and service periods remain distinct. Each charge retains its source period,
-so fixed monthly fees and a longer water settlement need not share a reporting period.
-Calendar-month proration remains a later reporting decision.
+reading dates and service periods remain distinct. Layout 01 retains the printed overall
+service billing period. Layout 02 derives the covering period from its printed consumption
+periods, falling back to other dated billing rows when consumption is invalid or absent.
+Usage retains its own intervals, including dated reversals within a longer settlement.
+The allocation period does not imply that all fees cover the same days or that its cost
+can be prorated evenly. Calendar-month proration remains a later reporting decision.
 
 Water price rows yield billed usage with explicit reversals and estimated/measured
 evidence. Waste usage comes from billed kg rows; container litres, collection counts and
 individual weight events do not become additional usage. Network usage comes from its
-billed reading and is checked against repeated energy price quantities. Supply price rows
-must agree for each period; their repeated quantities produce one usage record. Annual
+dated billed readings, retaining consecutive intervals through the end of the billed
+period. Their summed consumption is checked against repeated energy price quantities.
+Missing, invalid or ambiguous reading periods produce consumption warnings even when
+the costs reconcile. Supply price rows must agree for each period; their repeated
+quantities produce one usage record. Annual
 estimates, historical charts and cumulative readings are excluded. Network and supply
 remain separate sources; canonical reporting selection follows later.
 
 ## Financial reconciliation
 
-The printed section VAT is authoritative. Rounded net line amounts may not reproduce
-that tax exactly. The prototype accepts a difference from 25% of section net up to
-`ceil(number_of_charge_lines / 2)` öre, preserving the printed evidence. This bound is
-specific to these tested 25% layouts and does not authorize another tax rate.
+Printed service net and VAT are authoritative. No per-fee VAT or gross is calculated,
+and no fee description or amount is required. Price rows are read only where they supply
+billed consumption and periods or corroborate network readings. The original PDF and
+immutable extracted page evidence retain the source detail.
 
-Line VAT starts with Decimal half-up rounding. Any section difference is allocated by
-the largest remaining fractional amounts, using stable source order for ties. Negative
-charge and tax signs are preserved. Derived VAT is identified as an allocation rather
-than printed per-line evidence. A discrepancy outside the bound leaves line VAT/gross
-unknown and adds a review issue.
-
-Net lines, derived line VAT/gross, section totals and header totals must reconcile
-exactly. Service allocations plus explicit invoice rounding equal the invoice total.
-The combined printed waste subtotal is checked across its contract sections.
+Net plus VAT must equal each service's cost including VAT. Service net and VAT must sum
+to the header values; service costs plus explicit invoice rounding must equal the invoice
+total. The combined printed waste subtotal is checked across its contract sections.
+Invalid usage keeps independently extracted cost totals available for review.
 
 The representative documents have no carried balance, so invoice total and amount due
 coincide. An explicit invoice-total field is retained separately when present; a
-difference needs review. Unsupported charges also require review. Missing or invalid
+difference needs review. Unsupported layouts require manual review. Missing or invalid
 headers retain nulls, issues and independent candidate values. Section failures retain
 previously extracted fields; ingestion preserves the original and readable page
 evidence. Vendor recognition, structural matching, duplicate detection and immutable
-attempt persistence are integrated. Explicit review forms remain a later milestone.
+attempt persistence are integrated. [Review forms](review.md) support manual correction
+and explicit approval while preserving extraction evidence and earlier approved revisions.

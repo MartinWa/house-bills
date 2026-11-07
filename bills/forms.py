@@ -2,7 +2,7 @@
 
 from django import forms
 
-from .models import PropertyIdentifier, VendorIssuerIdentifier
+from .models import Property, PropertyIdentifier, Service, VendorIssuerIdentifier
 from .validators import normalize_identifier
 
 
@@ -10,6 +10,22 @@ class UploadForm(forms.Form):
     pdf = forms.FileField(
         label="PDF invoice", widget=forms.ClearableFileInput(attrs={"accept": ".pdf"})
     )
+
+
+class InvoiceFilterForm(forms.Form):
+    property = forms.ModelChoiceField(
+        label="Property",
+        queryset=Property.objects.all(),
+        required=False,
+        empty_label="All properties",
+    )
+    service = forms.ChoiceField(
+        label="Service", choices=[("", "All services"), *Service.choices], required=False
+    )
+
+
+class ReparseForm(forms.Form):
+    extraction_revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
 
 
 class IdentifierForm(forms.ModelForm):
