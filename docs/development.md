@@ -19,7 +19,12 @@ Open <http://localhost:8001/> and sign in. Set `HOUSE_BILLS_DEV_PORT` in the she
 change the loopback host port; the container listens on port 8000. The server applies
 migrations before starting Django's development reloader. Login and logout use Django's
 built-in authentication, with POST and CSRF protection for logout. Only staff accounts
-can use the admin. The domain app is `bills`; its invoice models come next.
+can use the admin, subject to model permissions. Configure houses under **Properties**,
+then vendors with their identification numbers, invoice formats and property
+mappings. See [configuration and the data model](data-model.md). The domain app is
+`bills`; upload and review screens come later.
+For a vendor that always bills one house, set its optional **Default property**;
+specific property mappings take precedence.
 
 The source checkout is mounted at `/app`. The `development-state` volume holds the
 Linux virtualenv, `/state/development/db.sqlite3`, the development secret, temporary
@@ -55,7 +60,9 @@ docker compose -f compose.development.yaml exec -T app python manage.py migrate 
 The HTTP checks require the development service to be running. Tests cover synthetic
 parser results, authenticated access, CSRF, safe login redirects, the linked SQLite
 policy, short IMMEDIATE transactions, concurrent readers/writers, production settings
-and missing/pending/locked startup migrations.
+and missing/pending/locked startup migrations. Domain tests cover integer money and
+usage constraints, shared invoices, dated corrections, identity conflicts, preserved
+extraction evidence, revision checks, rollback and authenticated configuration forms.
 
 `.github/workflows/ci.yml` implements **Checks (Linux)** and **Container (Linux)**.
 The first verifies dependency exports, Ruff, Django, migration drift, clean development

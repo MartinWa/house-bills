@@ -1,8 +1,9 @@
 # Private deployment
 
-This bootstrap provides one Waitress process with two threads, Django authentication
-and host-local SQLite. Invoice configuration, upload/review, reporting, backup/restore
-and release publishing are still to be implemented. Use synthetic data for this stage.
+The application provides one Waitress process with two threads, Django authentication,
+staff billing configuration and a validated invoice data model in host-local SQLite.
+Upload/review screens, reporting, backup/restore and release publishing are still to be
+implemented. Use synthetic data for this stage.
 
 ## Runtime and storage
 
@@ -93,6 +94,9 @@ docker compose up -d app
 
 Image replacement must retain `/data` and the private environment. Coordinated backup
 and clean restoration are a later milestone required before normal real-data use.
+Houses, vendors, invoice formats and identifier mappings are database
+records, configured through the authenticated admin; they persist in `/data` across
+restarts and image updates. See [configuration and the data model](data-model.md).
 
 ## Disposable production probe
 
