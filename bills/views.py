@@ -5,14 +5,16 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import DatabaseError
+from django.db.models import Prefetch
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from filelock import Timeout
 
-from .forms import InvoiceFilterForm, ReparseForm, ReportFilterForm, UploadForm
-from .models import Document, Invoice
+from .forms import DocumentFilterForm, InvoiceFilterForm, ReparseForm, ReportFilterForm, UploadForm
+from .models import BillingSection, Document, Invoice
 from .presentation import extraction_summary, proposal_differences, warning_details
 from .processing import parse_document
 from .reporting import read_report
@@ -29,15 +31,17 @@ from .storage import ingest_pdf, open_original, retry_document
 
 @never_cache
 def home(request):
-    return render(request, "bills/home.html")
+    return redirect("bills:invoices")
 
 
 @never_cache
 @require_http_methods(["GET", "POST"])
 def upload(request):
-    form = UploadForm(request.POST or None, request.FILES or None)
-    status = 200
-    if request.method == "POST" and form.is_valid():
+    if request.method == "GET":
+        return redirect(f"{reverse('bills:documents')}?upload=1#upload")
+    form = UploadForm(request.POST, request.FILES)
+    status = 400
+    if form.is_valid():
         file = form.cleaned_data["pdf"]
         try:
             document, duplicate = ingest_pdf(file, filename=file.name)
@@ -51,21 +55,43 @@ def upload(request):
                 None, "Storage is unavailable. Try again; completed uploads can be recovered."
             )
             status = 503
-    return render(
-        request,
-        "bills/upload.html",
-        {"form": form, "limit": settings.MAX_PDF_UPLOAD_BYTES},
-        status=status,
-    )
+    return _documents_response(request, upload_form=form, upload_open=True, status=status)
 
 
 @never_cache
 @require_GET
 def documents(request):
-    page = Paginator(Document.objects.order_by("-created_at", "-pk"), 50).get_page(
-        request.GET.get("page")
+    return _documents_response(request)
+
+
+def _documents_response(request, *, upload_form=None, upload_open=False, status=200):
+    form = DocumentFilterForm(request.GET)
+    records = Document.objects.order_by("-created_at", "-pk")
+    if form.is_valid():
+        if form.cleaned_data["processing"]:
+            records = records.filter(state=form.cleaned_data["processing"])
+        if form.cleaned_data["storage"]:
+            records = records.filter(storage_state=form.cleaned_data["storage"])
+    else:
+        records = records.none()
+        status = max(status, 400)
+    page = Paginator(records, 50).get_page(request.GET.get("page"))
+    query = request.GET.copy()
+    for key in ("page", "upload"):
+        query.pop(key, None)
+    return render(
+        request,
+        "bills/documents.html",
+        {
+            "page": page,
+            "form": form,
+            "filter_query": query.urlencode(),
+            "upload_form": upload_form if upload_form is not None else UploadForm(),
+            "upload_open": upload_open or request.GET.get("upload") == "1",
+            "limit": settings.MAX_PDF_UPLOAD_BYTES,
+        },
+        status=status,
     )
-    return render(request, "bills/documents.html", {"page": page})
 
 
 @never_cache
@@ -114,7 +140,14 @@ def invoices(request):
     records = (
         Invoice.objects.filter(status=Invoice.Status.APPROVED)
         .select_related("vendor", "document")
-        .prefetch_related("sections__property")
+        .prefetch_related(
+            Prefetch(
+                "sections",
+                queryset=BillingSection.objects.select_related("property").order_by(
+                    "property__name", "property_id", "service", "start", "pk"
+                ),
+            )
+        )
         .order_by("-invoice_date", "-pk")
     )
     if form.is_valid():
@@ -125,6 +158,10 @@ def invoices(request):
             allocations["sections__service"] = form.cleaned_data["service"]
         if allocations:
             records = records.filter(**allocations).distinct()
+        if form.cleaned_data["date_from"]:
+            records = records.filter(invoice_date__gte=form.cleaned_data["date_from"])
+        if form.cleaned_data["date_to"]:
+            records = records.filter(invoice_date__lte=form.cleaned_data["date_to"])
     else:
         records = records.none()
     page = Paginator(records, 50).get_page(request.GET.get("page"))
@@ -134,6 +171,7 @@ def invoices(request):
         request,
         "bills/invoices.html",
         {"page": page, "form": form, "filter_query": query.urlencode()},
+        status=400 if form.errors else 200,
     )
 
 

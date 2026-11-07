@@ -56,8 +56,10 @@ submitted fields and approved values; closing or cancelling discards unsaved ent
 
 ## Approved invoices and corrections
 
-**Invoices** lists approved records and filters by property/service. Each row shows its
-allocations and total. Detail pages show service costs, consumption, billing periods, private
+**Invoices** lists approved records and filters by property, service and an inclusive
+invoice-date range. Filters apply when changed. Each row shows the invoice total and
+groups allocations by property, showing each property name once.
+Detail pages show service costs, consumption, billing periods, private
 source links, reviewer and approval history.
 
 **Correct invoice** starts from the latest approved values. Edit the relevant fields,

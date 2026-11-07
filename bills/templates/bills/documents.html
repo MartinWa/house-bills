@@ -2,15 +2,31 @@
 {% block title %}Documents · House Bills{% endblock %}
 {% block content %}
   <h2>Documents</h2>
-  <p>Open a document to inspect its extracted invoice details, property allocations, billed usage and review issues.</p>
-  <table>
-    <thead><tr><th>Original</th><th>Uploaded</th><th>Processing</th><th>Storage</th></tr></thead>
+  <p>Upload invoices and review their extracted details, processing and storage.</p>
+  <details id="upload" class="upload-panel"{% if upload_open %} open{% endif %}>
+    <summary class="button">{% include "bills/_icon.html" with name="upload" %} Upload invoice</summary>
+    <div class="upload-content">
+      <p>Choose one PDF, up to {{ limit|filesizeformat }}. Uploading the same file again opens the existing document.</p>
+      <form method="post" action="{% url 'bills:upload' %}{% if filter_query %}?{{ filter_query }}{% endif %}" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ upload_form.as_p }}
+        <button type="submit">Upload PDF</button>
+      </form>
+    </div>
+  </details>
+  {% include "bills/_filters.html" with clear_url="bills:documents" %}
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">Document</th><th scope="col">Uploaded</th><th scope="col">Processing</th><th scope="col">Storage</th></tr></thead>
     <tbody>
       {% for document in page %}
-        <tr><td><a href="{% url 'bills:document' document.pk %}">{{ document.original_filename }}</a></td><td>{{ document.created_at }}</td><td>{{ document.get_state_display }}</td><td>{{ document.get_storage_state_display }}</td></tr>
-      {% empty %}<tr><td colspan="4">No documents uploaded yet.</td></tr>{% endfor %}
+        <tr>
+          <td class="document-name"><a href="{% url 'bills:document' document.pk %}">{{ document.original_filename }}</a></td>
+          <td>{{ document.created_at|date:"Y-m-d H:i" }}</td>
+          <td><span class="status status-{{ document.state }}">{{ document.get_state_display }}</span></td>
+          <td><span class="status status-{{ document.storage_state }}">{{ document.get_storage_state_display }}</span></td>
+        </tr>
+      {% empty %}<tr><td colspan="4">No documents match these filters. Upload an invoice to get started.</td></tr>{% endfor %}
     </tbody>
-  </table>
-  {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Previous</a>{% endif %}
-  {% if page.has_next %}<a href="?page={{ page.next_page_number }}">Next</a>{% endif %}
+  </table></div>
+  {% include "bills/_pagination.html" %}
 {% endblock %}

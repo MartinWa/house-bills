@@ -5,7 +5,18 @@ async page => {
   const assert = (value, message) => { if (!value) throw new Error(message); };
   const text = async (value, target = page) => assert((await target.locator("body").innerText()).includes(value), `Missing text: ${value}`);
   const fill = async (name, value, target = page) => target.locator(`[name="${name}"]`).fill(value);
-  const select = async (name, value, target = page) => target.locator(`[name="${name}"]`).selectOption(value);
+  const select = async (name, value, target = page) => {
+    const control = target.locator(`[name="${name}"]`);
+    const automatic = await control.evaluate(element => !!element.closest("[data-auto-filter]"));
+    const selected = await control.selectOption(value);
+    if (automatic) await target.waitForURL(url => url.searchParams.get(name) === selected[0]);
+  };
+  const filterDates = async (start, end) => {
+    await fill("date_from", start);
+    await fill("date_to", end);
+    await page.locator('[name="date_to"]').blur();
+    await page.waitForURL(url => url.searchParams.get("date_from") === start && url.searchParams.get("date_to") === end);
+  };
   const submit = async (name, status = 302, target = page) => {
     const response = target.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).origin === base);
     await target.getByRole("button", { name, exact: true }).click();
@@ -17,6 +28,12 @@ async page => {
   await page.getByLabel("Username").fill("synthetic-browser-reviewer");
   await page.getByLabel("Password").fill("synthetic-browser-password");
   await submit("Sign in");
+  assert(new URL(page.url()).pathname === "/invoices/", "Sign-in did not open Invoices");
+  assert(await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").count() === 3, "Main navigation still contains Home or Upload");
+  await page.locator(".user-menu summary").click();
+  assert(await page.getByRole("link", { name: "Administration", exact: true }).isVisible(), "Administration is missing from the User menu");
+  await page.keyboard.press("Escape");
+  assert(!await page.locator(".user-menu").evaluate(element => element.open), "Escape did not close the User menu");
   for (const [name, slug] of [["Browser House One", "browser-house-one"], ["Browser House Two", "browser-house-two"]]) {
     await page.goto(`${base}/admin/bills/property/add/`);
     await page.getByLabel("Name:", { exact: true }).fill(name);
@@ -51,7 +68,8 @@ async page => {
   assert(await page.getByRole("heading", { name: "Invoice formats", exact: true }).count() === 1, "Invoice formats are not visible");
 
   const upload = async filename => {
-    await page.goto(`${base}/upload/`);
+    await page.goto(`${base}/documents/`);
+    await page.locator("#upload > summary").click();
     const input = page.locator('input[type="file"]');
     await input.setInputFiles(`.playwright-cli/fixtures/${filename}`);
     const bytes = await input.evaluate(async input => Array.from(new Uint8Array(await input.files[0].arrayBuffer())));
@@ -197,11 +215,25 @@ async page => {
   await page.goto(`${base}/invoices/`);
   await select("property", houseTwo);
   await select("service", "water");
-  await page.getByRole("button", { name: "Filter invoices", exact: true }).click();
   await text("BROWSER-MANUAL-CREDIT-001");
   assert(!(await page.locator("tbody").innerText()).includes("880003"), "Invoice filters joined unrelated allocations");
-
+  await filterDates("2024-03-06", "2024-03-06");
+  await text("No approved invoices match");
+  await filterDates("2024-03-05", "2024-03-05");
+  await text("BROWSER-MANUAL-CREDIT-001");
   const warningSource = await upload("section-warning.pdf");
+  await page.goto(`${base}/documents/`);
+  await select("processing", "review");
+  await select("storage", "inbox");
+  const documents = await page.locator("tbody").innerText();
+  assert(documents.includes("section-warning.pdf"), "Document filters lost a document needing review");
+  assert(!documents.includes("shared.pdf") && !documents.includes("unsupported.pdf"), "Document processing and storage filters did not combine");
+  await page.screenshot({ path: ".playwright-cli/design-documents-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Documents overflow on mobile");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.goto(warningSource.url);
   const allocationLabel = "Allocation 4 · Browser House One · Electricity network";
   const documentWarning = page.locator(".extraction-warnings");
   assert((await documentWarning.innerText()).includes("Missing billed electricity consumption"), "Consumption failure was described as an allocation totals error");
@@ -245,20 +277,20 @@ async page => {
   assert(!consumption.includes("140,250 kWh"), "Report summed supply with network consumption");
   assert((await page.locator("#report-costs").innerText()).includes("473,08 SEK"), "Network cost was multiplied by its readings");
   await select("property", houseTwo);
-  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   assert(!(await page.locator("#report-consumption").innerText()).includes("Browser House One"), "Report property filter failed");
   await page.getByRole("link", { name: "Clear filters", exact: true }).click();
-  await fill("date_from", "2024-02-15");
-  await fill("date_to", "2024-02-15");
-  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+  await filterDates("2024-02-15", "2024-02-15");
   assert((await page.locator("#report-costs").innerText()).includes("No approved costs"), "Report filtered costs by billing period instead of invoice date");
   assert((await page.locator("#report-consumption").innerText()).includes("200,000 kWh"), "Report prorated a complete billed interval");
   await fill("date_from", "2024-03-05");
   await fill("date_to", "2024-02-01");
-  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+  await page.locator('[name="date_to"]').blur();
+  assert(await page.locator('[name="date_to"]').evaluate(element => element.validationMessage) === "End date must be on or after start date.", "Invalid date range was submitted automatically");
+  await page.goto(`${base}/reports/?date_from=2024-03-05&date_to=2024-02-01`);
   await text("End date must be on or after start date.");
   assert(await page.locator("#report-costs").count() === 0, "Invalid report filters produced totals");
   await page.getByRole("link", { name: "Clear filters", exact: true }).click();
+  await page.screenshot({ path: ".playwright-cli/design-reports-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Reports overflow on mobile");
   await page.screenshot({ path: ".playwright-cli/step7-reports-mobile.png", fullPage: true });
@@ -293,6 +325,9 @@ async page => {
   } finally {
     await anonymous.close();
   }
+  await page.locator(".user-menu summary").click();
+  await submit("Sign out");
+  assert(new URL(page.url()).pathname === "/login/", "User-menu sign out did not return to sign in");
   assert(errors.length === 0, `Browser script errors: ${errors.join(", ")}`);
   return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, reporting sources/totals/filters, mobile layout and private source checks passed.";
 }

@@ -642,6 +642,41 @@ def test_reports_require_login_reject_post_and_never_cache(client, ledger):
     assert client.post(url).status_code == 405
 
 
+def test_invoice_date_filters_are_inclusive_and_combine_with_allocations(client, ledger):
+    first, second = ledger["houses"]
+    wanted = ledger["make"](
+        [allocation(first, service="water"), allocation(first, service="waste")],
+        invoice_date=date(2024, 3, 5),
+    )
+    ledger["make"]([allocation(first, service="water")], invoice_date=date(2024, 3, 4))
+    ledger["make"]([allocation(second, service="water")], invoice_date=date(2024, 3, 5))
+    ledger["make"]([allocation(first, service="waste")], invoice_date=date(2024, 3, 6))
+    client.force_login(ledger["actor"])
+    filters = {
+        "property": first.pk,
+        "service": "water",
+        "date_from": "2024-03-05",
+        "date_to": "2024-03-05",
+    }
+    response = client.get(reverse("bills:invoices"), filters)
+    assert [row.pk for row in response.context["page"]] == [wanted.pk]
+    # Both allocations remain visible under one property heading.
+    body = response.content.decode()
+    assert body.count(f"<strong>{first.name}</strong>") == 1
+    assert "Water" in body and "Waste" in body
+    assert (
+        client.get(reverse("bills:invoices"), {"date_to": "2024-03-04"})
+        .context["page"]
+        .paginator.count
+        == 1
+    )
+    invalid = client.get(
+        reverse("bills:invoices"), {"date_from": "2024-03-06", "date_to": "2024-03-05"}
+    )
+    assert invalid.status_code == 400 and invalid.context["form"].errors
+    assert invalid.context["page"].paginator.count == 0
+
+
 def test_report_filters_separate_invoice_dates_from_whole_usage_periods(client, ledger):
     first, second = ledger["houses"]
     ledger["make"](

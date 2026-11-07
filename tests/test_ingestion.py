@@ -417,7 +417,9 @@ with originals_lock():
 def test_authenticated_upload_duplicate_and_private_source_with_csrf(pdf, user):
     client = Client(enforce_csrf_checks=True)
     client.force_login(user)
-    client.get("/upload/")
+    response = client.get("/upload/", follow=True)
+    assert response.redirect_chain == [("/documents/?upload=1#upload", 302)]
+    assert response.context["upload_open"]
     token = client.cookies["csrftoken"].value
     assert (
         client.post(
@@ -475,12 +477,36 @@ def test_upload_http_limit_and_invalid_header_are_visible(pdf, settings, client,
     assert not Document.objects.exists()
     response = client.post("/upload/", {"pdf": SimpleUploadedFile("bad.pdf", b"bad")})
     assert response.status_code == 400 and b"PDF header" in response.content
+    assert response.context["upload_open"] and response.context["upload_form"].errors
     response = client.post(
         "/upload/",
         {"pdf": SimpleUploadedFile("large.pdf", b"%PDF-1")},
         CONTENT_LENGTH=str(settings.MAX_UPLOAD_REQUEST_BYTES + 1),
     )
     assert response.status_code == 413
+
+
+def test_document_filters_combine_processing_and_storage_and_keep_pagination(client, user):
+    client.force_login(user)
+    # Storage and processing are independent; each filter must narrow the same records.
+    for index in range(52):
+        Document.objects.create(
+            sha256=f"{index:064x}",
+            original_filename=f"synthetic-{index}.pdf",
+            original_path=f"inbox/{index:064x}.pdf",
+            state="review",
+            storage_state="inbox" if index < 51 else "failed",
+        )
+    filters = {"processing": "review", "storage": "inbox"}
+    first = client.get("/documents/", filters)
+    assert first.context["page"].paginator.count == 51
+    assert "processing=review&amp;storage=inbox&amp;page=2" in first.content.decode()
+    second = client.get("/documents/", {**filters, "page": 2})
+    assert len(second.context["page"]) == 1
+    assert all(row.storage_state == "inbox" for row in second.context["page"])
+    invalid = client.get("/documents/", {"processing": "unknown"})
+    assert invalid.status_code == 400 and invalid.context["form"].errors
+    assert invalid.context["page"].paginator.count == 0
 
 
 def test_reparse_failure_and_candidates_survive_duplicate_upload(pdf, user):

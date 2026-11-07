@@ -21,9 +21,12 @@ migrations before starting Django's development reloader. Login and logout use D
 built-in authentication, with POST and CSRF protection for logout. Only staff accounts
 can use the admin, subject to model permissions. Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and property
-mappings. See [configuration and the data model](data-model.md). The domain app is
-`bills`. Use **Upload invoice** to store a PDF privately and **Documents** to inspect
-status or open its original. Choose **Review and approve invoice** to check a proposal
+mappings. **Administration** and **Sign out** are in the header's **User** menu.
+See [configuration and the data model](data-model.md). The domain app is
+`bills`. Sign-in opens **Invoices**, with property, service and invoice-date filters.
+Use **Upload invoice** on **Documents** to store a PDF privately. Documents can be
+filtered by processing and storage state. Filters apply when changed; without
+JavaScript, use **Apply filters**. Choose **Review and approve invoice** to check a proposal
 or enter an unsupported invoice manually. **Invoices** lists approved records and
 provides correction forms. See [review and correction](review.md),
 [deterministic parsing](parsing.md) and

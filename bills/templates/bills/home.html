@@ -1,9 +1,0 @@
-{% extends "bills/base.html" %}
-{% block content %}
-  <p>Signed in as {{ user.get_username }}.</p>
-  <p><a href="{% url 'bills:documents' %}">Review uploaded documents</a> to check extracted values or enter an invoice manually. Approved invoices show their property allocations, costs and consumption in <a href="{% url 'bills:invoices' %}">Invoices</a>.</p>
-  <form method="post" action="{% url 'logout' %}">
-    {% csrf_token %}
-    <button type="submit">Sign out</button>
-  </form>
-{% endblock %}

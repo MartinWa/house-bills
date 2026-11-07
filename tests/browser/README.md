@@ -19,6 +19,12 @@ Waste review and reports retain Matavfall and Restavfall separately. Electricity
 show Elhandel and Elnät under Electricity while consumption keeps the existing source
 selection.
 
+Design checks cover the Invoices landing page, User menu and sign out, upload within
+Documents, automatic property/service/date filters, combined document processing and
+storage filters, and desktop/mobile layout. Invalid date ranges are checked both in
+the browser and through direct URLs. Desktop previews are saved as
+`.playwright-cli/design-reports-desktop.png` and `design-documents-desktop.png`.
+
 On PowerShell, from the repository root:
 
 ```powershell

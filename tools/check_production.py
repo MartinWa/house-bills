@@ -132,11 +132,11 @@ def check_ingestion_http():
             assert "review_token" in fields and "csrfmiddlewaretoken" in fields
             return fields
 
-    for asset in ("bills/app.css", "bills/review.js"):
+    for asset in ("bills/app.css", "bills/app.js", "bills/review.js", "bills/favicon.svg"):
         with request(static(asset)) as response:
             assert response.status == 200 and len(response.read()) > 100
 
-    with request("/upload/") as response:
+    with request("/documents/?upload=1") as response:
         assert response.status == 200
         cookie = SimpleCookie(response.headers["Set-Cookie"])
         cookies[settings.CSRF_COOKIE_NAME] = cookie[settings.CSRF_COOKIE_NAME].value

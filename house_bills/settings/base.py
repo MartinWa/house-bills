@@ -75,7 +75,7 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "bills:home"
+LOGIN_REDIRECT_URL = "bills:invoices"
 LOGOUT_REDIRECT_URL = "login"
 LANGUAGE_CODE = "en"
 TIME_ZONE = os.environ.get("HOUSE_BILLS_TIME_ZONE", "Europe/Stockholm")

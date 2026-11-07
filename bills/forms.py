@@ -2,7 +2,7 @@
 
 from django import forms
 
-from .models import Property, PropertyIdentifier, Service, VendorIssuerIdentifier
+from .models import Document, Property, PropertyIdentifier, Service, VendorIssuerIdentifier
 from .validators import normalize_identifier
 
 
@@ -12,25 +12,7 @@ class UploadForm(forms.Form):
     )
 
 
-class InvoiceFilterForm(forms.Form):
-    property = forms.ModelChoiceField(
-        label="Property",
-        queryset=Property.objects.all(),
-        required=False,
-        empty_label="All properties",
-    )
-    service = forms.ChoiceField(
-        label="Service", choices=[("", "All services"), *Service.choices], required=False
-    )
-
-
-class ReportFilterForm(forms.Form):
-    property = forms.ModelChoiceField(
-        label="Property",
-        queryset=Property.objects.all(),
-        required=False,
-        empty_label="All properties",
-    )
+class DateRangeFilterForm(forms.Form):
     date_from = forms.DateField(
         label="Start date",
         required=False,
@@ -48,6 +30,44 @@ class ReportFilterForm(forms.Form):
         if start and end and end < start:
             self.add_error("date_to", "End date must be on or after start date.")
         return cleaned
+
+
+class InvoiceFilterForm(DateRangeFilterForm):
+    field_order = ["property", "service", "date_from", "date_to"]
+
+    property = forms.ModelChoiceField(
+        label="Property",
+        queryset=Property.objects.all(),
+        required=False,
+        empty_label="All properties",
+    )
+    service = forms.ChoiceField(
+        label="Service", choices=[("", "All services"), *Service.choices], required=False
+    )
+
+
+class ReportFilterForm(DateRangeFilterForm):
+    field_order = ["property", "date_from", "date_to"]
+
+    property = forms.ModelChoiceField(
+        label="Property",
+        queryset=Property.objects.all(),
+        required=False,
+        empty_label="All properties",
+    )
+
+
+class DocumentFilterForm(forms.Form):
+    processing = forms.ChoiceField(
+        label="Processing",
+        choices=[("", "All processing states"), *Document.State.choices],
+        required=False,
+    )
+    storage = forms.ChoiceField(
+        label="Storage",
+        choices=[("", "All storage states"), *Document.StorageState.choices],
+        required=False,
+    )
 
 
 class ReparseForm(forms.Form):

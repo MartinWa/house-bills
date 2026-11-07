@@ -48,7 +48,7 @@ def test_houses_can_be_configured_with_csrf_protection(admin_user):
     assert response.status_code == 302
     assert Property.objects.get().slug == "synthetic-house"
     assert b"Synthetic House" in client.get("/admin/bills/property/").content
-    assert b"Administration" in client.get("/").content
+    assert b"Administration" in client.get("/invoices/").content
 
 
 def test_vendor_configuration_saves_identifiers_layouts_and_both_houses(client, admin_user):

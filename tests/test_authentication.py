@@ -29,8 +29,9 @@ def test_login_and_post_logout_require_csrf_and_change_access(user):
     response = client.post(
         "/login/", {**credentials, "csrfmiddlewaretoken": client.cookies["csrftoken"].value}
     )
-    assert response.status_code == 302 and response.url == "/"
-    response = client.get("/")
+    assert response.status_code == 302 and response.url == "/invoices/"
+    assert client.get("/").url == "/invoices/"
+    response = client.get("/invoices/")
     assert response.status_code == 200
     assert user.username.encode() in response.content
     assert "no-store" in response.headers["Cache-Control"]
@@ -54,7 +55,7 @@ def test_bad_credentials_and_external_next_cannot_grant_access(client, user):
             "next": "https://other.invalid/",
         },
     )
-    assert response.status_code == 302 and response.url == "/"
+    assert response.status_code == 302 and response.url == "/invoices/"
 
 
 def test_private_storage_has_no_public_route(client, user):

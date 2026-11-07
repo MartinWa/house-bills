@@ -1,12 +1,14 @@
 # Uploads and private originals
 
-Sign in and choose **Upload invoice**. Upload one `.pdf` file, up to 20 MiB by
+Sign in, open **Documents** and choose **Upload invoice**. Upload one `.pdf` file, up to 20 MiB by
 default. Intake checks the PDF header and actual received byte count, hashes the
 original bytes with SHA-256 and preserves them without preprocessing. A repeated
 upload opens the existing document, even if its filename or source house folder
 differs. Filenames never assign a property.
 
-**Documents** shows processing and storage states. The document page provides
+**Documents** shows processing and storage states, with filters that apply when
+changed. The upload form opens on this page; validation errors keep it open.
+The document page provides
 status messages, identity conflicts when recognized, review/re-parsing actions and
 **Retry storage** for interrupted storage operations. **View original PDF** and
 **Download original PDF** require an active signed-in session and check the stored
