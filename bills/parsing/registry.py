@@ -1,8 +1,8 @@
 """Installed versions coexist; structural matches never depend on invoice date."""
 
-from . import layout_01, layout_02, layout_02_v2
+from . import layout_01, layout_02, layout_02_v2, layout_03, layout_04, layout_05, layout_06
 
-PARSERS = (layout_01, layout_02, layout_02_v2)
+PARSERS = (layout_01, layout_02, layout_02_v2, layout_03, layout_04, layout_05, layout_06)
 LAYOUTS = {}
 for parser in PARSERS:
     LAYOUTS.setdefault(parser.FAMILY, {})[parser.VERSION] = parser.REVISION

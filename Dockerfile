@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS browser-node
+
 FROM python:3.14.10-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b AS os-base
 RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
@@ -49,15 +51,34 @@ USER 1000:1000
 ENTRYPOINT ["/usr/local/bin/python", "/usr/local/bin/house-bills-dev.py"]
 CMD ["python", "-m", "tools.dev_server"]
 
+# The browser toolchain is isolated from both application image targets.
+FROM development AS browser
+USER root
+COPY --from=browser-node /usr/local/bin/node /usr/local/bin/node
+COPY --from=browser-node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+COPY package.json package-lock.json /opt/browser/
+ENV NODE_PATH=/opt/browser/node_modules PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+RUN cd /opt/browser \
+    && node /usr/local/lib/node_modules/npm/bin/npm-cli.js ci --ignore-scripts \
+    && node /opt/browser/node_modules/playwright/cli.js install --with-deps chromium \
+    && chmod -R a+rX /opt/browser /opt/playwright \
+    && rm -rf /var/lib/apt/lists/* /root/.npm
+USER 1000:1000
+CMD ["python", "-m", "tools.run_browser"]
+
 # A plain build produces the production image.
 FROM runtime-base AS production
-ENV HOUSE_BILLS_DATA_DIR=/data DJANGO_SETTINGS_MODULE=house_bills.settings.production
+ARG HOUSE_BILLS_VERSION=development
+ENV HOUSE_BILLS_DATA_DIR=/data DJANGO_SETTINGS_MODULE=house_bills.settings.production \
+    HOUSE_BILLS_VERSION=$HOUSE_BILLS_VERSION
+LABEL org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0"
 RUN python -m pip uninstall --yes pip \
     && mkdir -p /data && chown 1000:1000 /data
 COPY manage.py /app/manage.py
 COPY house_bills /app/house_bills
 COPY bills /app/bills
-COPY tools/__init__.py tools/check_production.py tools/check_http.py tools/synthetic_pdf.py /app/tools/
+COPY LICENSE NOTICE /app/
+COPY tools/__init__.py tools/check_production.py tools/check_recovery.py tools/check_http.py tools/synthetic_pdf.py /app/tools/
 RUN HOUSE_BILLS_SECRET_KEY=synthetic-build-only-key-never-for-runtime-000000000000000000 \
     HOUSE_BILLS_ALLOWED_HOSTS=build.invalid python manage.py collectstatic --noinput
 USER 1000:1000

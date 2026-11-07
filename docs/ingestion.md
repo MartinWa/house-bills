@@ -99,9 +99,15 @@ do not wrap file operations in request-wide or caller-owned database transaction
 An approval commits before its publication callback. A failed callback preserves
 approved rows and recovery publishes the fully approved inbox original later.
 
-A backup integration must hold `bills.storage.originals_lock()` for the whole SQLite
-backup-API snapshot and originals copy, including staging receipts and journaled
-files. Do not copy a live database/WAL as separate ordinary files. The synthetic
-tests demonstrate a consistent checksum-verified snapshot and verify that another
-process waits for this lock. The operational backup/restore command and clean NAS
-restoration remain step 8.
+`backup_bills` holds the startup-migration lock and `bills.storage.originals_lock()`
+for the whole SQLite backup-API snapshot and originals copy, including staging receipts,
+partial uploads and journaled files. Supported billing/storage writers wait for this lock;
+account changes can continue against the live database after the consistent snapshot.
+Do not copy a live database/WAL as separate ordinary files.
+
+`verify_backup` checks the package manifest, every file's size/checksum, SQLite integrity,
+foreign keys and recoverable document references. `restore_bills` requires a new directory
+outside live storage and retains supplied recovery configuration for operator review.
+See [operational backup and recovery](backup-and-recovery.md) for private mounts,
+commands and the clean-instance verification procedure. Synthetic tests and the production
+HTTP probe verify restoration locally; verification on the intended NAS remains pending.

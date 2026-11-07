@@ -3,9 +3,10 @@
 The application provides one Waitress process with two threads, Django authentication,
 staff billing configuration, private PDF uploads, deterministic parsing, manual review
 and correction, approved invoice screens and authenticated reports in host-local
-SQLite. Grafana integration, operational backup/restore and release publishing remain
-later milestones. Use
-synthetic data for deployment checks at this stage.
+SQLite. Coordinated backups and clean restoration are implemented and checked on
+disposable local instances. Verify them on the intended host before normal real-data use.
+Grafana access transport and NAS operation remain unverified. The first published image
+is pending; local production builds support evaluation with synthetic invoices.
 
 ## Runtime and storage
 
@@ -29,7 +30,7 @@ the configured non-root runtime. Original storage has no public URL route.
 
 ## Configure and initialize
 
-Build the local production image:
+Choose a tested image through `HOUSE_BILLS_IMAGE`. For local evaluation, build:
 
 ```sh
 docker build --tag house-bills:local .
@@ -44,6 +45,7 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 
 | Setting | Purpose |
 | --- | --- |
+| `HOUSE_BILLS_IMAGE` | Required local image tag or published GHCR version/digest. Defaults to `house-bills:local` in the example. |
 | `HOUSE_BILLS_SECRET_KEY` | Private random secret of at least 50 characters. Preserve across restarts. |
 | `HOUSE_BILLS_ALLOWED_HOSTS` | Comma-separated exact hostnames, without schemes or wildcards. |
 | `HOUSE_BILLS_CSRF_TRUSTED_ORIGINS` | Comma-separated exact trusted HTTPS origins. |
@@ -54,6 +56,13 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `APP_UID`, `APP_GID` | Non-root numeric container process IDs. |
 | `APP_DATA_PATH` | Absolute private host-local data directory. |
 | `PROXY_NETWORK` | Existing private Docker network used by the HTTPS reverse proxy. |
+
+After a release is published, select its tested `ghcr.io/martinwa/house-bills:X.Y.Z`
+tag or immutable digest and run `docker compose pull app`. The release workflow currently
+targets Linux/amd64. Keep the selected version/digest with the recovery configuration;
+avoid silently following `latest` for installation upgrades. The local Docker build
+sets `HOUSE_BILLS_VERSION=development` unless a version is explicitly supplied with
+`--build-arg HOUSE_BILLS_VERSION=X.Y.Z`.
 
 Create the data directory and grant the configured UID/GID access before startup.
 Compose mounts it at `/data`, keeps the image filesystem read-only, provides `/tmp`
@@ -70,11 +79,10 @@ enabled. Production Compose publishes no host ports and bundles no proxy.
 
 ```sh
 docker compose config --quiet
-docker compose build app
 docker compose run --rm app python manage.py migrate --noinput
 docker compose run --rm app python manage.py createsuperuser
 docker compose run --rm app python manage.py check --deploy --database default
-docker compose up -d app
+docker compose up -d --no-build app
 docker compose logs --tail=100 app
 ```
 
@@ -95,25 +103,61 @@ docker compose run --rm app python manage.py migrate --check
 docker compose up -d app
 ```
 
-Image replacement must retain `/data` and the private environment. Coordinated backup
-and clean restoration are a later milestone required before normal real-data use.
+Image replacement must retain `/data` and the private environment. Follow
+[backup and recovery](backup-and-recovery.md) to create a verified package and start a
+separate restored instance with the same tested image before normal real-data use.
 Houses, vendors, invoice formats and identifier mappings are database
 records, configured through the authenticated admin; they persist in `/data` across
 restarts and image updates. See [configuration and the data model](data-model.md).
 Originals live in `/data/invoices`, with authenticated downloads and resumable staging
 and publication. See [uploads and private originals](ingestion.md) for recovery and
-the shared-lock contract required by the future backup integration.
+the shared-lock contract used by operational backups.
 
 Migration `0007_cost_totals` replaces individual fee records with dated service totals.
 Existing fee rows are archived privately before removing their table. Invoice identities,
 approved totals, usage and immutable extraction/review history are preserved. Older
 proposals can still be reviewed without re-parsing; see [the data model](data-model.md).
 
+## Manual upgrades
+
+Create and verify a coordinated backup including the private environment and
+Compose/proxy configuration. Record the current image digest. Select the new tested
+release in `HOUSE_BILLS_IMAGE`, pull it, then stop the serving instance before applying
+schema migrations:
+
+```sh
+docker compose pull app
+docker compose stop app
+docker compose run --rm app python manage.py migrate --noinput
+docker compose run --rm app python manage.py migrate --check
+docker compose run --rm app python manage.py check --deploy --database default
+docker compose up -d --no-build app
+docker compose logs --tail=100 app
+```
+
+For a local image, build it explicitly before stopping the app instead of pulling.
+Confirm configuration, approved totals, signed usage, correction history, Reports and
+authenticated original downloads. Run the clean-restoration procedure independently;
+image updates do not replace installation state or accepted corrections. If an upgrade
+fails, retain the failed instance for inspection and restore the verified pre-upgrade
+backup into a separate directory using its previous image. Do not assume that an older
+image can read a migrated database.
+
+Releases never deploy or update an installation automatically. NAS verification remains
+a documented follow-up, including proxy routing, permissions, upload timing, review and
+clean restoration. Grafana's read-only integration must be verified separately.
+
 ## Disposable production probe
 
-This invokes the same startup checks as baseline CI. The temporary data disappears when
+This invokes the same production checks as CI. The temporary data disappears when
 the container exits; no installation configuration or real invoice data is used.
 
 ```sh
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /data:mode=1777 --tmpfs /tmp --env HOUSE_BILLS_SECRET_KEY=synthetic-container-check-key-never-for-runtime-000000000000000000 --env HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid house-bills:local python -m tools.check_production
 ```
+
+The probe verifies parsed/manual upload and review, correction history, reporting,
+duplicates, private source access, migration guards and static/HTTPS behavior. It creates
+a checksum-verified backup, restores all database rows and originals into a new directory,
+then starts that instance with migrations disabled and checks authenticated HTTP reports
+and original downloads. This establishes local image behavior, not NAS deployment.

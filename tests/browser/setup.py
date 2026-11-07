@@ -5,6 +5,7 @@ from pathlib import Path
 
 import django
 
+from tests.current_formats import chart_supply, cover_supply, monthly_network, quarterly_waste
 from tests.synthetic import multi_service, shared_supply, write_pdf
 
 
@@ -24,7 +25,9 @@ def main():
     get_user_model().objects.create_superuser(
         "synthetic-browser-reviewer", password="synthetic-browser-password"
     )
-    fixtures = Path(".playwright-cli/fixtures")
+    fixtures = (
+        Path(os.environ.get("HOUSE_BILLS_BROWSER_ARTIFACT_DIR", ".playwright-cli")) / "fixtures"
+    )
     fixtures.mkdir(parents=True, exist_ok=True)
     pages = shared_supply()
     pages[0].append("VAT-nr SE000000999901")
@@ -46,6 +49,15 @@ def main():
     ]
     reading_pages[0].append("VAT-nr SE000000999901")
     write_pdf(fixtures / "multiple-readings.pdf", reading_pages)
+    for filename, factory in (
+        ("quarterly-waste.pdf", quarterly_waste),
+        ("cover-supply.pdf", cover_supply),
+        ("chart-supply.pdf", chart_supply),
+        ("monthly-network.pdf", monthly_network),
+    ):
+        pages = factory()
+        pages[0].append("VAT-nr SE000000999901")
+        write_pdf(fixtures / filename, pages)
     print("Fresh browser-check user and synthetic PDFs prepared.")
 
 

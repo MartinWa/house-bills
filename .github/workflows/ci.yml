@@ -27,7 +27,7 @@ jobs:
   checks:
     name: Checks (Linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,10 +78,61 @@ jobs:
         if: always()
         run: docker compose -f compose.development.yaml down
 
+  browser:
+    name: Browser (Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the isolated browser image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: browser
+          load: true
+          push: false
+          provenance: false
+          tags: house-bills:browser
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          cache-from: type=gha,scope=ci-browser
+          cache-to: type=gha,scope=ci-browser,mode=max
+          github-token: ""
+      - name: Audit the locked browser dependencies
+        run: |
+          docker run --rm house-bills:browser node /usr/local/lib/node_modules/npm/bin/npm-cli.js \
+            audit --prefix /opt/browser --audit-level=high --ignore-scripts
+      - name: Run synthetic browser workflows without external network access
+        run: |
+          docker run --name house-bills-ci-browser --network none --init --shm-size=1g \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            house-bills:browser python -m tools.run_browser
+      - name: Collect synthetic browser artifacts
+        if: always()
+        run: |
+          if docker container inspect house-bills-ci-browser > /dev/null 2>&1; then
+            docker cp house-bills-ci-browser:/state/browser-artifacts "$RUNNER_TEMP/browser-artifacts"
+          fi
+      - name: Upload synthetic browser artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: chromium-check
+          path: ${{ runner.temp }}/browser-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove the disposable browser container
+        if: always()
+        run: docker rm -f house-bills-ci-browser || true
+
   container:
     name: Container (Linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,6 +147,17 @@ jobs:
             "$RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color
+      - name: Set up uv for dependency auditing
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - name: Audit locked Python dependencies
+        run: |
+          uv export --locked --no-emit-project --format requirements-txt \
+            --output-file "$RUNNER_TEMP/audit-requirements.txt" > /dev/null
+          uvx --python 3.14 --from pip-audit==2.10.1 pip-audit --disable-pip --strict \
+            --progress-spinner off -r "$RUNNER_TEMP/audit-requirements.txt"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build production image without publishing
@@ -124,3 +186,5 @@ jobs:
               python manage.py migrate --check
               python manage.py check --deploy --database default
             '
+      - name: Audit the tested production image
+        run: bash tools/audit_image.sh house-bills:ci

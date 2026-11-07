@@ -34,12 +34,28 @@ remain review proposals. Dates and filenames never select the newest parser.
 | `layout_01/v1` | Contract-based water, waste subcategories and network; page continuations and water reversals. | `5` |
 | `layout_02/v1` | Electricity supply; installation details above each specification. | `3` |
 | `layout_02/v2` | Replacement supply structure; service-specific title and inline installation key. | `2` |
+| `layout_03/v1` | Quarterly waste; VAT basis and separate payment summary. | `1` |
+| `layout_04/v1` | Electricity supply; cover totals and one installation specification. | `1` |
+| `layout_05/v1` | Electricity supply; explicit consumption table beside a historical chart. | `1` |
+| `layout_06/v1` | Monthly network and energy tax; repeated billed kWh quantities. | `1` |
 
-The v1 formats have representative source validation. The v2 replacement has
-synthetic regression coverage and does not establish additional real-format coverage.
-Full current-format coverage remains a later milestone. Spacing, case, title
-punctuation and period dash changes preserve v1 when its structure still matches.
+The v1 families have representative source validation and wholly synthetic regressions.
+The v2 replacement demonstrates coexistence using synthetic examples. This does not
+cover every historical invoice or future layout change. Spacing, case, title punctuation
+and period dash changes preserve a version when its structural rules still match.
 Normalization retains the original extracted text and coordinates as evidence.
+
+The added single-installation formats flag multiple identifiers/specifications for review.
+Quarterly waste retains its service total and billing period without converting collections,
+container litres or annual price quantities into weight consumption. Supply parsers
+distinguish billed consumption from dated meter readings and charts; the chart format
+requires its explicit consumption table. Monthly network combines network and energy-tax
+costs while retaining repeated billed kWh once. Signed corrections and invalid quantity,
+money and period fields remain covered by synthetic checks.
+
+`layout_06` locally translates six checked Swedish character codes from its source font.
+This translation is bounded to that parser and preserves untouched evidence. Unknown
+codes in consumption require review; general encoding repair and OCR are not included.
 
 Each section resolves its own installation/contract keys, then an explicitly labelled
 delivery address, then the vendor's optional default property. Conflicts remain
@@ -71,8 +87,8 @@ rejects unresolved issues and invalid allocations. Recognized different-file inv
 identities become review records and expose source conflicts.
 
 Damaged, textless, password-protected PDFs and PDFs exceeding 100 pages require
-review. OCR and encoding repair remain later work. Parsing runs synchronously within
-the bounded upload; NAS timing and background execution decisions remain later work.
+review. General OCR and encoding repair remain later work. Parsing runs synchronously
+within the bounded upload; NAS timing has not been measured.
 
 ## Retry and selected re-parsing
 
@@ -110,3 +126,15 @@ replacement, unsupported and older layouts, partial failures, shared sections, u
 usage, property conflicts, recovery and preserved approvals. The production probe
 uploads a synthetic bill through Waitress without development test dependencies.
 Real PDFs, expected values and extraction evidence remain private.
+
+Built-in modules declare `FAMILY`, `VERSION` and `REVISION`, implement structural
+`matches(pages)` and return a `Candidate` from `parse(pages, *, candidate=None)`.
+An optional `read_header(pages)` extracts format-specific header fields before section
+parsing so those fields survive a later parser failure. Use the existing candidate,
+section, identifier, usage and evidence types; see [the result contract](parser-results.md).
+Register built-in versions in `bills/parsing/registry.py`, rebuild the image and explicitly
+re-parse selected documents. Follow [contributing](../CONTRIBUTING.md) for fixtures/checks.
+
+Loading modules from a mounted directory is not implemented. Such modules would execute
+with application privileges; independently authored plugins may retain their own licenses,
+as described in [NOTICE](../NOTICE) and [security expectations](../SECURITY.md).

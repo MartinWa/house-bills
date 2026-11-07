@@ -1,7 +1,8 @@
 # Review browser checks
 
-The Playwright CLI check uses a fresh installation, invented invoices and a separate
-Compose project. It covers configuration and mapping persistence, upload, duplicates,
+The pinned Chromium check creates a temporary installation with invented invoices and
+uses a separate browser image/state volume. It covers configuration and mapping persistence,
+all six current format families, upload, duplicates,
 visible validation, supported approval, manual credits, row addition/removal, corrections,
 stale forms, re-parsing and explicit acceptance, invoice filters, exact original bytes,
 anonymous source blocking and mobile review layout.
@@ -25,17 +26,50 @@ storage filters, and desktop/mobile layout. Invalid date ranges are checked both
 the browser and through direct URLs. Desktop previews are saved as
 `.playwright-cli/design-reports-desktop.png` and `design-documents-desktop.png`.
 
-On PowerShell, from the repository root:
+From the repository root with Docker running, including on PowerShell:
+
+```sh
+docker compose -f compose.development.yaml build browser
+docker compose -f compose.development.yaml run --rm browser python -m tools.run_browser
+```
+
+`tools/run_browser.py` creates a new database, secret and originals directory under the
+browser state's temporary storage, migrates it, populates synthetic setup and starts
+the application on container loopback. It removes that instance after the check. The
+normal development database is never used. Setup additionally refuses any instance
+already containing users or billing records.
+
+The image installs Playwright from `package-lock.json` and Chromium during its build.
+No host Node, browser or Playwright CLI installation is needed. `tests/browser/run.cjs`
+runs the shared `review.js` scenario, blocks requests outside the local application and
+collects traces, screenshots, synthetic downloads and server logs under
+`/state/browser-artifacts/run-*` in the browser volume. CI uploads those artifacts for
+seven days and executes the built image without a source mount or external network.
+
+To reproduce CI using the built image directly:
+
+```sh
+docker run --rm --network none --init --shm-size=1g --cap-drop ALL --security-opt no-new-privileges:true house-bills:browser python -m tools.run_browser
+```
+
+The `--rm` form discards artifacts with the container. Use a named disposable container
+without `--rm` and `docker cp` if artifacts are needed afterward. Treat artifacts as
+synthetic test evidence; never run this scenario against real billing data.
+
+## Optional interactive CLI run
+
+The same scenario remains compatible with an independently installed Playwright CLI.
+Use a dedicated disposable Compose project and an unused host port:
 
 ```powershell
 $env:HOUSE_BILLS_DEV_PORT = '8006'
-docker compose -p house-bills-step6-browser -f compose.development.yaml up -d --no-build app
+docker compose -p house-bills-cli-browser -f compose.development.yaml up -d --no-build app
 # Wait until http://localhost:8006/login/ responds before running setup.
-docker compose -p house-bills-step6-browser -f compose.development.yaml exec -T -e HOUSE_BILLS_BROWSER_CHECK=true app python -m tests.browser.setup
-playwright-cli -s=house-bills-step6 open http://localhost:8006/
-playwright-cli -s=house-bills-step6 run-code --filename=tests/browser/review.js
-playwright-cli -s=house-bills-step6 close
-docker compose -p house-bills-step6-browser -f compose.development.yaml down -v
+docker compose -p house-bills-cli-browser -f compose.development.yaml exec -T -e HOUSE_BILLS_BROWSER_CHECK=true app python -m tests.browser.setup
+playwright-cli -s=house-bills-cli open http://localhost:8006/
+playwright-cli -s=house-bills-cli run-code --filename=tests/browser/review.js
+playwright-cli -s=house-bills-cli close
+docker compose -p house-bills-cli-browser -f compose.development.yaml down -v
 Remove-Item Env:HOUSE_BILLS_DEV_PORT
 ```
 
@@ -44,6 +78,6 @@ volume. The normal development project and volume are preserved. The setup refus
 to operate on an installation containing users or billing records. Use a different
 unused port/project name if necessary; open its URL before running the script.
 
-Playwright CLI writes screenshots and a downloaded synthetic original under the ignored
-`.playwright-cli` directory. Install the CLI following its own setup documentation.
-Browser CI integration remains part of the first-release work.
+The interactive CLI writes screenshots and a downloaded synthetic original under the
+ignored `.playwright-cli` directory. Install that optional CLI following its own setup
+documentation. The container scenario is the canonical release check.

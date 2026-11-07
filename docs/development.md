@@ -1,8 +1,8 @@
 # Development and checks
 
-Run application commands in the Linux development image, including on Windows. Both
-image targets link Python 3.14.10 to source-built, checksum-pinned SQLite 3.51.3 and use
-the same locked application dependencies. The Windows interpreter is not the supported
+Run application commands in the Linux development image, including on Windows. All
+three image targets link Python 3.14.10 to source-built, checksum-pinned SQLite 3.51.3
+and use the same locked application dependencies. The Windows interpreter is not the supported
 database runtime.
 
 ## Local application
@@ -54,7 +54,7 @@ clean-start probe. Avoid deleting the normal volume when it contains work to ret
 
 ## Checks
 
-Build the development target before running the same checks as baseline CI:
+Build the development target before running the same application checks as CI:
 
 ```sh
 docker compose -f compose.development.yaml build app
@@ -82,25 +82,77 @@ and re-parsing that preserves approved corrections.
 Review tests exercise supported and manual approval through HTTP, signed money and
 consumption, explicit row removal, validation feedback, identity conflicts, immutable
 evidence, stale extraction/review forms and competing saves, including first manual
-entry. The repeatable [Chromium browser check](../tests/browser/README.md) uses a fresh
-isolated Compose project and covers configuration, upload, duplicates, review,
-correction, re-parsing, source privacy and mobile layout.
+entry. The repeatable [Chromium browser check](../tests/browser/README.md) creates a
+temporary application instance and covers configuration, all current formats, upload,
+duplicates, review, correction, reporting, re-parsing, source privacy and mobile layout.
 
 Cost-total regressions cover ignored fee amounts, independent costs when usage is invalid,
 legacy proposals, preserved immutable history and rejection of older review tokens.
 A disposable migration test verifies archival of old fee rows, unchanged approvals/usage
 and reversal back to the old schema.
 
-`.github/workflows/ci.yml` implements **Checks (Linux)** and **Container (Linux)**.
-The first verifies dependency exports, Ruff, Django, migration drift, clean development
-startup and tests. The second validates workflow syntax and builds and probes production
-with no network, a read-only root filesystem and disposable writable `/data` and `/tmp`.
-The probe starts Waitress, checks migrations, non-root execution, HTTPS/proxy behavior,
-static assets, parsed upload/duplicate/private-source HTTP flows, failed extraction,
-manual entry, approval, correction, stale forms and explicit re-parsing acceptance.
-It also checks absence of development dependencies/private state. Weekly and manual
-CI rebuilds bypass the image cache. Browser CI integration, dependency/image audits, release
-publishing and repository protections remain later milestones.
+Backup tests exercise SQLite snapshots, preserved configuration/history, staged intake,
+storage-lock coordination, corruption detection and restoration into a separate directory.
+
+Run Chromium using its separate image and state volume:
+
+```sh
+docker compose -f compose.development.yaml build browser
+docker compose -f compose.development.yaml run --rm browser python -m tools.run_browser
+```
+
+The browser target pins Playwright through `package-lock.json`, obtains Node 24 from a
+digest-pinned image and installs Chromium. The normal application and production
+targets exclude Node and browser dependencies. Browser setup never uses the normal
+development database. CI runs the built browser image without a source mount or
+external network access and collects synthetic traces, screenshots and server logs.
+
+`.github/workflows/ci.yml` provides these checks:
+
+- **Checks (Linux)**: locked exports, Ruff, Django, migration drift, clean development
+  startup and synthetic application/parser tests.
+- **Browser (Chromium)**: locked npm dependency audit and the isolated browser scenario.
+- **Container (Linux)**: actionlint, locked Python dependency audit, production build,
+  HTTP/runtime checks and a Trivy audit for fixable high/critical vulnerabilities.
+
+The production probe uses a read-only root filesystem, no network and disposable writable
+`/data` and `/tmp`. It exercises Waitress, migration guards, non-root execution,
+HTTPS/proxy behavior, static assets, upload, manual review, approval, corrections,
+duplicates, reporting and private sources. It also backs up the populated instance and
+starts a separate restored instance with migrations disabled. Tests, browser dependencies
+and private state must be absent from production. Weekly and manual rebuilds bypass
+the image cache.
+
+Separate **Dependency review** and **zizmor** workflows audit dependency changes and
+workflow security. Actions are pinned by full commit SHA. Dependabot proposes updates;
+its patch auto-merge workflow relies on enabled auto-merge and required-check protections.
+Enable those repository settings only after the corresponding GitHub checks exist and pass.
+Local checks do not establish that GitHub has executed the workflows.
+
+## Releases
+
+The release workflow accepts stable numeric `X.Y.Z` tags on main commits with a successful
+CI push run containing all three application, browser and container jobs. It tests the
+versioned Linux/amd64 image, audits it, emits an SPDX SBOM and publishes the tested image
+with provenance/SBOM attestations to GHCR. Existing version tags are not overwritten;
+`latest` advances only for the current stable release. A Git tag supplies the image version.
+
+On a clean, committed `main` checkout, create a local annotated tag in PowerShell:
+
+```powershell
+./tools/tag_release.ps1 -Version 0.0.1 -WhatIf
+./tools/tag_release.ps1 -Version 0.0.1
+```
+
+Use the chosen version; `0.0.1` is illustrative. After the first stable tag, omitting
+`-Version` increments its patch component. The helper pushes only when explicitly
+given `-Push`; publishing a tag triggers image/release publication. Obtain authorization
+before pushing. CI and releases never deploy or upgrade a NAS instance.
+
+Use the [production probe](deployment.md#disposable-production-probe) for a local build.
+In Linux with Docker, `bash tools/audit_image.sh house-bills:local` audits that image;
+an optional second argument selects the SPDX output path. The script verifies its
+pinned Trivy download before use.
 
 ## Dependency updates
 
@@ -114,7 +166,12 @@ uv export --locked --no-dev --no-emit-project --format requirements-txt --output
 uv export --locked --only-group dev --no-emit-project --format requirements-txt --output-file requirements-dev.txt
 ```
 
-Rebuild both targets and run the relevant checks. Keep Python's patch pin aligned in
-`.python-version`, `Dockerfile` and `tools/check_runtime.py`. Development dependencies
+Rebuild the affected targets and run the relevant checks. Keep Python's patch pin aligned
+in `.python-version`, `Dockerfile` and `tools/check_runtime.py`. Development dependencies
 are installed without resolution into a virtualenv that shares the image's application
 dependencies. Production excludes the test toolchain and removes pip.
+
+For browser updates, change the exact Playwright pin in `package.json`, regenerate
+`package-lock.json` with npm, rebuild the browser target and run its audit/scenario.
+Keep the Node digest and major version in the Dockerfile aligned. Browser tooling does
+not add an application frontend build or runtime JavaScript dependency.

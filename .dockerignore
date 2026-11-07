@@ -6,6 +6,10 @@
 !uv.lock
 !requirements.txt
 !requirements-dev.txt
+!package.json
+!package-lock.json
+!LICENSE
+!NOTICE
 !house_bills/
 !house_bills/**
 !bills/

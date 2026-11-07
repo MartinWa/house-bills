@@ -81,6 +81,8 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             error = "PDF has no readable text. Manual review is required."
         if parser:
             try:
+                if hasattr(parser, "read_header"):
+                    candidate = parser.read_header(pages)
                 parser.parse(pages, candidate=candidate)
             except Exception:
                 # Retain in-progress fields even for an unexpected parser bug.

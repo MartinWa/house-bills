@@ -1,0 +1,17 @@
+House Bills — private, self-hosted utility invoice review.
+
+Required Notice: Copyright 2026 House Bills contributors
+
+This project uses the PolyForm Noncommercial License 1.0.0. The complete,
+unmodified terms are in LICENSE; this notice adds no permissions or restrictions.
+It is source-available software, not OSI open source.
+
+Backup and release tooling adapts the GrowBook reference project, also under
+PolyForm Noncommercial 1.0.0.
+Required Notice: Copyright 2026 GrowBook contributors
+
+Separately licensed dependencies retain their own terms and license notices,
+including those shipped with installed Python distributions and container inputs.
+Independently authored parser plugins retain their authors' chosen licenses;
+the project license does not automatically extend to them. Code copied or derived
+from this project remains subject to LICENSE.

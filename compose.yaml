@@ -1,6 +1,7 @@
 # Installation-specific values come from private .env configuration.
 services:
   app:
+    image: "${HOUSE_BILLS_IMAGE:?Set a tested local or released image tag or digest}"
     build:
       context: .
       target: production

@@ -1,0 +1,8 @@
+{
+  "name": "house-bills-browser-checks",
+  "private": true,
+  "description": "Synthetic browser checks; no application frontend build",
+  "devDependencies": {
+    "playwright": "1.65.0"
+  }
+}

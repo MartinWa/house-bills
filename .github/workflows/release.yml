@@ -1,0 +1,154 @@
+name: Release image
+
+on:
+  push:
+    tags: ["[0-9]*.[0-9]*.[0-9]*"]
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-image
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish tested release
+    # Tag pushes create stable releases; manual prereleases and tag deletions are skipped.
+    if: >-
+      (github.event_name == 'push' && !github.event.deleted) ||
+      (github.event_name == 'release' && !github.event.release.prerelease)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write # Create or publish the GitHub Release for the tested tag.
+      actions: read # Verify successful CI jobs for the exact release commit.
+      packages: write # Publish the tested image and its attestation manifests to GHCR.
+      id-token: write # Obtain the identity used to sign provenance and SBOM attestations.
+      attestations: write # Store build provenance and SBOM attestations.
+    env:
+      # The Git tag is the release version; no package-version bump is required.
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || github.event.release.tag_name }}
+      DOCKER_BUILD_RECORD_UPLOAD: "false"
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a stable tag on a tested main commit
+        id: release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_CREATED: ${{ github.event.created }}
+        run: python3 tools/publish_release.py --check
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GHCR
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Refuse to overwrite an existing version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          owner=${GITHUB_REPOSITORY%/*}
+          package=${GITHUB_REPOSITORY#*/}
+          if gh api --paginate "users/$owner/packages/container/${package,,}/versions" \
+            --jq '.[].metadata.container.tags[]' > "$RUNNER_TEMP/image-tags" 2> "$RUNNER_TEMP/registry-error"; then
+            if grep -Fxq "$VERSION" "$RUNNER_TEMP/image-tags"; then
+              echo "Image version already exists; create a new release instead." >&2
+              exit 1
+            fi
+          else
+            # Before the first publication, the package does not exist yet.
+            grep -Fq '(HTTP 404)' "$RUNNER_TEMP/registry-error"
+          fi
+      - name: Build release image locally before publishing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
+          build-args: |
+            HOUSE_BILLS_VERSION=${{ steps.release.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.commit }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+          cache-from: type=gha,scope=ci-production
+          github-token: ""
+      - name: Check release image and generate its SBOM
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --tmpfs /data:mode=1777 --tmpfs /tmp \
+            --env EXPECTED_VERSION="$VERSION" \
+            --env HOUSE_BILLS_SECRET_KEY=synthetic-release-check-key-never-for-runtime-000000000000000000 \
+            --env HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid \
+            "$IMAGE" python -m tools.check_production
+          bash tools/audit_image.sh "$IMAGE" "$RUNNER_TEMP/sbom.spdx.json"
+      - name: Publish the tested image
+        id: push
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker push "$IMAGE:$VERSION"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$VERSION")
+          printf 'digest=%s\n' "${digest#*@}" >> "$GITHUB_OUTPUT"
+          printf 'Published %s\n' "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.release.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+          create-storage-record: false
+      - name: Attest the image SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.release.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: ${{ runner.temp }}/sbom.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+      - name: Create or publish the GitHub Release
+        id: github-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # GITHUB_TOKEN does not trigger another release workflow; image publishing stays in this run.
+        run: python3 tools/publish_release.py
+      - name: Update latest for the current stable release
+        if: ${{ steps.github-release.outputs.latest == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          latest_release=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          if [ "$latest_release" = "$RELEASE_TAG" ]; then
+            # Retag the attested manifest, not a rebuilt image or a new image index.
+            docker buildx imagetools create --prefer-index=false --tag "$IMAGE:latest" "$IMAGE@$DIGEST"
+            printf 'latest now points to %s@%s\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Skipping latest: $RELEASE_TAG is not the current stable release."
+          fi

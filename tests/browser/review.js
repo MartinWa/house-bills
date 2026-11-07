@@ -1,4 +1,4 @@
-async page => {
+async (page, artifacts = ".playwright-cli") => {
   const base = new URL(page.url()).origin;
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -6,12 +6,14 @@ async page => {
   const text = async (value, target = page) => assert((await target.locator("body").innerText()).includes(value), `Missing text: ${value}`);
   const fill = async (name, value, target = page) => target.locator(`[name="${name}"]`).fill(value);
   const select = async (name, value, target = page) => {
+    await target.waitForLoadState("load");
     const control = target.locator(`[name="${name}"]`);
     const automatic = await control.evaluate(element => !!element.closest("[data-auto-filter]"));
     const selected = await control.selectOption(value);
     if (automatic) await target.waitForURL(url => url.searchParams.get(name) === selected[0]);
   };
   const filterDates = async (start, end) => {
+    await page.waitForLoadState("load");
     await fill("date_from", start);
     await fill("date_to", end);
     await page.locator('[name="date_to"]').blur();
@@ -53,6 +55,10 @@ async page => {
   await select("layout_families-0-family", "layout_01");
   await page.locator("#layout_families-group .add-row a").click();
   await select("layout_families-1-family", "layout_02");
+  for (const [index, family] of ["layout_03", "layout_04", "layout_05", "layout_06"].entries()) {
+    await page.locator("#layout_families-group .add-row a").click();
+    await select(`layout_families-${index + 2}-family`, family);
+  }
   await select("property_identifiers-0-property", { label: "Browser House One" });
   await select("property_identifiers-0-kind", "installation");
   await fill("property_identifiers-0-value", "000 000 000 000 000 001");
@@ -71,7 +77,7 @@ async page => {
     await page.goto(`${base}/documents/`);
     await page.locator("#upload > summary").click();
     const input = page.locator('input[type="file"]');
-    await input.setInputFiles(`.playwright-cli/fixtures/${filename}`);
+    await input.setInputFiles(`${artifacts}/fixtures/${filename}`);
     const bytes = await input.evaluate(async input => Array.from(new Uint8Array(await input.files[0].arrayBuffer())));
     await submit("Upload PDF");
     return { url: page.url(), bytes };
@@ -205,12 +211,12 @@ async page => {
   await page.getByRole("link", { name: "Download original PDF", exact: true }).click();
   const download = await downloadPromise;
   assert(download.suggestedFilename() === "unsupported.pdf", "Download filename changed");
-  await download.saveAs(".playwright-cli/step6-original.pdf");
-  await page.screenshot({ path: ".playwright-cli/step6-invoice.png", fullPage: true });
+  await download.saveAs(`${artifacts}/original.pdf`);
+  await page.screenshot({ path: `${artifacts}/invoice.png`, fullPage: true });
   await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Review form overflows on mobile");
-  await page.screenshot({ path: ".playwright-cli/step6-review-mobile.png" });
+  await page.screenshot({ path: `${artifacts}/review-mobile.png` });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${base}/invoices/`);
   await select("property", houseTwo);
@@ -228,7 +234,7 @@ async page => {
   const documents = await page.locator("tbody").innerText();
   assert(documents.includes("section-warning.pdf"), "Document filters lost a document needing review");
   assert(!documents.includes("shared.pdf") && !documents.includes("unsupported.pdf"), "Document processing and storage filters did not combine");
-  await page.screenshot({ path: ".playwright-cli/design-documents-desktop.png", fullPage: true });
+  await page.screenshot({ path: `${artifacts}/documents-desktop.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Documents overflow on mobile");
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -290,10 +296,10 @@ async page => {
   await text("End date must be on or after start date.");
   assert(await page.locator("#report-costs").count() === 0, "Invalid report filters produced totals");
   await page.getByRole("link", { name: "Clear filters", exact: true }).click();
-  await page.screenshot({ path: ".playwright-cli/design-reports-desktop.png", fullPage: true });
+  await page.screenshot({ path: `${artifacts}/reports-desktop.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Reports overflow on mobile");
-  await page.screenshot({ path: ".playwright-cli/step7-reports-mobile.png", fullPage: true });
+  await page.screenshot({ path: `${artifacts}/reports-mobile.png`, fullPage: true });
   await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.goto(supportedInvoice);
@@ -312,6 +318,20 @@ async page => {
   await submit("Save correction");
   await page.getByRole("link", { name: "Reports", exact: true }).click();
   assert(await page.getByRole("table", { name: "Electricity consumption needing review" }).count() === 0, "Resolved report exclusion remained stale");
+
+  for (const [filename, reference, total] of [
+    ["quarterly-waste.pdf", "910003", "130,00 SEK"],
+    ["cover-supply.pdf", "910004", "100,00 SEK"],
+    ["chart-supply.pdf", "910005", "100,00 SEK"],
+    ["monthly-network.pdf", "910006", "100,15 SEK"],
+  ]) {
+    await upload(filename);
+    await text("Browser House One");
+    await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+    assert(await page.locator('[name="reference"]').inputValue() === reference, `Current format header failed: ${filename}`);
+    await submit("Approve invoice");
+    await text(total);
+  }
 
   const anonymous = await page.context().browser().newContext();
   try {

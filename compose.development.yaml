@@ -23,5 +23,29 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  browser:
+    profiles: [browser]
+    build:
+      context: .
+      target: browser
+    image: house-bills:browser
+    init: true
+    volumes:
+      - type: bind
+        source: .
+        target: /app
+        read_only: true
+      - browser-state:/state
+    shm_size: 1gb
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 volumes:
   development-state:
+  browser-state:

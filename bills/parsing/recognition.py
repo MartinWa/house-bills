@@ -38,6 +38,17 @@ def recognize_vendor(pages):
         for kind, pattern in (("organization", ORGANIZATION), ("vat", VAT)):
             for match in pattern.finditer(text(line)):
                 identifiers.append(Identifier(kind, normalize_identifier(kind, match[1]), line))
+    # Some current covers place a labelled VAT value on the following table row.
+    cover = pages[0] if pages else []
+    for index, line in enumerate(cover[:-1]):
+        if not re.search(r"Momsreg(?:istrerings)?\.?\s*(?:nr|nummer)\.?\s*:\s*$", text(line), re.I):
+            continue
+        following = cover[index + 1]
+        values = list(VAT_TOKEN.finditer(text(following)))
+        if len(values) == 1 and 0 <= following.bbox[1] - line.bbox[1] <= 20:
+            identifiers.append(
+                Identifier("vat", normalize_identifier("vat", values[0][0]), following)
+            )
     # The supply layout prints its legal identity in a bottom-page tax footer.
     # A tax-registration anchor bounds this block; arbitrary VAT-like text in
     # specifications, recipient addresses and payment instructions is excluded.
@@ -45,7 +56,7 @@ def recognize_vendor(pages):
         footer_anchors = [
             line
             for line in page
-            if line.bbox[1] >= 700 and re.search(r"\bF[- ]skatt\b", text(line), re.I)
+            if line.bbox[1] >= 700 and re.search(r"\bF[- ]skatt(?:sedel)?\b", text(line), re.I)
         ]
         for line in page:
             if not any(abs(line.bbox[1] - marker.bbox[1]) <= 25 for marker in footer_anchors):

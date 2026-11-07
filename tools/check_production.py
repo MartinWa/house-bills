@@ -320,12 +320,14 @@ def check_ingestion_http():
     )
 
 
-def run_server(*, migrate, trust_proxy):
+def run_server(*, migrate, trust_proxy, restored_data=None):
     environment = {
         **os.environ,
         "HOUSE_BILLS_MIGRATE_ON_START": str(migrate).lower(),
         "HOUSE_BILLS_TRUST_PROXY": str(trust_proxy).lower(),
     }
+    if restored_data is not None:
+        environment["HOUSE_BILLS_DATA_DIR"] = str(restored_data)
     with tempfile.TemporaryFile() as log:
         process = subprocess.Popen(
             [sys.executable, "-m", "house_bills.server"],
@@ -347,7 +349,15 @@ def run_server(*, migrate, trust_proxy):
                 with get("/static/admin/css/base.css", host="ci.invalid", secure=True) as response:
                     assert response.status == 200
                     assert len(response.read()) > 100
-                check_ingestion_http()
+                if restored_data is None:
+                    check_ingestion_http()
+                else:
+                    subprocess.run(
+                        [sys.executable, "-m", "tools.check_recovery"],
+                        env=environment,
+                        check=True,
+                        timeout=30,
+                    )
             else:
                 # An untrusted forwarding header cannot suppress the HTTPS redirect.
                 with get("/", host="ci.invalid", secure=True) as response:
@@ -369,8 +379,13 @@ def main():
         not Path(name).exists() for name in ("planning", "test-data", "private", "tests", ".env")
     ), "Research, tests and private state must not be shipped in production."
     assert all(
-        importlib.util.find_spec(name) is None for name in ("pip", "pytest", "reportlab", "ruff")
+        importlib.util.find_spec(name) is None
+        for name in ("pip", "pytest", "reportlab", "ruff", "playwright")
     ), "Development dependencies must not be shipped."
+    assert not Path("/usr/local/bin/node").exists(), "The browser toolchain must not be shipped."
+    assert Path("LICENSE").is_file() and Path("NOTICE").is_file()
+    if "EXPECTED_VERSION" in os.environ:
+        assert os.environ["HOUSE_BILLS_VERSION"] == os.environ["EXPECTED_VERSION"]
     django.setup()
     assert not settings.DEBUG
     database = Path(settings.DATABASES["default"]["NAME"])
@@ -396,7 +411,54 @@ def main():
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
         assert connection.execute("SELECT COUNT(*) FROM django_migrations").fetchone()[0] > 0
     run_server(migrate=False, trust_proxy=False)
+    check_backup_restore(database)
     print("Non-root production startup, migration guards, HTTPS/proxy and static checks passed.")
+
+
+def database_rows(database):
+    with sqlite3.connect(Path(database).resolve().as_uri() + "?mode=ro", uri=True) as snapshot:
+        tables = snapshot.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        ).fetchall()
+        return {
+            name: snapshot.execute(f'SELECT * FROM "{name}" ORDER BY rowid').fetchall()
+            for (name,) in tables
+        }
+
+
+def check_backup_restore(database):
+    from django.core.management import call_command
+    from django.db import connection
+
+    from bills.backups import create_backup, restore_backup
+
+    expected = database_rows(database)
+    with tempfile.TemporaryDirectory(prefix="house-bills-recovery-") as scratch:
+        root = Path(scratch)
+        configuration = root / "operator.env"
+        configuration.write_text(
+            "\n".join(
+                f"{key}={os.environ[key]}"
+                for key in ("HOUSE_BILLS_SECRET_KEY", "HOUSE_BILLS_ALLOWED_HOSTS")
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        configuration.chmod(0o600)
+        backup, restored = root / "backup", root / "restored"
+        create_backup(backup, [configuration])
+        call_command("verify_backup", str(backup))
+        restore_backup(backup, restored)
+        assert database_rows(backup / "database.sqlite3") == expected
+        assert database_rows(restored / "db.sqlite3") == expected
+        assert (
+            restored / "recovered-configuration/001-operator.env"
+        ).read_bytes() == configuration.read_bytes()
+        connection.close()
+        # The same release image starts this separate instance with migrations disabled.
+        run_server(migrate=False, trust_proxy=True, restored_data=restored)
+        assert database_rows(database) == expected
+    print("Verified database/original backup and clean production HTTP restoration passed.")
 
 
 if __name__ == "__main__":

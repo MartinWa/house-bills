@@ -127,7 +127,7 @@ corrections/rollback, reversible migration and read consistency during writes.
 The Chromium suite checks the authenticated report workflow and mobile layout;
 the production probe verifies the same reports through Waitress.
 
-Grafana integration is step 7b. The actual plugin, timestamp interpretation, container
-mounts and process permissions remain to be tested before choosing direct access or
+Grafana access transport is not implemented. The actual plugin, timestamp interpretation,
+container mounts and process permissions remain to be tested before choosing direct access or
 the separate reporting SQLite fallback. No Grafana connection is configured by this
 application stage.

@@ -1,49 +1,90 @@
 # House Bills
 
-Utility invoice extraction and review, starting with Swedish PDF invoices.
+A small, self-hosted application for reviewing Swedish utility PDF invoices and
+tracking household costs and billed consumption. Upload an invoice, check the
+proposed values against the original, then approve it for reporting.
 
-The current application provides authenticated login/logout, staff configuration for
-houses, vendors and identifier mappings, and a validated invoice data model. Private
-extraction attempts and approved review revisions are stored separately. Authenticated
-PDF uploads preserve private originals, reuse exact duplicates and expose recoverable
-storage status. Versioned deterministic parsers recognize configured vendors, match
-invoice structures and propose service cost totals, billing periods, usage and property
-assignments with private
-evidence. Review forms support manual entry, approval, corrections and acceptance of
-re-parsed proposals, with stale-save protection and retained approval history.
-Invoice screens show approved allocations and consumption with private PDF viewing
-and download. Authenticated reports show approved costs and consumption with network
-electricity preference, explicit supply fallbacks and visible overlap exclusions.
-Grafana integration is deferred to step 7b.
+House Bills is a personal, early-stage project. It uses deterministic local
+parsers and explicit approval. Original PDFs, configuration and billing records
+stay in private installation storage. The application has no telemetry, cloud
+extraction service or runtime CDN dependencies.
 
-Individual fee rows stay in the original PDF and extraction evidence. Parsing and
-review use invoice totals, dated property/service allocations and billed consumption.
+## What it does
 
-Development, tests and production use Linux containers with Python 3.14.10, Django 5.2
-LTS and checksum-pinned SQLite 3.51.3. A running Docker daemon is required. Start local
-development from the repository root:
+- Configure properties, vendors, issuer identification and property mappings.
+- Preserve original bytes and reuse exact duplicate uploads, including invoices
+  copied into different property folders.
+- Extract invoice headers, dated property/service cost totals and signed billed
+  consumption. One invoice can cover several services or properties.
+- Review missing or uncertain fields, enter unsupported invoices manually,
+  approve records and retain correction and extraction history.
+- Re-parse selected originals and review proposed changes while retaining
+  approved corrections until changes are accepted.
+- Report approved costs and consumption with independent totals, network-first
+  electricity selection and visible exclusions for ambiguous coverage.
+- Create verified database/original backups and restore into a new instance.
+
+## Vendors and formats
+
+Vendor names and issuer identifiers are configured by the operator. Automatic
+extraction supports these structures; adding a vendor also requires selecting
+a compatible invoice format.
+
+| Format | Supported structure |
+| --- | --- |
+| `layout_01/v1` | Contract-based network, water and waste; section continuations, waste weights and water reversals. |
+| `layout_02/v1` | Electricity supply with installation details above each specification, including shared invoices. |
+| `layout_03/v1` | Quarterly waste charges with a VAT basis and payment summary; collections and container sizes remain source detail. |
+| `layout_04/v1` | Electricity supply with cover totals and a separate single-installation specification. |
+| `layout_05/v1` | Electricity supply with a consumption table beside a historical chart. |
+| `layout_06/v1` | Monthly network and energy-tax totals with billed electricity quantities. |
+
+These families have representative source validation and synthetic regressions.
+`layout_02/v2` additionally demonstrates a replacement using synthetic examples.
+Support does not cover every vendor, historical version or future layout change.
+The [parser guide](docs/parsing.md) describes recognition, versions and failures.
+
+An unknown, unreadable or invalid invoice retains its original and opens for
+[manual review](docs/review.md). Configure its vendor, enter the header, service
+costs and any consumption, then approve it. OCR is not included.
+
+## Evaluate locally
+
+Use Linux containers with a running Docker daemon, including when editing on
+Windows. From a checkout:
 
 ```sh
 docker compose -f compose.development.yaml up --build -d app
 docker compose -f compose.development.yaml exec app python manage.py createsuperuser
 ```
 
-Open <http://localhost:8001/>. Source is mounted from the checkout; the virtualenv,
-database and caches live in a separate Linux volume. No production `.env` is needed.
-See [development and checks](docs/development.md) for tests and dependency updates, and
-[private deployment](docs/deployment.md) for production configuration and startup.
+Open <http://localhost:8001/>. The source is mounted from the checkout; the
+database, secret and caches live in a separate Linux volume. Start with invented
+invoices. See [initial setup](docs/setup.md) for the first approved bill and
+[development](docs/development.md) for tests and browser checks.
 
-Tests generate wholly synthetic PDFs in temporary directories. No real invoices are
-needed to run them. Real documents, extraction evidence, checked expectations and
-planning notes belong in the ignored `test-data/`, `private/` and `planning/` directories.
+Production uses a non-root, read-only image, host-local SQLite and private HTTPS
+through an existing reverse proxy. See [installation and upgrades](docs/deployment.md)
+and verify [backup and clean restoration](docs/backup-and-recovery.md) before normal
+real-data use. Release publishing is configured; the first published image and NAS
+verification are pending. A local production build is available for evaluation.
 
-See [the parser result contract](docs/parser-results.md) for units, service periods,
-printed VAT and evidence. See [deterministic parsing](docs/parsing.md) for installed
-versions, review-only outcomes, retries and selected-document re-parsing.
-See [configuration and the data model](docs/data-model.md) for house mappings,
-invoice allocations, validation and revision history.
-See [uploads and private originals](docs/ingestion.md) for limits, duplicate handling,
-approved paths and storage recovery.
-See [review and correction](docs/review.md) for supported and manual invoice workflows.
-See [approved reporting](docs/reporting.md) for date filters, electricity source
-selection, exact SQLite views and executable example queries.
+## Limits and documentation
+
+This is a shared private installation: signed-in users can access its billing
+records. It has no tenant or per-property isolation. Parsing is synchronous;
+NAS timing has not been measured. Reports use invoice dates for costs and whole
+billed consumption periods, without calendar-month proration. Individual fee rows
+stay in the original PDF. Folder import, historical OCR, Grafana access transport
+and loading parser plugins from a mounted directory are not implemented.
+
+- [Configuration and data model](docs/data-model.md)
+- [Uploads, originals and recovery](docs/ingestion.md)
+- [Review, approval and correction](docs/review.md)
+- [Approved reporting](docs/reporting.md) and [SQL examples](docs/reporting-examples.sql)
+- [Parser result contract](docs/parser-results.md) and [parser maintenance](docs/parsing.md)
+- [Security expectations](SECURITY.md) and [contributing](CONTRIBUTING.md)
+
+House Bills is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
+See [NOTICE](NOTICE) for attribution and the boundary for independently authored
+parser plugins and separately licensed dependencies.
