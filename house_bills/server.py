@@ -16,6 +16,7 @@ def server_options():
         "threads": 2,
         "connection_limit": 20,
         "clear_untrusted_proxy_headers": True,
+        "max_request_body_size": settings.MAX_UPLOAD_REQUEST_BYTES,
     }
     if env_bool("HOUSE_BILLS_TRUST_PROXY"):
         # The operator's private network and header-replacing proxy establish trust.

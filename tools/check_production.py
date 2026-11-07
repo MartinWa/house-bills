@@ -6,13 +6,92 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+from http.cookies import SimpleCookie
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import Request, build_opener
 
 import django
 from django.conf import settings
 from django.core.checks import run_checks
 
-from .check_http import get, wait_for_server
+from .check_http import NoRedirect, get, wait_for_server
+
+
+def check_ingestion_http():
+    """Exercise the shipped upload/download paths through actual Waitress HTTP."""
+    from django.contrib.auth import get_user_model
+    from django.test import Client
+
+    from bills.models import Charge, Document, Usage
+
+    user = get_user_model().objects.create_user("synthetic-container-uploader")
+    session = Client()
+    session.force_login(user)
+    cookies = {settings.SESSION_COOKIE_NAME: session.cookies[settings.SESSION_COOKIE_NAME].value}
+
+    def request(path, data=None):
+        headers = {
+            "Host": "ci.invalid",
+            "X-Forwarded-Proto": "https",
+            "Cookie": "; ".join(f"{name}={value}" for name, value in cookies.items()),
+        }
+        if data is not None:
+            headers["Content-Type"] = "multipart/form-data; boundary=synthetic-boundary"
+            headers["Origin"] = "https://ci.invalid"
+        try:
+            return build_opener(NoRedirect).open(
+                Request(f"http://127.0.0.1:8000{path}", data=data, headers=headers), timeout=5
+            )
+        except HTTPError as response:
+            return response
+
+    with request("/upload/") as response:
+        assert response.status == 200
+        cookie = SimpleCookie(response.headers["Set-Cookie"])
+        cookies[settings.CSRF_COOKIE_NAME] = cookie[settings.CSRF_COOKIE_NAME].value
+    original = b"%PDF-1.7\n% Synthetic container upload; extraction deferred.\n%%EOF\n"
+
+    def multipart(*, csrf=True, payload=original):
+        token = (
+            (
+                "--synthetic-boundary\r\n"
+                'Content-Disposition: form-data; name="csrfmiddlewaretoken"\r\n\r\n'
+                f"{cookies[settings.CSRF_COOKIE_NAME]}\r\n"
+            ).encode()
+            if csrf
+            else b""
+        )
+        return (
+            token
+            + b'--synthetic-boundary\r\nContent-Disposition: form-data; name="pdf"; '
+            + b'filename="synthetic.pdf"\r\nContent-Type: application/pdf\r\n\r\n'
+            + payload
+            + b"\r\n--synthetic-boundary--\r\n"
+        )
+
+    with request("/upload/", multipart(csrf=False)) as response:
+        assert response.status == 403
+    assert not Document.objects.exists()
+    with request("/upload/", multipart()) as response:
+        assert response.status == 302
+        location = response.headers["Location"]
+    with request("/upload/", multipart()) as response:
+        assert response.status == 302 and response.headers["Location"] == location
+    document = Document.objects.get()
+    assert document.storage_state == "inbox" and document.state == "review"
+    assert not Charge.objects.exists() and not Usage.objects.exists()
+    with request(location + "source/") as response:
+        assert response.status == 200 and response.read() == original
+        assert "no-store" in response.headers["Cache-Control"]
+        assert response.headers["Content-Disposition"].startswith("attachment;")
+    with get(location + "source/", host="ci.invalid", secure=True) as response:
+        assert response.status == 302 and response.headers["Location"].startswith("/login/")
+    with request("/private-files/" + document.original_path) as response:
+        assert response.status == 404
+    with request("/upload/", multipart(payload=b"synthetic invalid PDF")) as response:
+        assert response.status == 400
+    print("Production upload, exact duplicate, CSRF and private original HTTP checks passed.")
 
 
 def run_server(*, migrate, trust_proxy):
@@ -42,6 +121,7 @@ def run_server(*, migrate, trust_proxy):
                 with get("/static/admin/css/base.css", host="ci.invalid", secure=True) as response:
                     assert response.status == 200
                     assert len(response.read()) > 100
+                check_ingestion_http()
             else:
                 # An untrusted forwarding header cannot suppress the HTTPS redirect.
                 with get("/", host="ci.invalid", secure=True) as response:

@@ -2,8 +2,8 @@
 
 Billing configuration lives in SQLite, separately from installation paths, secrets and
 proxy settings. Startup migrations create the schema and preserve these records across
-application restarts and image updates. Upload and invoice review screens are later
-milestones; the persistence and validation services are implemented now.
+application restarts and image updates. Upload and document-status screens are available;
+invoice review forms remain a later milestone.
 
 ## Configure houses and vendors
 
@@ -54,7 +54,7 @@ specific assignment. Changing this setting does not alter previously approved in
 | Property / Vendor | Display names and safe unique storage slugs; vendors also have an optional default property. |
 | VendorIssuerIdentifier / VendorLayoutFamily | Private vendor identification numbers and compatible installed invoice formats. |
 | PropertyIdentifier | A vendor-scoped installation, contract or delivery-address key mapped to one property. |
-| Document | Unique SHA-256, original filename, relative private path, processing state and extraction counter. The path can be empty until ingestion stores the original. |
+| Document | Unique SHA-256, original filename, relative private path, separate processing/storage state and messages, staging/publication journal paths and extraction counter. |
 | ExtractionAttempt | Append-only candidate JSON, page evidence, layout family/version, parser revision, error/state and attempt number. Invalid and failed results remain private proposals. |
 | Invoice | Document, vendor, reference/kind, dates, SEK, net/VAT/rounding/total/amount due, header evidence, supporting identifiers, source pages and approval metadata. |
 | BillingSection | Invoice, section key, assigned property, service, source identifiers, explicit net/VAT/gross and printed tax/total evidence. |
@@ -75,8 +75,9 @@ retain their signs. Service periods are start-inclusive/end-exclusive.
 
 Invoice identity is vendor + reference + kind. A partial unique index permits conflicting
 documents to remain in review while allowing only one approved invoice for that identity.
-The document hash and nonempty original path are unique. Ingestion will use these guards
-to reuse exact duplicates and present different-file identity conflicts.
+The document hash and nonempty original path are unique. Ingestion reuses exact
+duplicates; recognized vendor/reference/kind conflicts show both source documents for
+review without changing approved allocations.
 
 ## Persistence services
 
@@ -109,6 +110,9 @@ audit history. Row constraints protect low-level writes, but cross-row reconcili
 and revision history depend on the review service. Application code must use this
 service for approved changes rather than bulk updates. PDF processing and filesystem
 operations stay outside its short IMMEDIATE database transaction.
+After approval commits, original publication runs under the shared storage lock;
+failed moves preserve approved values and a recoverable publication journal.
+See [uploads and private originals](ingestion.md).
 
 Public tests use invented data. Candidate text, identifiers, source paths and approval
 snapshots are private database content and have no public routes.

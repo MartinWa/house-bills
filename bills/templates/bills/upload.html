@@ -1,0 +1,11 @@
+{% extends "bills/base.html" %}
+{% block title %}Upload invoice · House Bills{% endblock %}
+{% block content %}
+  <h2>Upload invoice</h2>
+  <p>Choose one PDF, up to {{ limit|filesizeformat }}. Its original bytes are kept privately. Uploading the same file again opens the existing document.</p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Upload PDF</button>
+  </form>
+{% endblock %}

@@ -3,8 +3,9 @@
 from dataclasses import asdict
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.utils import timezone
+from filelock import Timeout
 
 from .models import (
     BillingSection,
@@ -17,6 +18,7 @@ from .models import (
     ReviewRevision,
     Usage,
 )
+from .storage import coordinated_write, publish_original
 from .validators import normalize_identifier
 
 
@@ -60,6 +62,7 @@ def _evidence_in(value):
             yield from _evidence_in(item)
 
 
+@coordinated_write
 @transaction.atomic
 def record_extraction(
     document_id,
@@ -70,6 +73,8 @@ def record_extraction(
     layout_version="",
     parser_revision="",
     page_evidence=None,
+    vendor=None,
+    kind=Invoice.Kind.INVOICE,
 ):
     """Retain even invalid/partial results without changing approved invoice values."""
     document = Document.objects.select_for_update().get(pk=document_id)
@@ -92,8 +97,39 @@ def record_extraction(
     )
     document.extraction_revision = attempt.revision
     document.state = Document.State.FAILED if error else Document.State.REVIEW
-    document.save(update_fields=["extraction_revision", "state"])
+    document.processing_message = error or "Extraction is ready for review."
+    document.save(update_fields=["extraction_revision", "state", "processing_message"])
+    if candidate is not None and vendor is not None and candidate.reference:
+        register_invoice_identity(
+            document_id, vendor=vendor, reference=candidate.reference, kind=kind
+        )
     return attempt
+
+
+def invoice_identity_conflicts(invoice):
+    if not invoice.vendor_id or not invoice.reference:
+        return Invoice.objects.none()
+    return Invoice.objects.filter(
+        vendor_id=invoice.vendor_id, reference=invoice.reference, kind=invoice.kind
+    ).exclude(document_id=invoice.document_id)
+
+
+@coordinated_write
+@transaction.atomic
+def register_invoice_identity(document_id, *, vendor, reference, kind=Invoice.Kind.INVOICE):
+    """Register a reviewed/recognized identity without promoting costs or usage."""
+    reference = reference.strip()
+    if not reference:
+        raise ValidationError("An invoice reference is required for identity matching.")
+    invoice, _ = Invoice.objects.get_or_create(
+        document_id=document_id, vendor=vendor, reference=reference, kind=kind
+    )
+    if invoice_identity_conflicts(invoice).exists():
+        Document.objects.filter(pk=document_id).update(
+            state=Document.State.REVIEW,
+            processing_message="Different files share this invoice identity. Review the sources.",
+        )
+    return invoice
 
 
 def validate_allocations(invoice):
@@ -147,6 +183,7 @@ def validate_allocations(invoice):
         )
 
 
+@coordinated_write
 @transaction.atomic
 def approve_review(
     invoice_id,
@@ -279,4 +316,30 @@ def approve_review(
         approved_at=invoice.approved_at,
         approved_by=actor,
     )
+    Document.objects.filter(pk=invoice.document_id).update(
+        state=Document.State.READY, processing_message=""
+    )
+    if invoice.document.original_path:
+        # Approval commits before publication. A failed move leaves approved
+        # values intact, with durable storage state for the retry service.
+        def publish_when_approved():
+            try:
+                if (
+                    not Invoice.objects.filter(document_id=invoice.document_id)
+                    .exclude(status="approved")
+                    .exists()
+                ):
+                    publish_original(invoice.document_id)
+            except OSError, ValidationError, Timeout, DatabaseError:
+                # The approval has already committed. Recovery will publish any
+                # fully approved inbox original once storage/database access returns.
+                try:
+                    Document.objects.filter(pk=invoice.document_id).update(
+                        storage_state=Document.StorageState.FAILED,
+                        storage_error="Original publication is pending. Check storage and retry.",
+                    )
+                except DatabaseError:
+                    pass
+
+        transaction.on_commit(publish_when_approved)
     return invoice

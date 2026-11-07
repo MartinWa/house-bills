@@ -1,0 +1,18 @@
+{% extends "bills/base.html" %}
+{% block title %}{{ document.original_filename }} · House Bills{% endblock %}
+{% block content %}
+  <h2>{{ document.original_filename }}</h2>
+  <p>Processing: {{ document.get_state_display }}. Storage: {{ document.get_storage_state_display }}.</p>
+  {% if document.processing_message %}<p>{{ document.processing_message }}</p>{% endif %}
+  {% if document.storage_error %}<p role="alert">{{ document.storage_error }}</p>{% endif %}
+  {% if conflicts %}
+    <p role="alert">Different files share this invoice identity. Review the sources before approving costs.</p>
+    <ul>{% for other in conflicts %}<li><a href="{% url 'bills:document' other.pk %}">{{ other.original_filename }}</a></li>{% endfor %}</ul>
+  {% endif %}
+  {% if document.original_path %}<p><a href="{% url 'bills:source' document.pk %}">Download original PDF</a></p>{% endif %}
+  {% if document.storage_error or document.staging_path or document.publication_path %}
+    <form method="post" action="{% url 'bills:retry_storage' document.pk %}">
+      {% csrf_token %}<button type="submit">Retry storage</button>
+    </form>
+  {% endif %}
+{% endblock %}

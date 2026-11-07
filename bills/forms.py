@@ -6,6 +6,12 @@ from .models import PropertyIdentifier, VendorIssuerIdentifier
 from .validators import normalize_identifier
 
 
+class UploadForm(forms.Form):
+    pdf = forms.FileField(
+        label="PDF invoice", widget=forms.ClearableFileInput(attrs={"accept": ".pdf"})
+    )
+
+
 class IdentifierForm(forms.ModelForm):
     def clean_value(self):
         return normalize_identifier(self.cleaned_data.get("kind", ""), self.cleaned_data["value"])

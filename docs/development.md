@@ -22,7 +22,9 @@ built-in authentication, with POST and CSRF protection for logout. Only staff ac
 can use the admin, subject to model permissions. Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and property
 mappings. See [configuration and the data model](data-model.md). The domain app is
-`bills`; upload and review screens come later.
+`bills`. Use **Upload invoice** to store a PDF privately and **Documents** to inspect
+status or download its original. Production parsing and review forms come later;
+see [uploads and private originals](ingestion.md).
 For a vendor that always bills one house, set its optional **Default property**;
 specific property mappings take precedence.
 
@@ -63,13 +65,17 @@ policy, short IMMEDIATE transactions, concurrent readers/writers, production set
 and missing/pending/locked startup migrations. Domain tests cover integer money and
 usage constraints, shared invoices, dated corrections, identity conflicts, preserved
 extraction evidence, revision checks, rollback and authenticated configuration forms.
+Ingestion tests cover actual upload byte limits, CSRF, exact duplicates, invoice
+identity conflicts, shared original publication, collision handling, interruption
+recovery, concurrent intake and a coordinated database/original snapshot.
 
 `.github/workflows/ci.yml` implements **Checks (Linux)** and **Container (Linux)**.
 The first verifies dependency exports, Ruff, Django, migration drift, clean development
 startup and tests. The second validates workflow syntax and builds and probes production
 with no network, a read-only root filesystem and disposable writable `/data` and `/tmp`.
 The probe starts Waitress, checks migrations, non-root execution, HTTPS/proxy behavior,
-static assets and absence of development dependencies/private state. Weekly and manual
+static assets, actual upload/duplicate/private-source HTTP flows and absence of
+development dependencies/private state. Weekly and manual
 CI rebuilds bypass the image cache. Browser flows, dependency/image audits, release
 publishing and repository protections remain later milestones.
 

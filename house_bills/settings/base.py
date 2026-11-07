@@ -35,6 +35,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "bills.uploads.BoundedUploadMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
@@ -89,11 +90,21 @@ STORAGES = {
         "OPTIONS": {"file_permissions_mode": 0o644, "directory_permissions_mode": 0o755},
     },
 }
-# Originals will be served by authenticated views when ingestion is implemented.
+# Originals are served only by authenticated views, never by static/media routing.
 MEDIA_ROOT = DATA_DIR / "invoices"
 MEDIA_URL = "/private-files/"
 FILE_UPLOAD_PERMISSIONS = 0o600
 FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o700
+try:
+    MAX_PDF_UPLOAD_BYTES = int(os.environ.get("HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES", 20 * 1024 * 1024))
+except ValueError as exc:
+    raise ImproperlyConfigured("HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES must be an integer.") from exc
+if not 1 <= MAX_PDF_UPLOAD_BYTES <= 100 * 1024 * 1024:
+    raise ImproperlyConfigured("HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES must be between 1 and 104857600.")
+MAX_UPLOAD_REQUEST_BYTES = MAX_PDF_UPLOAD_BYTES + 64 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 256 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 64 * 1024
+DATA_UPLOAD_MAX_NUMBER_FILES = 1
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_SAMESITE = "Lax"

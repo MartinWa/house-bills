@@ -1,0 +1,15 @@
+{% extends "bills/base.html" %}
+{% block title %}Documents · House Bills{% endblock %}
+{% block content %}
+  <h2>Documents</h2>
+  <table>
+    <thead><tr><th>Original</th><th>Uploaded</th><th>Processing</th><th>Storage</th></tr></thead>
+    <tbody>
+      {% for document in page %}
+        <tr><td><a href="{% url 'bills:document' document.pk %}">{{ document.original_filename }}</a></td><td>{{ document.created_at }}</td><td>{{ document.get_state_display }}</td><td>{{ document.get_storage_state_display }}</td></tr>
+      {% empty %}<tr><td colspan="4">No documents uploaded yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Previous</a>{% endif %}
+  {% if page.has_next %}<a href="?page={{ page.next_page_number }}">Next</a>{% endif %}
+{% endblock %}

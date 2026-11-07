@@ -157,6 +157,13 @@ class PropertyIdentifier(ValidatedModel):
 
 
 class Document(ValidatedModel):
+    class StorageState(models.TextChoices):
+        PENDING = "pending", "Awaiting storage"
+        INBOX = "inbox", "In inbox"
+        PUBLISHING = "publishing", "Publishing original"
+        APPROVED = "approved", "Approved storage"
+        FAILED = "failed", "Storage failed"
+
     class State(models.TextChoices):
         PENDING = "pending", "Pending"
         PROCESSING = "processing", "Processing"
@@ -167,12 +174,31 @@ class Document(ValidatedModel):
     sha256 = models.CharField(max_length=64, unique=True, validators=[sha256_validator])
     original_filename = models.CharField(max_length=255)
     original_path = models.CharField(max_length=500, blank=True, validators=[validate_storage_path])
+    staging_path = models.CharField(max_length=500, blank=True, validators=[validate_storage_path])
+    publication_path = models.CharField(
+        max_length=500, blank=True, validators=[validate_storage_path]
+    )
+    storage_state = models.CharField(
+        max_length=20, choices=StorageState, default=StorageState.PENDING
+    )
+    storage_error = models.TextField(blank=True)
+    processing_message = models.TextField(blank=True)
     state = models.CharField(max_length=20, choices=State, default=State.PENDING)
     extraction_revision = models.PositiveBigIntegerField(default=0, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
+            models.CheckConstraint(
+                condition=Q(
+                    storage_state__in=["pending", "inbox", "publishing", "approved", "failed"]
+                ),
+                name="document_storage_state_valid",
+            ),
+            models.CheckConstraint(
+                condition=~Q(storage_state__in=["inbox", "approved"]) | ~Q(original_path=""),
+                name="document_stored_path_present",
+            ),
             models.CheckConstraint(
                 condition=Exact(Length("sha256"), models.Value(64))
                 & ~models.Func(

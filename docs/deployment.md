@@ -1,9 +1,10 @@
 # Private deployment
 
 The application provides one Waitress process with two threads, Django authentication,
-staff billing configuration and a validated invoice data model in host-local SQLite.
-Upload/review screens, reporting, backup/restore and release publishing are still to be
-implemented. Use synthetic data for this stage.
+staff billing configuration, private PDF uploads and a validated invoice data model
+in host-local SQLite. Production parsing, invoice review forms, reporting, operational
+backup/restore and release publishing remain later milestones. Use synthetic data
+for this stage.
 
 ## Runtime and storage
 
@@ -47,6 +48,7 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `HOUSE_BILLS_CSRF_TRUSTED_ORIGINS` | Comma-separated exact trusted HTTPS origins. |
 | `HOUSE_BILLS_TIME_ZONE` | Defaults to `Europe/Stockholm`. |
 | `HOUSE_BILLS_MIGRATE_ON_START` | Apply migrations before serving; defaults to `true`. |
+| `HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES` | Original PDF limit; defaults to 20971520 (20 MiB), with 64 KiB extra request allowance. |
 | `HOUSE_BILLS_TRUST_PROXY` | Trust only `X-Forwarded-Proto`; defaults to `false`. |
 | `APP_UID`, `APP_GID` | Non-root numeric container process IDs. |
 | `APP_DATA_PATH` | Absolute private host-local data directory. |
@@ -97,6 +99,9 @@ and clean restoration are a later milestone required before normal real-data use
 Houses, vendors, invoice formats and identifier mappings are database
 records, configured through the authenticated admin; they persist in `/data` across
 restarts and image updates. See [configuration and the data model](data-model.md).
+Originals live in `/data/invoices`, with authenticated downloads and resumable staging
+and publication. See [uploads and private originals](ingestion.md) for recovery and
+the shared-lock contract required by the future backup integration.
 
 ## Disposable production probe
 
