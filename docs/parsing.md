@@ -31,7 +31,7 @@ remain review proposals. Dates and filenames never select the newest parser.
 
 | Family/version | Billing structure | Revision |
 | --- | --- | --- |
-| `layout_01/v1` | Contract-based water, waste and network; page continuations and water reversals. | `4` |
+| `layout_01/v1` | Contract-based water, waste subcategories and network; page continuations and water reversals. | `5` |
 | `layout_02/v1` | Electricity supply; installation details above each specification. | `3` |
 | `layout_02/v2` | Replacement supply structure; service-specific title and inline installation key. | `2` |
 

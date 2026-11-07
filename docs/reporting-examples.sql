@@ -18,7 +18,7 @@ ORDER BY property_slug;
 
 -- Water and waste retain signed, whole billed intervals and measurement basis.
 -- period_end is exclusive; time represents period_start, not a measured instant.
-SELECT period_start_time AS time, property_slug, utility, unit, source_service,
+SELECT period_start_time AS time, property_slug, utility, subcategory, unit, source_service,
        period_start, period_end, basis, quantity_milli,
        quantity_milli / 1000.0 AS quantity
 FROM reporting_usage

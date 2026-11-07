@@ -2,6 +2,8 @@
 
 import re
 
+from bills.categories import waste_subcategory
+
 from .common import header, last_money, reconcile
 from .normalization import (
     DATE,
@@ -18,7 +20,7 @@ from .normalization import (
 from .normalization import unit as normalize_unit
 from .types import Evidence, Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_01", "v1", "4"
+FAMILY, VERSION, REVISION = "layout_01", "v1", "5"
 SERVICE = {"vatten": "water", "hushållsavfall": "waste", "elnät": "electricity_network"}
 SECTION = re.compile(r"^(Vatten|Hushållsavfall|Elnät) avtal (\d+)\b", re.I)
 WASTE_USAGE = re.compile(r"^(?:Matavfall|Restavfall)\b.*\bkärl\b", re.I)
@@ -136,7 +138,17 @@ def _extract_section(candidate, section, lines, all_lines, waste_totals):
                 )
                 section.usages.append(Usage("water", "m3", billed, *period, basis, line))
             else:
-                section.usages.append(Usage("waste", "kg", billed, *period, "billed_weight", line))
+                section.usages.append(
+                    Usage(
+                        "waste",
+                        "kg",
+                        billed,
+                        *period,
+                        "billed_weight",
+                        line,
+                        subcategory=waste_subcategory(text(line)),
+                    )
+                )
         if match := re.match(rf"Moms\s+25\s*%\s+på\s+({NUMBER})\s+kr", text(line), re.I):
             if section.tax_evidence is not None:
                 raise ValueError("Multiple tax totals in one contract section")

@@ -337,6 +337,7 @@ def approve_review(
                 section=section,
                 position=position,
                 utility=usage.utility,
+                subcategory=usage.subcategory,
                 unit=usage.unit,
                 quantity_milli=usage.quantity_milli,
                 start=usage.start,

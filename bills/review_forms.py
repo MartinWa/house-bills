@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from django import forms
 from django.core.exceptions import ValidationError
 
+from .categories import WASTE_SUBCATEGORIES
 from .models import Invoice, Property, Service, Usage, Vendor
 from .parsing.compatibility import cost_totals_candidate
 from .parsing.normalization import scaled_integer
@@ -167,6 +168,12 @@ class SectionForm(PeriodMixin, TotalsForm):
 class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
     section = forms.ChoiceField(label="Allocation", choices=[])
     utility = forms.ChoiceField(choices=Usage.Utility.choices)
+    subcategory = forms.ChoiceField(
+        label="Waste subcategory",
+        choices=[("", "Unspecified"), *WASTE_SUBCATEGORIES],
+        required=False,
+        help_text="For electricity, Elnät or Elhandel comes from the allocation's service.",
+    )
     unit = forms.ChoiceField(choices=Usage._meta.get_field("unit").choices)
     quantity_milli = ScaledNumberField(label="Quantity", scale=1000, precision=3)
     start = date_field("First billed day")
@@ -177,6 +184,8 @@ class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
     def clean(self):
         data = super().clean()
         units = {"electricity": "kWh", "water": "m3", "waste": "kg"}
+        if data.get("subcategory") and data.get("utility") != "waste":
+            self.add_error("subcategory", "Choose a waste subcategory only for waste consumption.")
         if "utility" in data and "unit" in data and data["unit"] != units[data["utility"]]:
             self.add_error("unit", "Choose the unit that matches this utility.")
         if data.get("basis") == "reversal" and data.get("quantity_milli", 0) > 0:
@@ -447,7 +456,11 @@ class ReviewForms:
             candidate.sections.append(section)
             sections[key], properties[key] = section, data["property"]
         for group_name, cls, fields in (
-            ("usages", CandidateUsage, ("utility", "unit", "quantity_milli", "basis")),
+            (
+                "usages",
+                CandidateUsage,
+                ("utility", "subcategory", "unit", "quantity_milli", "basis"),
+            ),
         ):
             for index, form in enumerate(getattr(self, group_name)):
                 data = form.cleaned_data

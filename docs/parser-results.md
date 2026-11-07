@@ -65,6 +65,12 @@ estimates, historical charts and cumulative readings are excluded. Network and s
 remain separate sources; [approved reporting](reporting.md) selects network readings
 first and uses supply as an explicit fallback.
 
+Each billed waste usage row retains `subcategory`: `restavfall` or `matavfall`,
+inferred from that row's explicit label. Container headers and individual weight
+events do not override the billed row's type or add to its quantity. Other utilities
+store an empty usage subcategory; electricity's Elnät/Elhandel distinction comes from
+its service. Shared waste fees remain in the printed contract total.
+
 ## Financial reconciliation
 
 Printed service net and VAT are authoritative. No per-fee VAT or gross is calculated,

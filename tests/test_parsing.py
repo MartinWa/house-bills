@@ -51,6 +51,12 @@ def test_multi_service_pdf_preserves_contracts_costs_and_billed_usage(tmp_path):
         [],
         [321125],
     ]
+    assert [[u.subcategory for u in s.usages] for s in candidate.sections] == [
+        [""],
+        ["matavfall", "restavfall"],
+        [],
+        [""],
+    ]
     assert all(
         (u.start, u.end) == (date(2024, 2, 1), date(2024, 3, 1))
         for s in candidate.sections
@@ -78,7 +84,29 @@ def test_network_readings_keep_billed_intervals_without_repeating_price_quantiti
     assert all(row.evidence.page == 4 for row in network.usages)
     assert all(row.evidence.text.startswith("Avläsning") for row in network.usages)
     assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
-    assert candidate.parser_revision == "4" and candidate.requires_review
+    assert candidate.parser_revision == "5" and candidate.requires_review
+
+
+@pytest.mark.parametrize("correction", [False, True])
+def test_waste_subcategories_follow_billed_rows_across_container_headers_and_pages(
+    tmp_path, correction
+):
+    pages = multi_service(correction=correction)
+    for page in pages:
+        for index, line in enumerate(page):
+            if isinstance(line, str) and line.startswith("Matavfall 140L"):
+                page[index] = line.replace("Matavfall", "MATAVFALL")
+            if isinstance(line, str) and line.startswith("Restavfall 190L"):
+                page[index] = line.replace("Restavfall", "restavfall")
+    candidate = parse_synthetic(tmp_path, pages)
+    assert candidate.issues == []
+    waste = next(section for section in candidate.sections if section.service == "waste")
+    assert [(row.subcategory, row.quantity_milli) for row in waste.usages] == [
+        ("matavfall", 12000),
+        ("restavfall", 7500),
+    ]
+    assert all("Vikt/Volym" not in row.evidence.text for row in waste.usages)
+    assert (waste.net_minor, waste.vat_minor, waste.gross_minor) == (11160, 2790, 13950)
 
 
 @pytest.mark.parametrize(

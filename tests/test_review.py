@@ -101,6 +101,77 @@ def approved(client, document):
     return document.invoices.get()
 
 
+def test_waste_subcategories_survive_review_correction_and_proposal_comparison(
+    configured, client, tmp_path
+):
+    document, _ = upload(client, tmp_path, multi_service())
+    path, data = review_data(client, document)
+    assert [data[f"usages-{i}-subcategory"] for i in range(4)] == [
+        "",
+        "matavfall",
+        "restavfall",
+        "",
+    ]
+    invoice = approved(client, document)
+    original = copy.deepcopy(invoice.reviews.get(revision=1).snapshot)
+    page = client.get(f"/invoices/{invoice.pk}/").content.decode()
+    assert "Restavfall" in page and "Matavfall" in page and "Electricity › Elnät" in page
+    _, data = review_data(client, document)
+    data["usages-1-subcategory"] = "restavfall"
+    assert client.post(path, data).status_code == 302
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2
+    assert invoice.reviews.get(revision=1).snapshot == original
+    assert list(
+        invoice.sections.get(section_id="section_02").usages.values_list(
+            "subcategory", "quantity_milli"
+        )
+    ) == [("restavfall", 12000), ("restavfall", 7500)]
+    response = client.get(f"/documents/{document.pk}/")
+    assert any(
+        row["field"].endswith("subcategory")
+        and row["approved"] == "Restavfall"
+        and row["proposed"] == "Matavfall"
+        for row in response.context["differences"]
+    )
+
+
+def test_legacy_waste_review_infers_subcategories_and_retains_original_evidence(
+    configured, client, tmp_path
+):
+    document, _ = upload(client, tmp_path, multi_service())
+    attempt = document.extractions.get()
+    legacy = copy.deepcopy(attempt.candidate)
+    for section in legacy["sections"]:
+        for row in section["usages"]:
+            row.pop("subcategory")
+    type(attempt).objects.filter(pk=attempt.pk).update(candidate=legacy)
+    _, data = review_data(client, document)
+    assert data["usages-1-subcategory"] == "matavfall"
+    assert data["usages-2-subcategory"] == "restavfall"
+    invoice = approved(client, document)
+    rows = invoice.reviews.get().snapshot["values"]["sections"][1]["usages"]
+    assert [row["subcategory"] for row in rows] == ["matavfall", "restavfall"]
+    assert [row["evidence"] for row in rows] == [
+        row["evidence"] for row in legacy["sections"][1]["usages"]
+    ]
+    attempt.refresh_from_db()
+    assert attempt.candidate == legacy
+
+
+def test_waste_subcategory_rejected_on_electricity_without_changing_approval(
+    configured, client, tmp_path
+):
+    document, _ = upload(client, tmp_path)
+    invoice = approved(client, document)
+    path, data = review_data(client, document)
+    response = client.post(path, {**data, "usages-0-subcategory": "matavfall"})
+    assert response.status_code == 400
+    assert response.context["review"].usages[0].errors["subcategory"]
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 1
+
+
 def manual_fields(data, vendor, house):
     return {
         **data,

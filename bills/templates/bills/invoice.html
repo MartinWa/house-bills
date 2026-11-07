@@ -21,16 +21,16 @@
   {% endif %}
   {% for section in invoice.sections.all %}
     <section>
-      <h3>{{ section.property.name }} · {{ section.get_service_display }}</h3>
+      <h3>{{ section.property.name }} · {{ section.category_label }}{% if section.subcategory_label %} › {{ section.subcategory_label }}{% endif %}</h3>
       <p>Net {{ section.net_minor|money }} {{ invoice.currency }} · VAT {{ section.vat_minor|money }} {{ invoice.currency }} · Cost including VAT {{ section.gross_minor|money }} {{ invoice.currency }}</p>
       <p>Billed period {{ section.start|date:"Y-m-d" }} to {{ section.end|final_day }}</p>
       {% if section.identifiers %}<ul>{% for identifier in section.identifiers %}<li>{{ identifier.kind }}: {{ identifier.value }}</li>{% endfor %}</ul>{% endif %}
       <h4>Consumption</h4>
       {% if section.usages.all %}
         <div class="table-scroll"><table>
-          <thead><tr><th scope="col">Utility</th><th scope="col">Billed period</th><th scope="col">Quantity</th><th scope="col">Measurement basis</th></tr></thead>
+          <thead><tr><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Billed period</th><th scope="col">Quantity</th><th scope="col">Measurement basis</th></tr></thead>
           <tbody>{% for usage in section.usages.all %}
-            <tr><td>{{ usage.get_utility_display }}</td><td>{{ usage.start|date:"Y-m-d" }} to {{ usage.end|final_day }}</td><td>{{ usage.quantity_milli|quantity }} {{ usage.get_unit_display }}</td><td>{{ usage.get_basis_display }}</td></tr>
+            <tr><td>{{ usage.get_utility_display }}</td><td>{{ usage.subcategory_label|default:"—" }}</td><td>{{ usage.start|date:"Y-m-d" }} to {{ usage.end|final_day }}</td><td>{{ usage.quantity_milli|quantity }} {{ usage.get_unit_display }}</td><td>{{ usage.get_basis_display }}</td></tr>
           {% endfor %}</tbody>
         </table></div>
       {% else %}<p>No billed consumption recorded for this allocation.</p>{% endif %}

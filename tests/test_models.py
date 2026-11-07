@@ -73,6 +73,36 @@ def usage(section):
     )
 
 
+@pytest.mark.parametrize("subcategory", ["matavfall", "restavfall", "unknown"])
+def test_usage_subcategory_cannot_be_assigned_to_water(usage, subcategory):
+    usage.subcategory = subcategory
+    with pytest.raises(ValidationError):
+        usage.save()
+    with transaction.atomic(), pytest.raises(IntegrityError):
+        Usage.objects.filter(pk=usage.pk).update(subcategory=subcategory)
+
+
+def test_unknown_waste_subcategory_is_rejected_by_model_and_database(section):
+    section.service = "waste"
+    section.save()
+    row = Usage.objects.create(
+        section=section,
+        position=0,
+        utility="waste",
+        unit="kg",
+        quantity_milli=7500,
+        start=date(2024, 2, 1),
+        end=date(2024, 3, 1),
+        basis="billed_weight",
+        subcategory="restavfall",
+    )
+    row.subcategory = "unknown"
+    with pytest.raises(ValidationError):
+        row.save()
+    with transaction.atomic(), pytest.raises(IntegrityError):
+        Usage.objects.filter(pk=row.pk).update(subcategory="unknown")
+
+
 @pytest.mark.parametrize("value", [1.5, 1.0, True, "100", Decimal("100")])
 def test_money_never_silently_coerces_values(invoice, value):
     invoice.net_minor = value

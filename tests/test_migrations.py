@@ -101,7 +101,12 @@ for old, retained in zip(legacy_rows, archive, strict=True):
     }
 from bills.services import validate_allocations
 from bills.models import Invoice as CurrentInvoice
+# Runtime validation uses the current model schema; historical assertions above
+# still exercise the cost-total migration independently.
+latest = MigrationExecutor(connection)
+latest.migrate(latest.loader.graph.leaf_nodes('bills') + [old_targets[1]])
 validate_allocations(CurrentInvoice.objects.get(pk=invoice.pk))
+MigrationExecutor(connection).migrate(new_targets)
 
 draft = Invoice.objects.create(document_id=document.pk, reference='SYNTHETIC-TOTAL-002')
 new_section = Section.objects.create(invoice=draft, section_id='section_02', service='water',
@@ -128,6 +133,107 @@ print('Migration, history preservation and legacy restoration verified.')
             "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
             "HOUSE_BILLS_DATA_DIR": str(data),
             "HOUSE_BILLS_STATE_DIR": str(tmp_path / "migration-state"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_subcategory_migration_classifies_evidence_preserves_history_and_reverses_views(tmp_path):
+    data = tmp_path / "subcategory-migration-data"
+    data.mkdir()
+    script = r"""
+from datetime import date
+import django
+django.setup()
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
+
+auth = ('auth', '0012_alter_user_first_name_max_length')
+old_targets = [('bills', '0008_reporting_views'), auth]
+new_targets = [('bills', '0009_usage_subcategories'), auth]
+executor = MigrationExecutor(connection)
+executor.migrate(old_targets)
+apps = executor.loader.project_state(old_targets).apps
+actor = apps.get_model('auth', 'User').objects.create(username='synthetic-subcategory-reviewer')
+house = apps.get_model('bills', 'Property').objects.create(name='Synthetic House', slug='house')
+vendor = apps.get_model('bills', 'Vendor').objects.create(name='Synthetic Utilities', slug='vendor')
+document = apps.get_model('bills', 'Document').objects.create(
+    sha256='c' * 64, original_filename='synthetic.pdf')
+invoice = apps.get_model('bills', 'Invoice').objects.create(
+    document=document, vendor=vendor, reference='SYNTHETIC-SUBCATEGORY-001',
+    invoice_date=date(2024, 3, 5), net_minor=3000, vat_minor=750, rounding_minor=0,
+    invoice_total_minor=3750, amount_due_minor=3750, status='approved',
+    approved_at=timezone.now(), approved_by=actor, review_revision=1)
+start, end = date(2024, 2, 1), date(2024, 3, 1)
+Usage = apps.get_model('bills', 'Usage')
+for service, utility, unit, source_rows in (
+    ('waste', 'waste', 'kg', [
+        'Matavfall 140L kärl 12 kg', 'restavfall 190L kärl 7,5 kg',
+        'Manually reviewed: usages',
+    ]),
+    ('electricity_network', 'electricity', 'kWh', ['Wholly synthetic reading']),
+    ('water', 'water', 'm3', ['Restavfall in unrelated synthetic evidence']),
+):
+    section = apps.get_model('bills', 'BillingSection').objects.create(
+        invoice=invoice, property=house, section_id=service, service=service,
+        net_minor=1000, vat_minor=250, gross_minor=1250, start=start, end=end)
+    for position, source in enumerate(source_rows):
+        Usage.objects.create(section=section, position=position, utility=utility, unit=unit,
+            quantity_milli=1000, start=start, end=end, basis='billed',
+            evidence={'page': 1, 'text': source, 'bbox': [0, 0, 1, 1]})
+attempt = apps.get_model('bills', 'ExtractionAttempt').objects.create(
+    document=document, revision=1, state='review', layout_family='layout_01',
+    layout_version='v1', parser_revision='4', candidate={'private': 'unchanged candidate'})
+review = apps.get_model('bills', 'ReviewRevision').objects.create(
+    invoice=invoice, revision=1, actor=actor, extraction=attempt,
+    snapshot={'private': 'unchanged approval'})
+tables = ['auth_user', 'bills_property', 'bills_vendor', 'bills_document',
+          'bills_invoice', 'bills_billingsection', 'bills_extractionattempt',
+          'bills_reviewrevision']
+def snapshot():
+    with connection.cursor() as cursor:
+        return {table: cursor.execute(f'SELECT * FROM {table} ORDER BY id').fetchall()
+                for table in tables}
+before = snapshot()
+before_usage = list(Usage.objects.order_by('pk').values())
+expected = ['matavfall', 'restavfall', '', '', '']
+for targets in (new_targets, old_targets, new_targets):
+    executor = MigrationExecutor(connection)
+    executor.migrate(targets)
+    apps = executor.loader.project_state(targets).apps
+    assert snapshot() == before
+    current = list(apps.get_model('bills', 'Usage').objects.order_by('pk').values())
+    if targets == new_targets:
+        assert [row.pop('subcategory') for row in current] == expected
+        with connection.cursor() as cursor:
+            assert cursor.execute(
+                'SELECT subcategory FROM reporting_usage ORDER BY usage_id').fetchall() == [
+                ('matavfall',), ('restavfall',), ('',), ('electricity_network',), ('',)]
+            assert cursor.execute(
+                'SELECT sum(gross_minor) FROM reporting_costs').fetchone() == (3750,)
+            assert cursor.execute(
+                'SELECT quantity_milli FROM reporting_electricity_usage').fetchone() == (1000,)
+    else:
+        with connection.cursor() as cursor:
+            assert 'subcategory' not in [row[1] for row in cursor.execute(
+                'PRAGMA table_info(bills_usage)').fetchall()]
+            assert cursor.execute('SELECT count(*) FROM reporting_usage').fetchone() == (5,)
+            assert cursor.execute(
+                'SELECT quantity_milli FROM reporting_electricity_usage').fetchone() == (1000,)
+    assert current == before_usage
+print('Subcategories, retained history and reversible reporting views verified.')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
+            "HOUSE_BILLS_DATA_DIR": str(data),
+            "HOUSE_BILLS_STATE_DIR": str(tmp_path / "subcategory-migration-state"),
         },
         capture_output=True,
         text=True,

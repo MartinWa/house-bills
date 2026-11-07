@@ -3,6 +3,8 @@
 from copy import deepcopy
 from datetime import date
 
+from bills.categories import waste_subcategory
+
 
 def legacy_billing_period(section):
     rows = section.get("charges") or section.get("usages", [])
@@ -36,4 +38,11 @@ def cost_totals_candidate(values):
                 section
             )
         section.pop("charges", None)
+        for usage in section.get("usages", []):
+            if "subcategory" not in usage:
+                usage["subcategory"] = (
+                    waste_subcategory((usage.get("evidence") or {}).get("text", ""))
+                    if usage.get("utility") == "waste"
+                    else ""
+                )
     return result

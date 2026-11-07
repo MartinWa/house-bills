@@ -49,18 +49,18 @@
       {% if proposal.sections %}
         <h4>Property and service allocations</h4>
         <table>
-          <thead><tr><th scope="col">Property</th><th scope="col">Service</th><th scope="col">Billed period</th><th scope="col">Cost including VAT</th></tr></thead>
+          <thead><tr><th scope="col">Property</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Billed period</th><th scope="col">Cost including VAT</th></tr></thead>
           <tbody>{% for section in proposal.sections %}
-            <tr><td>{{ section.property }}</td><td>{{ section.service }}</td><td>{{ section.start }} to {{ section.final_day }}</td><td>{{ section.gross }} {{ proposal.currency }}</td></tr>
+            <tr><td>{{ section.property }}</td><td>{{ section.category }}</td><td>{{ section.subcategory|default:"—" }}</td><td>{{ section.start }} to {{ section.final_day }}</td><td>{{ section.gross }} {{ proposal.currency }}</td></tr>
           {% endfor %}</tbody>
         </table>
       {% else %}<p>No billing sections could be extracted.</p>{% endif %}
       {% if proposal.usages %}
         <h4>Billed usage</h4>
         <table>
-          <thead><tr><th scope="col">Property</th><th scope="col">Source service</th><th scope="col">Utility</th><th scope="col">Period</th><th scope="col">Quantity</th><th scope="col">Basis</th></tr></thead>
+          <thead><tr><th scope="col">Property</th><th scope="col">Source service</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Period</th><th scope="col">Quantity</th><th scope="col">Basis</th></tr></thead>
           <tbody>{% for usage in proposal.usages %}
-            <tr><td>{{ usage.property }}</td><td>{{ usage.service }}</td><td>{{ usage.utility }}</td><td>{{ usage.start }} to {{ usage.final_day }}</td><td>{{ usage.quantity }} {{ usage.unit }}</td><td>{{ usage.basis }}</td></tr>
+            <tr><td>{{ usage.property }}</td><td>{{ usage.service }}</td><td>{{ usage.utility }}</td><td>{{ usage.subcategory|default:"—" }}</td><td>{{ usage.start }} to {{ usage.final_day }}</td><td>{{ usage.quantity }} {{ usage.unit }}</td><td>{{ usage.basis }}</td></tr>
           {% endfor %}</tbody>
         </table>
       {% endif %}

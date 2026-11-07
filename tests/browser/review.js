@@ -93,6 +93,7 @@ async page => {
   assert((await page.locator("#report-costs").innerText()).includes("138,19 SEK"), "Report multiplied or changed supply costs");
   assert((await page.locator("#report-consumption").innerText()).includes("140,250 kWh"), "Duplicate upload multiplied consumption");
   assert((await page.locator("#report-basis").innerText()).includes("Electricity supply (fallback)"), "Supply fallback was not explicit");
+  assert((await page.locator("#report-costs").innerText()).includes("Elhandel"), "Supply cost is missing its electricity subcategory");
   await page.goto(supportedInvoice);
 
   await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
@@ -218,6 +219,8 @@ async page => {
   await upload("multiple-readings.pdf");
   assert(await page.locator(".extraction-warnings").count() === 0, "Valid multiple network readings produced an extraction warning");
   await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+  assert(await page.locator('[name="usages-1-subcategory"]').inputValue() === "matavfall", "Food waste subcategory was lost during review");
+  assert(await page.locator('[name="usages-2-subcategory"]').inputValue() === "restavfall", "Residual waste subcategory was lost during review");
   const networkReadings = page.locator('[data-formset="usages"] [data-review-row]').filter({ has: page.locator('select[name$="-section"] option[value="section_04"]:checked') });
   assert(await networkReadings.count() === 2, "Multiple network readings were lost or duplicated");
   assert(await networkReadings.nth(0).locator('[name$="-quantity_milli"]').inputValue() === "121,125", "First network consumption was changed");
@@ -227,9 +230,17 @@ async page => {
   await submit("Approve invoice");
   await text("121,125 kWh");
   await text("200,000 kWh");
+  await text("Matavfall");
+  await text("Restavfall");
+  await text("Electricity › Elnät");
 
   await page.getByRole("link", { name: "Reports", exact: true }).click();
   const consumption = await page.locator("#report-consumption").innerText();
+  const foodWaste = page.locator("#report-consumption tbody tr").filter({ hasText: "Matavfall" });
+  const residualWaste = page.locator("#report-consumption tbody tr").filter({ hasText: "Restavfall" });
+  assert(await foodWaste.count() === 1 && (await foodWaste.innerText()).includes("12,000 kg"), "Food waste report total was mixed with residual waste");
+  assert(await residualWaste.count() === 1 && (await residualWaste.innerText()).includes("7,500 kg"), "Residual waste report total was mixed with food waste");
+  assert((await page.locator("#report-costs").innerText()).includes("Elnät"), "Network cost is missing its electricity subcategory");
   assert(consumption.includes("321,125 kWh") && consumption.includes("510,000 kWh") && consumption.includes("-1,250 m³"), "Report lost network intervals, a property or signed corrections");
   assert(!consumption.includes("140,250 kWh"), "Report summed supply with network consumption");
   assert((await page.locator("#report-costs").innerText()).includes("473,08 SEK"), "Network cost was multiplied by its readings");

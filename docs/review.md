@@ -25,6 +25,9 @@ against the printed energy quantities.
    once per period/source rather than once per price line. Network and supply are
    separate sources. Water uses m³, waste kg and electricity kWh. Preserve negative
    corrections and reversals; a reversal cannot have a positive quantity.
+   For waste, check **Waste subcategory**: Restavfall or Matavfall. Leave it unspecified
+   when the source does not identify the type. Electricity uses the allocation's
+   network (Elnät) or supply (Elhandel) service as its subcategory.
 5. Keep customer accounts with the invoice and installation/contract identifiers with
    their allocation. Source page fields identify the relevant page. A reviewed property
    assignment or identifier edit applies to this invoice; maintain future mappings in

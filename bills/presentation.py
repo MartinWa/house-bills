@@ -3,6 +3,7 @@
 import re
 from datetime import date, timedelta
 
+from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Property, Service, Usage, Vendor
 from .parsing.compatibility import cost_totals_candidate
 
@@ -106,6 +107,12 @@ def candidate_summary(candidate, *, error=""):
             {
                 "property": house.name if house else "Needs assignment",
                 "service": service,
+                "category": CATEGORY_LABELS.get(section.get("service"), "Unknown service"),
+                "subcategory": (
+                    subcategory_label(section.get("service"))
+                    if section.get("service") != "waste"
+                    else ""
+                ),
                 "gross": scaled_value(section.get("gross_minor"), 100, 2),
                 "start": section.get("start") or "Unknown",
                 "final_day": final_day(section.get("end")),
@@ -116,6 +123,9 @@ def candidate_summary(candidate, *, error=""):
                 {
                     "property": house.name if house else "Needs assignment",
                     "service": service,
+                    "subcategory": subcategory_label(
+                        section.get("service"), usage.get("subcategory", "")
+                    ),
                     "utility": utilities.get(usage.get("utility"), "Unknown utility"),
                     "quantity": scaled_value(usage.get("quantity_milli"), 1000, 3),
                     "unit": "m³" if usage.get("unit") == "m3" else usage.get("unit", ""),
@@ -222,6 +232,11 @@ def _comparison_values(values, *, vendor_id, properties, kind):
                 f"{row_key}.quantity",
                 f"{row_label} quantity",
                 (scaled_value(usage.get("quantity_milli"), 1000, 3) + " " + usage.get("unit", "")),
+            )
+            put(
+                f"{row_key}.subcategory",
+                f"{row_label} subcategory",
+                subcategory_label(section.get("service"), usage.get("subcategory", "")),
             )
             put(
                 f"{row_key}.period",

@@ -11,13 +11,24 @@ that whole interval. No quantity or cost is prorated. Electricity source selecti
 uses all approved records before applying the report filters, including network bills
 with a different invoice date.
 
-## SQLite contract, version 1
+## SQLite contract, version 2
 
 Migration `0008_reporting_views` creates five read-only SQL views in the application
 database. They use native SQLite functions and work through an ordinary SQLite
 connection, without Django functions or an export refresh. The migration adds indexes
 for property/service and utility/period queries; applying or reversing it does not
 change invoices, consumption, originals or private history.
+
+Migration `0009_usage_subcategories` adds `category` and `subcategory` to the cost
+and usage projections. Electricity costs use category `electricity`, with subcategories
+`electricity_network` (Elnät) and `electricity_supply` (Elhandel). Waste costs keep an
+empty subcategory because the printed contract total includes shared fees. Waste usage
+uses `restavfall`, `matavfall` or an empty, unspecified subcategory. Other categories
+retain their existing service keys and have no subcategory.
+
+The Reports screen groups waste consumption by subcategory. Electricity consumption
+keeps one combined total using the existing source preference; its source breakdown
+shows Elnät and Elhandel. Group raw waste queries by `subcategory` when comparing types.
 
 | View | One row represents |
 | --- | --- |

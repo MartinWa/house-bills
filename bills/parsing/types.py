@@ -27,6 +27,7 @@ class Usage:
     end: date
     basis: str
     evidence: Evidence
+    subcategory: str = ""
 
 
 @dataclass

@@ -1,5 +1,7 @@
 """Configuration, private proposals and exact approved invoice allocations."""
 
+from builtins import property as computed_property
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -7,6 +9,7 @@ from django.db.models import F, Q
 from django.db.models.functions import Length
 from django.db.models.lookups import Exact
 
+from .categories import CATEGORY_LABELS, WASTE_SUBCATEGORIES, subcategory_label
 from .fields import ScaledIntegerField, integer_constraint
 from .parsing.registry import layout_family_choices
 from .validators import (
@@ -482,6 +485,14 @@ class BillingSection(AllocationModel):
     def _invoice(self):
         return Invoice.objects.get(pk=self.invoice_id)
 
+    @computed_property
+    def category_label(self):
+        return CATEGORY_LABELS[self.service]
+
+    @computed_property
+    def subcategory_label(self):
+        return subcategory_label(self.service) if self.service != Service.WASTE else ""
+
     def __str__(self):
         return f"{self.invoice}: {self.section_id}"
 
@@ -502,6 +513,9 @@ class Usage(AllocationModel):
     section = models.ForeignKey(BillingSection, on_delete=models.CASCADE, related_name="usages")
     position = models.PositiveIntegerField()
     utility = models.CharField(max_length=20, choices=Utility)
+    subcategory = models.CharField(
+        max_length=20, choices=WASTE_SUBCATEGORIES, blank=True, default=""
+    )
     unit = models.CharField(max_length=8, choices=[("kWh", "kWh"), ("m3", "m³"), ("kg", "kg")])
     quantity_milli = ScaledIntegerField()
     start = models.DateField()
@@ -520,6 +534,11 @@ class Usage(AllocationModel):
                 name="electricity_usage_once_per_basis",
             ),
             models.CheckConstraint(condition=Q(start__lt=F("end")), name="usage_period_valid"),
+            models.CheckConstraint(
+                condition=Q(subcategory="")
+                | Q(utility="waste", subcategory__in=["restavfall", "matavfall"]),
+                name="usage_subcategory_matches_utility",
+            ),
             models.CheckConstraint(
                 condition=Q(utility="electricity", unit="kWh")
                 | Q(utility="water", unit="m3")
@@ -540,6 +559,8 @@ class Usage(AllocationModel):
         ]
 
     def clean(self):
+        if self.subcategory and self.utility != self.Utility.WASTE:
+            raise ValidationError({"subcategory": "Only waste consumption has a waste subtype."})
         if self.section_id:
             service = self.section.service
             expected = {
@@ -553,6 +574,10 @@ class Usage(AllocationModel):
 
     def _invoice(self):
         return Invoice.objects.get(sections__pk=self.section_id)
+
+    @computed_property
+    def subcategory_label(self):
+        return subcategory_label(self.section.service, self.subcategory)
 
 
 class ReviewRevision(ValidatedModel):

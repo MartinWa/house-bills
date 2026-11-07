@@ -34,29 +34,29 @@
     <p>Invoice rounding is retained on each invoice and is not allocated to a property or service.</p>
     <div class="table-scroll">
       <table id="report-costs">
-        <thead><tr><th>Property</th><th>Service</th><th>Excluding VAT</th><th>VAT</th><th>Including VAT</th></tr></thead>
+        <thead><tr><th>Property</th><th>Category</th><th>Subcategory</th><th>Excluding VAT</th><th>VAT</th><th>Including VAT</th></tr></thead>
         <tbody>{% for row in costs %}<tr>
-          <td>{{ row.property_name }}</td><td>{{ row.service_label }}</td><td>{{ row.net_minor|money }} {{ row.currency }}</td><td>{{ row.vat_minor|money }} {{ row.currency }}</td><td>{{ row.gross_minor|money }} {{ row.currency }}</td>
-        </tr>{% empty %}<tr><td colspan="5">No approved costs match these filters.</td></tr>{% endfor %}</tbody>
+          <td>{{ row.property_name }}</td><td>{{ row.category_label }}</td><td>{{ row.subcategory_label|default:"—" }}</td><td>{{ row.net_minor|money }} {{ row.currency }}</td><td>{{ row.vat_minor|money }} {{ row.currency }}</td><td>{{ row.gross_minor|money }} {{ row.currency }}</td>
+        </tr>{% empty %}<tr><td colspan="6">No approved costs match these filters.</td></tr>{% endfor %}</tbody>
       </table>
     </div>
     <h3>Consumption totals</h3>
     <p>Electricity uses network readings first, with supply as a fallback. Signed corrections are retained. Billed intervals are not prorated into calendar months.</p>
     <div class="table-scroll">
       <table id="report-consumption">
-        <thead><tr><th>Property</th><th>Utility</th><th>Consumption</th></tr></thead>
+        <thead><tr><th>Property</th><th>Category</th><th>Subcategory</th><th>Consumption</th></tr></thead>
         <tbody>{% for row in consumption %}<tr>
-          <td>{{ row.property_name }}</td><td>{{ row.utility_label }}</td><td>{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
-        </tr>{% empty %}<tr><td colspan="3">No selected consumption matches these filters.</td></tr>{% endfor %}</tbody>
+          <td>{{ row.property_name }}</td><td>{{ row.utility_label }}</td><td>{{ row.subcategory_label|default:"—" }}</td><td>{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
+        </tr>{% empty %}<tr><td colspan="4">No selected consumption matches these filters.</td></tr>{% endfor %}</tbody>
       </table>
     </div>
     {% if breakdown %}
       <h3>Consumption by source and basis</h3>
       <div class="table-scroll">
         <table id="report-basis">
-          <thead><tr><th>Property</th><th>Source</th><th>Basis</th><th>Consumption</th></tr></thead>
+          <thead><tr><th>Property</th><th>Category</th><th>Subcategory</th><th>Source</th><th>Basis</th><th>Consumption</th></tr></thead>
           <tbody>{% for row in breakdown %}<tr>
-            <td>{{ row.property_name }}</td><td>{{ row.source_label }}{% if row.source_selection == 'supply_fallback' %} (fallback){% endif %}</td><td>{{ row.basis_label }}</td><td>{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
+            <td>{{ row.property_name }}</td><td>{{ row.utility_label }}</td><td>{{ row.subcategory_label|default:"—" }}</td><td>{{ row.source_label }}{% if row.source_selection == 'supply_fallback' %} (fallback){% endif %}</td><td>{{ row.basis_label }}</td><td>{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
           </tr>{% endfor %}</tbody>
         </table>
       </div>

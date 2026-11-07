@@ -58,12 +58,25 @@ specific assignment. Changing this setting does not alter previously approved in
 | ExtractionAttempt | Append-only candidate JSON, page evidence, layout family/version, parser revision, error/state and attempt number. Invalid and failed results remain private proposals. |
 | Invoice | Document, vendor, reference/kind, dates, SEK, net/VAT/rounding/total/amount due, header evidence, supporting identifiers, source pages and approval metadata. |
 | BillingSection | Invoice, section key, assigned property, service, source identifiers, explicit signed net/VAT/gross, overall billing period and period/tax/total evidence. |
-| Usage | Section, source order, utility/unit, signed quantity, its own period, measurement basis and page evidence. |
+| Usage | Section, source order, utility/unit, optional waste subcategory, signed quantity, its own period, measurement basis and page evidence. |
 | ReviewRevision | Append-only approved value snapshot, property assignments, vendor/kind, reviewer, time, source extraction and correction note. |
 
 A shared invoice has one document and several independently assigned billing sections.
 Usage inherits invoice, property and service through its section. Individual fees have
 no normalized rows; their source text remains in the original PDF and extraction evidence.
+
+Waste consumption distinguishes `restavfall` (Restavfall) and `matavfall` (Matavfall).
+An empty subcategory means unspecified waste; other utilities must store an empty
+value. Electricity inherits its subcategory from the section: `electricity_network`
+is Elnät and `electricity_supply` is Elhandel, both under Electricity. Shared waste
+fees remain at the Waste allocation level because printed totals do not split them
+between waste types.
+
+Migration `0009_usage_subcategories` labels existing waste usage when its saved billed
+evidence explicitly starts with Restavfall or Matavfall. Amounts, quantities, periods,
+approval metadata, extraction attempts and approved snapshots are retained. Review
+adapts older snapshots in memory using the same explicit labels; manual or ambiguous
+source text stays unspecified and can be classified during correction.
 
 Money uses signed integer minor units: `100` is one SEK. Quantities use signed integer
 thousandths: `1000` is one kWh, m³ or kg. Floats, booleans and strings are rejected by the

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from django.db import connection
 
+from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Service, Usage
 
 SELECTION_REASONS = {
@@ -18,11 +19,12 @@ SELECTION_REASONS = {
 SELECTED_USAGE = """
 WITH selected_usage AS (
     SELECT property_id, property_name, utility, unit, quantity_milli,
-           source_service, basis, period_start, period_end, source_selection
+           source_service, subcategory, basis, period_start, period_end, source_selection
     FROM reporting_electricity_usage
     UNION ALL
     SELECT property_id, property_name, utility, unit, quantity_milli,
-           source_service, basis, period_start, period_end, 'billed' AS source_selection
+           source_service, subcategory, basis, period_start, period_end,
+           'billed' AS source_selection
     FROM reporting_usage WHERE utility <> 'electricity'
 )
 """
@@ -65,12 +67,12 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         costs = _rows(
             reader,
             f"""
-            SELECT property_id, property_name, service, currency,
+            SELECT property_id, property_name, category, service, subcategory, currency,
                    sum(net_minor) AS net_minor, sum(vat_minor) AS vat_minor,
                    sum(gross_minor) AS gross_minor
             FROM reporting_costs WHERE {cost_where}
-            GROUP BY property_id, property_name, service, currency
-            ORDER BY property_name, property_id, service
+            GROUP BY property_id, property_name, category, service, subcategory, currency
+            ORDER BY property_name, property_id, category, subcategory
             """,
             cost_params,
         )
@@ -79,10 +81,12 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             SELECTED_USAGE
             + f"""
             SELECT property_id, property_name, utility, unit,
+                   CASE WHEN utility = 'waste' THEN subcategory ELSE '' END AS subcategory,
                    sum(quantity_milli) AS quantity_milli
             FROM selected_usage WHERE {usage_where}
-            GROUP BY property_id, property_name, utility, unit
-            ORDER BY property_name, property_id, utility
+            GROUP BY property_id, property_name, utility, unit,
+                     CASE WHEN utility = 'waste' THEN subcategory ELSE '' END
+            ORDER BY property_name, property_id, utility, subcategory
             """,
             usage_params,
         )
@@ -90,12 +94,12 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             reader,
             SELECTED_USAGE
             + f"""
-            SELECT property_id, property_name, utility, unit, source_service, basis,
+            SELECT property_id, property_name, utility, unit, source_service, subcategory, basis,
                    source_selection, sum(quantity_milli) AS quantity_milli
             FROM selected_usage WHERE {usage_where}
-            GROUP BY property_id, property_name, utility, unit, source_service,
+            GROUP BY property_id, property_name, utility, unit, source_service, subcategory,
                      basis, source_selection
-            ORDER BY property_name, property_id, utility, source_service, basis
+            ORDER BY property_name, property_id, utility, source_service, subcategory, basis
             """,
             usage_params,
         )
@@ -110,9 +114,16 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         )
     for row in costs:
         row["service_label"] = Service(row["service"]).label
+        row["category_label"] = CATEGORY_LABELS[row["service"]]
+        row["subcategory_label"] = (
+            subcategory_label(row["service"]) if row["service"] != "waste" else ""
+        )
     for row in [*consumption, *breakdown]:
         row["utility_label"] = Usage.Utility(row["utility"]).label
         row["unit_label"] = "m³" if row["unit"] == "m3" else row["unit"]
+        row["subcategory_label"] = subcategory_label(
+            row.get("source_service", row["utility"]), row["subcategory"]
+        )
     for row in breakdown:
         row["source_label"] = Service(row["source_service"]).label
         row["basis_label"] = Usage.Basis(row["basis"]).label

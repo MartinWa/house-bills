@@ -38,7 +38,15 @@ START, END = date(2024, 2, 1), date(2024, 3, 1)
 EVIDENCE = Evidence(1, "Wholly synthetic reporting evidence", (0, 0, 100, 20))
 
 
-def usage(quantity=100_125, *, start=START, end=END, basis="measured", utility="electricity"):
+def usage(
+    quantity=100_125,
+    *,
+    start=START,
+    end=END,
+    basis="measured",
+    utility="electricity",
+    subcategory="",
+):
     return ProposedUsage(
         utility=utility,
         unit={"electricity": "kWh", "water": "m3", "waste": "kg"}[utility],
@@ -47,6 +55,7 @@ def usage(quantity=100_125, *, start=START, end=END, basis="measured", utility="
         end=end,
         basis=basis,
         evidence=EVIDENCE,
+        subcategory=subcategory,
     )
 
 
@@ -438,6 +447,65 @@ def test_standalone_signed_credits_and_different_utilities_keep_units_and_bases(
         (row["utility"], row["unit"], row["quantity_milli"]) for row in report["consumption"]
     } == {("electricity", "kWh", -5000), ("water", "m3", 12_500), ("waste", "kg", 19_500)}
     assert {row["basis"] for row in report["breakdown"]} == {"reversal", "billed", "billed_weight"}
+
+
+def test_waste_subcategories_keep_separate_signed_totals_and_electricity_categories(client, ledger):
+    house = ledger["houses"][0]
+    ledger["make"](
+        [
+            allocation(house, usages=[usage(100_125)]),
+            allocation(house, service="electricity_supply", usages=[usage(99_000, basis="billed")]),
+            allocation(
+                house,
+                service="waste",
+                usages=[
+                    usage(7500, utility="waste", basis="billed_weight", subcategory="restavfall"),
+                    usage(12000, utility="waste", basis="billed_weight", subcategory="matavfall"),
+                    usage(-2000, utility="waste", basis="reversal", subcategory="matavfall"),
+                    usage(1500, utility="waste", basis="billed_weight"),
+                ],
+            ),
+        ]
+    )
+    report = read_report()
+    assert {
+        (row["subcategory"], row["quantity_milli"])
+        for row in report["consumption"]
+        if row["utility"] == "waste"
+    } == {
+        ("restavfall", 7500),
+        ("matavfall", 10000),
+        ("", 1500),
+    }
+    electricity = [row for row in report["consumption"] if row["utility"] == "electricity"]
+    assert len(electricity) == 1 and electricity[0]["quantity_milli"] == 100_125
+    assert {
+        (row["category"], row["subcategory"], row["subcategory_label"]) for row in report["costs"]
+    } == {
+        ("electricity", "electricity_network", "Elnät"),
+        ("electricity", "electricity_supply", "Elhandel"),
+        ("waste", "", ""),
+    }
+    assert {
+        (row["subcategory"], row["basis"], row["quantity_milli"])
+        for row in report["breakdown"]
+        if row["utility"] == "waste"
+    } == {
+        ("restavfall", "billed_weight", 7500),
+        ("matavfall", "billed_weight", 12000),
+        ("matavfall", "reversal", -2000),
+        ("", "billed_weight", 1500),
+    }
+    assert {row["subcategory"] for row in rows("reporting_usage")} == {
+        "electricity_network",
+        "electricity_supply",
+        "restavfall",
+        "matavfall",
+        "",
+    }
+    client.force_login(ledger["actor"])
+    body = client.get(reverse("bills:reports")).content.decode()
+    assert all(label in body for label in ("Restavfall", "Matavfall", "Elnät", "Elhandel"))
 
 
 def test_approval_correction_and_failed_save_refresh_without_repeating_history(ledger):

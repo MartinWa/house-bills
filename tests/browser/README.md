@@ -15,6 +15,9 @@ Reports must reflect corrections and duplicates, keep costs independent of multi
 readings, select network electricity with explicit supply fallbacks, preserve signed
 credits, filter invoice dates separately from whole usage intervals, reject invalid
 filters and fit the mobile viewport. Anonymous report access is blocked.
+Waste review and reports retain Matavfall and Restavfall separately. Electricity costs
+show Elhandel and Elnät under Electricity while consumption keeps the existing source
+selection.
 
 On PowerShell, from the repository root:
 
