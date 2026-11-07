@@ -28,6 +28,8 @@ or enter an unsupported invoice manually. **Invoices** lists approved records an
 provides correction forms. See [review and correction](review.md),
 [deterministic parsing](parsing.md) and
 [uploads and private originals](ingestion.md).
+**Reports** shows approved service costs and billed consumption, with property/date
+filters and electricity source selection. See [approved reporting](reporting.md).
 For a vendor that always bills one house, set its optional **Default property**;
 specific property mappings take precedence.
 

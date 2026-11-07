@@ -2,8 +2,9 @@
 
 The application provides one Waitress process with two threads, Django authentication,
 staff billing configuration, private PDF uploads, deterministic parsing, manual review
-and correction, and approved invoice screens in host-local SQLite. Reporting,
-operational backup/restore and release publishing remain later milestones. Use
+and correction, approved invoice screens and authenticated reports in host-local
+SQLite. Grafana integration, operational backup/restore and release publishing remain
+later milestones. Use
 synthetic data for deployment checks at this stage.
 
 ## Runtime and storage
@@ -14,7 +15,7 @@ library and imports the PDF extraction runtime. Django also rejects SQLite relea
 without the WAL-reset fix; fixed upstream/backport series are 3.51.3+, 3.50.7 within
 3.50.x and 3.44.6 within 3.44.x.
 
-Every application connection enables WAL and `synchronous=FULL`, with a 10-second busy
+Every Django connection enables WAL and `synchronous=FULL`, with a 10-second busy
 timeout. Explicit transactions use IMMEDIATE; request-wide transactions are disabled.
 Keep PDF reading and file processing outside short database writes. Store the whole
 database directory on the server's local filesystem, including its WAL and shared-memory

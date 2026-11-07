@@ -10,7 +10,7 @@
     <main>
       <h1>House Bills</h1>
       {% if user.is_authenticated %}
-        <nav aria-label="Main"><a href="{% url 'bills:home' %}">Home</a> · <a href="{% url 'bills:invoices' %}">Invoices</a> · <a href="{% url 'bills:documents' %}">Documents</a> · <a href="{% url 'bills:upload' %}">Upload invoice</a>{% if user.is_staff %} · <a href="{% url 'admin:index' %}">Administration</a>{% endif %}</nav>
+        <nav aria-label="Main"><a href="{% url 'bills:home' %}">Home</a> · <a href="{% url 'bills:invoices' %}">Invoices</a> · <a href="{% url 'bills:reports' %}">Reports</a> · <a href="{% url 'bills:documents' %}">Documents</a> · <a href="{% url 'bills:upload' %}">Upload invoice</a>{% if user.is_staff %} · <a href="{% url 'admin:index' %}">Administration</a>{% endif %}</nav>
       {% endif %}
       {% for message in messages %}<p role="status">{{ message }}</p>{% endfor %}
       {% block content %}{% endblock %}

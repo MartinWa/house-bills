@@ -123,7 +123,8 @@ individual fees. Usage units must match their utility and section service.
 Repeated electricity usage for the same section/period/basis is prohibited; overlapping
 periods with the same property, source service and basis require review. Network and
 supply usage remain distinct. Usage reversals and replacements retain their separate
-bases; canonical reporting selection is a later milestone.
+bases; [approved reporting](reporting.md) selects canonical electricity separately
+and exposes ambiguous overlaps without changing approved values.
 
 Model saves perform validation and reject direct edits to approved allocations and
 audit history. Row constraints protect low-level writes, but cross-row reconciliation

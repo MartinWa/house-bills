@@ -458,6 +458,7 @@ class BillingSection(AllocationModel):
     total_evidence = models.JSONField(default=dict, blank=True, validators=[validate_evidence])
 
     class Meta:
+        indexes = [models.Index(fields=["property", "service"], name="section_property_service")]
         constraints = [
             models.UniqueConstraint(
                 fields=["invoice", "section_id"], name="invoice_section_unique"
@@ -510,6 +511,7 @@ class Usage(AllocationModel):
 
     class Meta:
         ordering = ["position", "pk"]
+        indexes = [models.Index(fields=["utility", "start", "end"], name="usage_utility_period")]
         constraints = [
             models.UniqueConstraint(fields=["section", "position"], name="usage_position_unique"),
             models.UniqueConstraint(

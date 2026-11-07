@@ -91,5 +91,6 @@ after approval commits; interrupted publication preserves approved records and o
 storage recovery on the document page. See [uploads and private originals](ingestion.md).
 
 The application tests and [Chromium browser check](../tests/browser/README.md) exercise
-these workflows with wholly synthetic PDFs. Grafana reporting and complete real-format
-coverage remain their subsequent implementation steps.
+these workflows with wholly synthetic PDFs. [Reports](reporting.md) reflects accepted
+corrections and links ambiguous electricity intervals back to invoice review.
+Grafana integration and complete real-format coverage remain subsequent steps.

@@ -206,6 +206,11 @@ def check_ingestion_http():
     assert document.storage_state == "approved"
     with request(invoice_location) as response:
         assert response.status == 200 and b"100,000 kWh" in response.read()
+    with request("/reports/") as response:
+        report = response.read()
+        assert response.status == 200 and b"100,000 kWh" in report
+        assert b"Electricity supply (fallback)" in report and b"125,00 SEK" in report
+        assert "no-store" in response.headers["Cache-Control"]
     corrected = review_values(review_path)
     corrected["usages-0-quantity_milli"] = "101,125"
     corrected["note"] = "Synthetic production consumption correction."
@@ -215,6 +220,9 @@ def check_ingestion_http():
         assert response.status == 409 and b"Your entries are retained" in response.read()
     invoice.refresh_from_db()
     assert invoice.review_revision == 2 and Usage.objects.get().quantity_milli == 101125
+    with request("/reports/") as response:
+        report = response.read()
+        assert response.status == 200 and b"101,125 kWh" in report and b"100,000 kWh" not in report
     with post_review(
         location + "reparse/",
         {"extraction_revision": 1, "csrfmiddlewaretoken": cookies[settings.CSRF_COOKIE_NAME]},
@@ -288,12 +296,27 @@ def check_ingestion_http():
     assert Usage.objects.get(section__invoice__document=failed).quantity_milli == -1250
     with request(manual_location) as response:
         assert response.status == 200 and b"-1,250 m" in response.read()
-    for path in ("/invoices/", invoice_location, manual_path, failed_location + "view/"):
+    with request("/reports/") as response:
+        report = response.read()
+        assert response.status == 200 and b"100,000 kWh" in report and b"-1,250 m" in report
+        assert b"-10,00 SEK" in report
+    with request("/reports/?date_from=2024-02-15&date_to=2024-02-15") as response:
+        report = response.read()
+        assert (
+            response.status == 200 and b"No approved costs" in report and b"100,000 kWh" in report
+        )
+    for path in (
+        "/reports/",
+        "/invoices/",
+        invoice_location,
+        manual_path,
+        failed_location + "view/",
+    ):
         with get(path, host="ci.invalid", secure=True) as response:
             assert response.status == 302 and response.headers["Location"].startswith("/login/")
     print(
         "Production upload, manual entry, approval, correction, stale review, "
-        "re-parsing, duplicates, CSRF and private source checks passed."
+        "re-parsing, duplicates, reporting, CSRF and private source checks passed."
     )
 
 

@@ -11,6 +11,10 @@ Multiple network readings must produce separate consecutive consumption periods,
 reconcile against repeated billed price quantities and pass review/approval.
 Review contains allocation totals and billing periods, with no itemized fee fields.
 Invalid totals/dates must retain the entered values and show visible errors.
+Reports must reflect corrections and duplicates, keep costs independent of multiple
+readings, select network electricity with explicit supply fallbacks, preserve signed
+credits, filter invoice dates separately from whole usage intervals, reject invalid
+filters and fit the mobile viewport. Anonymous report access is blocked.
 
 On PowerShell, from the repository root:
 

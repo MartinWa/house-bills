@@ -15,4 +15,5 @@ urlpatterns = [
     path("documents/<int:pk>/reparse/", views.reparse, name="reparse"),
     path("invoices/", views.invoices, name="invoices"),
     path("invoices/<int:pk>/", views.invoice, name="invoice"),
+    path("reports/", views.reports, name="reports"),
 ]

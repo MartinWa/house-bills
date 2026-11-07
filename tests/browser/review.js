@@ -89,6 +89,12 @@ async page => {
   await page.getByRole("link", { name: "Open approved invoice" }).click();
   await text("Approved revision 1");
 
+  await page.getByRole("link", { name: "Reports", exact: true }).click();
+  assert((await page.locator("#report-costs").innerText()).includes("138,19 SEK"), "Report multiplied or changed supply costs");
+  assert((await page.locator("#report-consumption").innerText()).includes("140,250 kWh"), "Duplicate upload multiplied consumption");
+  assert((await page.locator("#report-basis").innerText()).includes("Electricity supply (fallback)"), "Supply fallback was not explicit");
+  await page.goto(supportedInvoice);
+
   await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
   const stale = await page.context().newPage();
   await stale.goto(page.url());
@@ -97,6 +103,11 @@ async page => {
   await submit("Save correction");
   await text("Approved revision 2");
   await text("141,125 kWh");
+  const reportPage = await page.context().newPage();
+  await reportPage.goto(`${base}/reports/`);
+  assert((await reportPage.locator("#report-consumption").innerText()).includes("141,125 kWh"), "Report did not refresh the approved correction");
+  assert(!(await reportPage.locator("#report-consumption").innerText()).includes("140,250 kWh"), "Report retained the previous approved quantity");
+  await reportPage.close();
   await fill("usages-0-quantity_milli", "143,000", stale);
   await submit("Save correction", 409, stale);
   await text("Your entries are retained", stale);
@@ -217,9 +228,51 @@ async page => {
   await text("121,125 kWh");
   await text("200,000 kWh");
 
+  await page.getByRole("link", { name: "Reports", exact: true }).click();
+  const consumption = await page.locator("#report-consumption").innerText();
+  assert(consumption.includes("321,125 kWh") && consumption.includes("510,000 kWh") && consumption.includes("-1,250 m³"), "Report lost network intervals, a property or signed corrections");
+  assert(!consumption.includes("140,250 kWh"), "Report summed supply with network consumption");
+  assert((await page.locator("#report-costs").innerText()).includes("473,08 SEK"), "Network cost was multiplied by its readings");
+  await select("property", houseTwo);
+  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+  assert(!(await page.locator("#report-consumption").innerText()).includes("Browser House One"), "Report property filter failed");
+  await page.getByRole("link", { name: "Clear filters", exact: true }).click();
+  await fill("date_from", "2024-02-15");
+  await fill("date_to", "2024-02-15");
+  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+  assert((await page.locator("#report-costs").innerText()).includes("No approved costs"), "Report filtered costs by billing period instead of invoice date");
+  assert((await page.locator("#report-consumption").innerText()).includes("200,000 kWh"), "Report prorated a complete billed interval");
+  await fill("date_from", "2024-03-05");
+  await fill("date_to", "2024-02-01");
+  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+  await text("End date must be on or after start date.");
+  assert(await page.locator("#report-costs").count() === 0, "Invalid report filters produced totals");
+  await page.getByRole("link", { name: "Clear filters", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Reports overflow on mobile");
+  await page.screenshot({ path: ".playwright-cli/step7-reports-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.goto(supportedInvoice);
+  await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
+  await fill("usages-0-start", "2024-01-01");
+  await fill("note", "Synthetic partial network coverage check.");
+  await submit("Save correction");
+  await page.getByRole("link", { name: "Reports", exact: true }).click();
+  const reportIssue = page.getByRole("table", { name: "Electricity consumption needing review" });
+  assert((await reportIssue.innerText()).includes("Network readings cover only part of this supply period."), "Partial network coverage was not visible");
+  assert((await reportIssue.innerText()).includes("2024-01-01 – 2024-02-29"), "Report changed the inclusive displayed final day");
+  assert((await reportIssue.getByRole("link", { name: "View source", exact: true }).getAttribute("href")).includes(`${new URL(supported.url).pathname}view/#page=`), "Report warning linked to another source");
+  await reportIssue.getByRole("link", { name: "Review invoice", exact: true }).click();
+  assert(await page.locator('[name="usages-0-start"]').inputValue() === "2024-01-01", "Report warning opened another invoice review");
+  await fill("usages-0-start", "2024-02-01");
+  await submit("Save correction");
+  await page.getByRole("link", { name: "Reports", exact: true }).click();
+  assert(await page.getByRole("table", { name: "Electricity consumption needing review" }).count() === 0, "Resolved report exclusion remained stale");
+
   const anonymous = await page.context().browser().newContext();
   try {
-    for (const url of [`${base}/invoices/`, manualInvoice, manual.url, `${manual.url}review/`, `${manual.url}source/`, `${manual.url}view/`]) {
+    for (const url of [`${base}/reports/`, `${base}/invoices/`, manualInvoice, manual.url, `${manual.url}review/`, `${manual.url}source/`, `${manual.url}view/`]) {
       const response = await anonymous.request.get(url, { maxRedirects: 0 });
       assert(response.status() === 302 && response.headers().location.startsWith("/login/"), `Anonymous access was allowed: ${url}`);
     }
@@ -230,5 +283,5 @@ async page => {
     await anonymous.close();
   }
   assert(errors.length === 0, `Browser script errors: ${errors.join(", ")}`);
-  return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, mobile layout and private source checks passed.";
+  return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, reporting sources/totals/filters, mobile layout and private source checks passed.";
 }

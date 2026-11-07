@@ -134,3 +134,89 @@ print('Migration, history preservation and legacy restoration verified.')
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_reporting_migration_is_reversible_and_preserves_all_approved_and_private_rows(tmp_path):
+    data = tmp_path / "reporting-migration-data"
+    data.mkdir()
+    script = r"""
+from datetime import date
+import django
+django.setup()
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
+
+auth = ('auth', '0012_alter_user_first_name_max_length')
+old_targets = [('bills', '0007_cost_totals'), auth]
+new_targets = [('bills', '0008_reporting_views'), auth]
+executor = MigrationExecutor(connection)
+executor.migrate(old_targets)
+apps = executor.loader.project_state(old_targets).apps
+actor = apps.get_model('auth', 'User').objects.create(username='synthetic-report-migration')
+house = apps.get_model('bills', 'Property').objects.create(name='Synthetic House', slug='house')
+vendor = apps.get_model('bills', 'Vendor').objects.create(name='Synthetic Utilities', slug='vendor')
+document = apps.get_model('bills', 'Document').objects.create(
+    sha256='b' * 64, original_filename='synthetic.pdf',
+    legacy_charge_details=[{'private': 'retained'}])
+invoice = apps.get_model('bills', 'Invoice').objects.create(
+    document=document, vendor=vendor, reference='SYNTHETIC-MIGRATION-001',
+    invoice_date=date(2024, 3, 5), net_minor=1000, vat_minor=250, rounding_minor=-1,
+    invoice_total_minor=1249, amount_due_minor=1249, status='approved',
+    approved_at=timezone.now(), approved_by=actor, review_revision=1)
+section = apps.get_model('bills', 'BillingSection').objects.create(
+    invoice=invoice, property=house, section_id='section', service='electricity_network',
+    net_minor=1000, vat_minor=250, gross_minor=1250,
+    start=date(2024, 2, 1), end=date(2024, 3, 1))
+evidence = {'page': 1, 'text': 'Wholly synthetic evidence', 'bbox': [0, 0, 1, 1]}
+apps.get_model('bills', 'Usage').objects.create(
+    section=section, position=0, utility='electricity', unit='kWh', quantity_milli=123456,
+    start=date(2024, 2, 1), end=date(2024, 3, 1), basis='measured', evidence=evidence)
+attempt = apps.get_model('bills', 'ExtractionAttempt').objects.create(
+    document=document, revision=1, state='review', layout_family='layout_01',
+    layout_version='v1', parser_revision='synthetic', candidate={'private': 'candidate'},
+    page_evidence=[evidence])
+apps.get_model('bills', 'ReviewRevision').objects.create(
+    invoice=invoice, revision=1, actor=actor, extraction=attempt, snapshot={'private': 'approval'})
+tables = ['auth_user', 'bills_property', 'bills_vendor', 'bills_document',
+          'bills_invoice', 'bills_billingsection', 'bills_usage',
+          'bills_extractionattempt', 'bills_reviewrevision']
+def snapshot():
+    with connection.cursor() as cursor:
+        return {table: cursor.execute(f'SELECT * FROM {table} ORDER BY id').fetchall()
+                for table in tables}
+def views():
+    with connection.cursor() as cursor:
+        return {row[0] for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'view'").fetchall()}
+before = snapshot()
+expected_views = {'reporting_invoices', 'reporting_costs', 'reporting_usage',
+                  'reporting_electricity_selection', 'reporting_electricity_usage'}
+for targets in (new_targets, old_targets, new_targets):
+    MigrationExecutor(connection).migrate(targets)
+    assert snapshot() == before
+    assert views() == (expected_views if targets == new_targets else set())
+    if targets == new_targets:
+        with connection.cursor() as cursor:
+            assert cursor.execute(
+                'SELECT sum(gross_minor) FROM reporting_costs').fetchone() == (1250,)
+            assert cursor.execute(
+                'SELECT quantity_milli FROM reporting_electricity_usage').fetchone() == (123456,)
+            indexes = {row[1] for row in cursor.execute(
+                'PRAGMA index_list(bills_usage)').fetchall()}
+            assert 'usage_utility_period' in indexes
+print('Reporting migration, reversal and exact row preservation verified.')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
+            "HOUSE_BILLS_DATA_DIR": str(data),
+            "HOUSE_BILLS_STATE_DIR": str(tmp_path / "reporting-migration-state"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

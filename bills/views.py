@@ -1,3 +1,5 @@
+import sqlite3
+
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
@@ -9,10 +11,11 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from filelock import Timeout
 
-from .forms import InvoiceFilterForm, ReparseForm, UploadForm
+from .forms import InvoiceFilterForm, ReparseForm, ReportFilterForm, UploadForm
 from .models import Document, Invoice
 from .presentation import extraction_summary, proposal_differences, warning_details
 from .processing import parse_document
+from .reporting import read_report
 from .review_forms import ReviewForms
 from .reviewing import ReviewContext, current_review_context
 from .services import (
@@ -131,6 +134,32 @@ def invoices(request):
         request,
         "bills/invoices.html",
         {"page": page, "form": form, "filter_query": query.urlencode()},
+    )
+
+
+@never_cache
+@require_GET
+def reports(request):
+    form = ReportFilterForm(request.GET)
+    report = {"costs": [], "consumption": [], "breakdown": [], "issues": []}
+    unavailable, status = False, 200
+    if form.is_valid():
+        property = form.cleaned_data["property"]
+        try:
+            report = read_report(
+                property_id=property.pk if property else None,
+                date_from=form.cleaned_data["date_from"],
+                date_to=form.cleaned_data["date_to"],
+            )
+        except sqlite3.DatabaseError:
+            unavailable, status = True, 503
+    else:
+        status = 400
+    return render(
+        request,
+        "bills/reports.html",
+        {"form": form, "unavailable": unavailable, **report},
+        status=status,
     )
 
 

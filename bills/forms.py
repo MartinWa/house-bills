@@ -24,6 +24,32 @@ class InvoiceFilterForm(forms.Form):
     )
 
 
+class ReportFilterForm(forms.Form):
+    property = forms.ModelChoiceField(
+        label="Property",
+        queryset=Property.objects.all(),
+        required=False,
+        empty_label="All properties",
+    )
+    date_from = forms.DateField(
+        label="Start date",
+        required=False,
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+    )
+    date_to = forms.DateField(
+        label="End date",
+        required=False,
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("date_from"), cleaned.get("date_to")
+        if start and end and end < start:
+            self.add_error("date_to", "End date must be on or after start date.")
+        return cleaned
+
+
 class ReparseForm(forms.Form):
     extraction_revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
 

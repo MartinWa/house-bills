@@ -1,0 +1,65 @@
+{% extends "bills/base.html" %}
+{% load bill_values %}
+{% block title %}Reports · House Bills{% endblock %}
+{% block content %}
+  <h2>Reports</h2>
+  <p>Totals use the latest approved invoices and corrections. Costs use invoice dates. Consumption includes whole billed intervals that overlap the chosen dates.</p>
+  <form method="get" class="filters">
+    {% for field in form %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+    <button type="submit">Apply filters</button>
+    <a href="{% url 'bills:reports' %}">Clear filters</a>
+  </form>
+  {% if unavailable %}
+    <p role="alert">Reports are unavailable. Try again shortly.</p>
+  {% elif not form.errors %}
+    {% if issues %}
+      <div class="notice" role="alert">
+        <p>Some electricity consumption needs review and is excluded from the totals. Network readings are used where available; supply is a fallback for periods without network readings.</p>
+        <div class="table-scroll">
+          <table>
+            <caption>Electricity consumption needing review</caption>
+            <thead><tr><th>Property</th><th>Invoice and source</th><th>Billed period</th><th>Consumption</th><th>Reason</th></tr></thead>
+            <tbody>{% for row in issues %}<tr>
+              <td>{{ row.property_name }}</td>
+              <td><a href="{% url 'bills:invoice' row.invoice_id %}">{{ row.reference }}</a><small>{{ row.source_label }}</small><a href="{% url 'bills:review' row.document_id %}">Review invoice</a> · <a href="{% url 'bills:source_view' row.document_id %}{% if row.source_page %}#page={{ row.source_page }}{% endif %}">View source</a></td>
+              <td>{{ row.period_start|date:"Y-m-d" }} – {{ row.period_end|final_day }}</td>
+              <td>{{ row.quantity_milli|quantity }} kWh</td>
+              <td>{{ row.reason }}</td>
+            </tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+    <h3>Service costs</h3>
+    <p>Invoice rounding is retained on each invoice and is not allocated to a property or service.</p>
+    <div class="table-scroll">
+      <table id="report-costs">
+        <thead><tr><th>Property</th><th>Service</th><th>Excluding VAT</th><th>VAT</th><th>Including VAT</th></tr></thead>
+        <tbody>{% for row in costs %}<tr>
+          <td>{{ row.property_name }}</td><td>{{ row.service_label }}</td><td>{{ row.net_minor|money }} {{ row.currency }}</td><td>{{ row.vat_minor|money }} {{ row.currency }}</td><td>{{ row.gross_minor|money }} {{ row.currency }}</td>
+        </tr>{% empty %}<tr><td colspan="5">No approved costs match these filters.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <h3>Consumption totals</h3>
+    <p>Electricity uses network readings first, with supply as a fallback. Signed corrections are retained. Billed intervals are not prorated into calendar months.</p>
+    <div class="table-scroll">
+      <table id="report-consumption">
+        <thead><tr><th>Property</th><th>Utility</th><th>Consumption</th></tr></thead>
+        <tbody>{% for row in consumption %}<tr>
+          <td>{{ row.property_name }}</td><td>{{ row.utility_label }}</td><td>{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
+        </tr>{% empty %}<tr><td colspan="3">No selected consumption matches these filters.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if breakdown %}
+      <h3>Consumption by source and basis</h3>
+      <div class="table-scroll">
+        <table id="report-basis">
+          <thead><tr><th>Property</th><th>Source</th><th>Basis</th><th>Consumption</th></tr></thead>
+          <tbody>{% for row in breakdown %}<tr>
+            <td>{{ row.property_name }}</td><td>{{ row.source_label }}{% if row.source_selection == 'supply_fallback' %} (fallback){% endif %}</td><td>{{ row.basis_label }}</td><td>{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    {% endif %}
+  {% endif %}
+{% endblock %}

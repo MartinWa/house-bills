@@ -62,7 +62,8 @@ Missing, invalid or ambiguous reading periods produce consumption warnings even 
 the costs reconcile. Supply price rows must agree for each period; their repeated
 quantities produce one usage record. Annual
 estimates, historical charts and cumulative readings are excluded. Network and supply
-remain separate sources; canonical reporting selection follows later.
+remain separate sources; [approved reporting](reporting.md) selects network readings
+first and uses supply as an explicit fallback.
 
 ## Financial reconciliation
 

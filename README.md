@@ -12,7 +12,9 @@ assignments with private
 evidence. Review forms support manual entry, approval, corrections and acceptance of
 re-parsed proposals, with stale-save protection and retained approval history.
 Invoice screens show approved allocations and consumption with private PDF viewing
-and download. Grafana reporting is the next milestone.
+and download. Authenticated reports show approved costs and consumption with network
+electricity preference, explicit supply fallbacks and visible overlap exclusions.
+Grafana integration is deferred to step 7b.
 
 Individual fee rows stay in the original PDF and extraction evidence. Parsing and
 review use invoice totals, dated property/service allocations and billed consumption.
@@ -43,3 +45,5 @@ invoice allocations, validation and revision history.
 See [uploads and private originals](docs/ingestion.md) for limits, duplicate handling,
 approved paths and storage recovery.
 See [review and correction](docs/review.md) for supported and manual invoice workflows.
+See [approved reporting](docs/reporting.md) for date filters, electricity source
+selection, exact SQLite views and executable example queries.
