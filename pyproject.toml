@@ -3,14 +3,31 @@ name = "house-bills"
 version = "0.0.1"
 description = "Swedish utility invoice extraction and review"
 requires-python = ">=3.14,<3.15"
-dependencies = ["pdfplumber==0.11.10"]
+dependencies = [
+    "Django==5.2.18",
+    "filelock==4.2.6",
+    "pdfplumber==0.11.10",
+    "tzdata==2026.6",
+    "waitress==3.0.2",
+    "whitenoise==6.12.0",
+]
 
 [dependency-groups]
-dev = ["pytest>=8.4,<10", "reportlab>=4.4,<5", "ruff>=0.14,<1"]
+dev = [
+    "pytest==9.2.0",
+    "pytest-django==4.14.0",
+    "reportlab==4.5.1",
+    "ruff==0.17.4",
+]
+
+[tool.uv]
+package = false
 
 [tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "house_bills.settings.test"
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--strict-markers"
 
 [tool.ruff]
 target-version = "py314"

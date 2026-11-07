@@ -1,0 +1,22 @@
+# Only source and build inputs enter the context. Private/live state is excluded by default.
+**
+!Dockerfile
+!manage.py
+!pyproject.toml
+!uv.lock
+!requirements.txt
+!requirements-dev.txt
+!house_bills/
+!house_bills/**
+!bills/
+!bills/**
+!tests/
+!tests/**
+!tools/
+!tools/**
+**/__pycache__
+**/*.py[cod]
+**/*.pdf
+**/*.sqlite3
+**/*.sqlite3-*
+**/.env*

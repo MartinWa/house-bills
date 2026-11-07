@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.7"
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+
+jobs:
+  checks:
+    name: Checks (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - name: Verify lockfile and hash-pinned Docker dependencies
+        run: |
+          uv lock --check
+          uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file requirements.txt > /dev/null
+          uv export --locked --only-group dev --no-emit-project --format requirements-txt --output-file requirements-dev.txt > /dev/null
+          git diff --exit-code -- requirements.txt requirements-dev.txt
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build development and test image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: development
+          load: true
+          push: false
+          provenance: false
+          tags: house-bills:development
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          cache-from: type=gha,scope=ci-development
+          cache-to: type=gha,scope=ci-development,mode=max
+          github-token: ""
+      - name: Lint and check formatting
+        run: |
+          docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools manage.py
+          docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools manage.py
+      - name: Check Django and migration drift
+        run: |
+          docker compose -f compose.development.yaml run --rm app python manage.py check --database default
+          docker compose -f compose.development.yaml run --rm app python manage.py makemigrations --check --dry-run
+      - name: Check clean development startup
+        run: |
+          docker compose -f compose.development.yaml up -d --no-build app
+          docker compose -f compose.development.yaml exec -T app python -m tools.check_http
+          docker compose -f compose.development.yaml exec -T app python manage.py migrate --check
+      - name: Run synthetic parser and application tests
+        run: docker compose -f compose.development.yaml run --rm app pytest -q
+      - name: Stop development containers
+        if: always()
+        run: docker compose -f compose.development.yaml down
+
+  container:
+    name: Container (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate workflow syntax
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/actionlint.tar.gz"
+          printf '%s  %s\n' '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8' \
+            "$RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build production image without publishing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: production
+          load: true
+          push: false
+          provenance: false
+          tags: house-bills:ci
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          cache-from: type=gha,scope=ci-production
+          cache-to: type=gha,scope=ci-production,mode=max
+          github-token: ""
+      - name: Verify linked runtime, startup migrations and non-root HTTP serving
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /data:mode=1777 --tmpfs /tmp \
+            --env HOUSE_BILLS_SECRET_KEY=synthetic-ci-container-key-never-for-runtime-000000000000000000 \
+            --env HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid \
+            house-bills:ci sh -ec '
+              python /usr/local/bin/house-bills-check-runtime.py
+              python -m tools.check_production
+              python manage.py migrate --check
+              python manage.py check --deploy --database default
+            '

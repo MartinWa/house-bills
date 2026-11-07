@@ -7,5 +7,11 @@ __pycache__/
 .ruff_cache/
 private/
 .env
+.env.*
+!.env.example
+data/
+state/
+staticfiles/
+backups/
 *.sqlite3
 *.sqlite3-*

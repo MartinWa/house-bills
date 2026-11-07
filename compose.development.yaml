@@ -1,0 +1,27 @@
+# Windows edits source; databases, environments and caches stay on Linux volumes.
+name: house-bills-development
+services:
+  app:
+    build:
+      context: .
+      target: development
+    image: house-bills:development
+    init: true
+    ports:
+      - "127.0.0.1:${HOUSE_BILLS_DEV_PORT:-8001}:8000"
+    volumes:
+      - type: bind
+        source: .
+        target: /app
+      - development-state:/state
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  development-state:

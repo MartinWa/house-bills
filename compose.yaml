@@ -1,0 +1,32 @@
+# Installation-specific values come from private .env configuration.
+services:
+  app:
+    build:
+      context: .
+      target: production
+    env_file: "${HOUSE_BILLS_ENV_FILE:-.env}"
+    environment:
+      DJANGO_SETTINGS_MODULE: house_bills.settings.production
+      HOUSE_BILLS_DATA_DIR: /data
+    user: "${APP_UID:?Set a non-root APP_UID}:${APP_GID:?Set APP_GID}"
+    volumes:
+      - "${APP_DATA_PATH:?Set a private host-local data directory}:/data"
+    networks:
+      - managed-proxy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=536870912,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  managed-proxy:
+    external: true
+    name: "${PROXY_NETWORK:?Set the existing private proxy network}"
