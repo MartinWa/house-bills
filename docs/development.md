@@ -123,11 +123,24 @@ starts a separate restored instance with migrations disabled. Tests, browser dep
 and private state must be absent from production. Weekly and manual rebuilds bypass
 the image cache.
 
-Separate **Dependency review** and **zizmor** workflows audit dependency changes and
-workflow security. Actions are pinned by full commit SHA. Dependabot proposes updates;
-its patch auto-merge workflow relies on enabled auto-merge and required-check protections.
-Enable those repository settings only after the corresponding GitHub checks exist and pass.
-Local checks do not establish that GitHub has executed the workflows.
+Separate **Dependency review**, **zizmor** and **Scorecard** workflows audit dependency
+changes, workflow security and repository posture. Actions are pinned by full commit SHA.
+Dependabot proposes updates; its patch auto-merge workflow relies on enabled auto-merge and
+required-check protections. Enable those repository settings only after the corresponding
+GitHub checks exist and pass. Local checks do not establish that GitHub has executed the
+workflows.
+
+Repository settings currently in use:
+
+- Squash-only merges, automatic branch deletion, auto-merge and no wiki; Dependabot alerts,
+  Dependabot security updates, private vulnerability reporting, immutable releases,
+  secret-scanning push protection, SHA-pinned Actions and default code scanning are enabled.
+- The `Protect main` ruleset blocks deletion and force-pushes and requires a pull request
+  (squash-only, resolved conversations, up-to-date branch) with successful **Checks (Linux)**,
+  **Browser (Chromium)**, **Container (Linux)** and **Dependency review** status checks.
+- The `Protect release tags` ruleset blocks deleting or moving `X.Y.Z` tags.
+
+Direct pushes to `main` are therefore rejected; push a branch and open a pull request.
 
 ## Releases
 
