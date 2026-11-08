@@ -1,15 +1,16 @@
 {% extends "bills/base.html" %}
-{% block title %}{{ document.original_filename }} · House Bills{% endblock %}
+{% block title %}{{ document.display_name }} · House Bills{% endblock %}
 {% block content %}
-  <h2>{{ document.original_filename }}</h2>
+  <h2>{{ document.display_name }}</h2>
   <p>Processing: {{ document.get_state_display }}. Storage: {{ document.get_storage_state_display }}.</p>
+  {% if document.source == 'manual' %}<p><span class="status status-manual">Manual entry</span> No original PDF was uploaded; the approved values and review history are the source record.</p>{% endif %}
   {% if document.processing_message %}<p>{{ document.processing_message }}</p>{% endif %}
   {% if document.storage_error %}<p role="alert">{{ document.storage_error }}</p>{% endif %}
   {% if conflicts %}
     <p role="alert">Different files share this invoice identity. Review the sources before approving costs.</p>
-    <ul>{% for other in conflicts %}<li><a href="{% url 'bills:document' other.pk %}">{{ other.original_filename }}</a></li>{% endfor %}</ul>
+    <ul>{% for other in conflicts %}<li><a href="{% url 'bills:document' other.pk %}">{{ other.display_name }}</a></li>{% endfor %}</ul>
   {% endif %}
-  {% if document.original_path %}<p><a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' document.pk %}">Download original PDF</a></p>{% endif %}
+  {% if document.original_path %}<p><a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' document.pk %}">Download original PDF</a></p>{% elif document.source == 'manual' %}<p>Manual entry – no original PDF.</p>{% endif %}
   {% if invoice.review_revision %}
     <p><a href="{% url 'bills:invoice' invoice.pk %}">Open approved invoice</a> · <a href="{% url 'bills:review' document.pk %}">Correct approved values</a></p>
     <p>Approved revision {{ invoice.review_revision }} is retained until you save a correction.</p>

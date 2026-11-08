@@ -54,6 +54,23 @@ when supplied by the source. The original and failed extraction remain preserved
 manual approval. Review forms do not save partial drafts. Validation errors retain the
 submitted fields and approved values; closing or cancelling discards unsaved entries.
 
+## Manual invoices without an original
+
+**Invoices** has an **Add manual invoice** form for a bill that exists only on paper or
+in another archive. It creates a review document with no source PDF, then opens the same
+review form. Enter vendor, reference and dates, then at least one property/service
+allocation whose net + VAT and rounding reconcile with the invoice total, plus its
+billing period. Consumption is optional. Approval follows all normal checks and
+records the reviewer and note.
+
+Manual invoices show a **Manual entry** badge instead of a source link. They have no
+**View/Download original**, **Re-parse**, or **Retry storage** action, and storage
+recovery ignores them. They are otherwise normal approved invoices: corrections,
+identity conflicts and reports behave identically. Their checksum is empty, so two
+manual entries never collide as duplicate uploads. Prefer a real PDF when one becomes
+available; the existing vendor/reference/kind identity check then surfaces the
+conflict instead of silently counting the bill twice.
+
 ## Approved invoices and corrections
 
 **Invoices** lists approved records and filters by property, service and an inclusive
@@ -98,4 +115,7 @@ storage recovery on the document page. See [uploads and private originals](inges
 The application tests and [Chromium browser check](../tests/browser/README.md) exercise
 these workflows with wholly synthetic PDFs. [Reports](reporting.md) reflects accepted
 corrections and links ambiguous electricity intervals back to invoice review.
-Grafana integration and complete real-format coverage remain subsequent steps.
+A bulk backfill of ledger rows uses the same manual-entry service; the
+`import_ledger_invoices` command and its input file stay with the private ledger data,
+outside this repository. Grafana integration and complete real-format coverage remain
+subsequent steps.

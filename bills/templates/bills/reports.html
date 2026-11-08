@@ -8,6 +8,7 @@
   {% if unavailable %}
     <p role="alert">Reports are unavailable. Try again shortly.</p>
   {% elif not form.errors %}
+    {% if manual_invoices %}<p><span class="status status-manual">Manual entries</span> This report includes {{ manual_invoices }} manually entered invoice{{ manual_invoices|pluralize }} without an original PDF.</p>{% endif %}
     {% if issues %}
       <div class="notice" role="alert">
         <p>Some electricity consumption needs review and is excluded from the totals. Network readings are used where available; supply is a fallback for periods without network readings.</p>
@@ -17,7 +18,7 @@
             <thead><tr><th>Property</th><th>Invoice and source</th><th>Billed period</th><th>Consumption</th><th>Reason</th></tr></thead>
             <tbody>{% for row in issues %}<tr>
               <td>{{ row.property_name }}</td>
-              <td><a href="{% url 'bills:invoice' row.invoice_id %}">{{ row.reference }}</a><small>{{ row.source_label }}</small><a href="{% url 'bills:review' row.document_id %}">Review invoice</a> · <a href="{% url 'bills:source_view' row.document_id %}{% if row.source_page %}#page={{ row.source_page }}{% endif %}">View source</a></td>
+              <td><a href="{% url 'bills:invoice' row.invoice_id %}">{{ row.reference }}</a><small>{{ row.source_label }}</small><a href="{% url 'bills:review' row.document_id %}">Review invoice</a>{% if row.document_id not in manual_document_ids %} · <a href="{% url 'bills:source_view' row.document_id %}{% if row.source_page %}#page={{ row.source_page }}{% endif %}">View source</a>{% endif %}</td>
               <td>{{ row.period_start|date:"Y-m-d" }} – {{ row.period_end|final_day }}</td>
               <td>{{ row.quantity_milli|quantity }} kWh</td>
               <td>{{ row.reason }}</td>

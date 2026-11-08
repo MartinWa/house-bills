@@ -59,6 +59,19 @@ def upload(request):
 
 
 @never_cache
+@require_POST
+def manual_invoice(request):
+    """Create a reviewable invoice with no original PDF, for older paper or ledger data."""
+    document = Document.objects.create(
+        source=Document.Source.MANUAL,
+        state=Document.State.REVIEW,
+        processing_message="Manual entry; no original PDF.",
+    )
+    messages.info(request, "Enter the invoice values from the paper or ledger.")
+    return redirect("bills:review", pk=document.pk)
+
+
+@never_cache
 @require_GET
 def documents(request):
     return _documents_response(request)
@@ -179,7 +192,14 @@ def invoices(request):
 @require_GET
 def reports(request):
     form = ReportFilterForm(request.GET)
-    report = {"costs": [], "consumption": [], "breakdown": [], "issues": []}
+    report = {
+        "costs": [],
+        "consumption": [],
+        "breakdown": [],
+        "issues": [],
+        "manual_invoices": 0,
+        "manual_document_ids": [],
+    }
     unavailable, status = False, 200
     if form.is_valid():
         property = form.cleaned_data["property"]
@@ -338,7 +358,10 @@ def review(request, pk):
 @never_cache
 @require_POST
 def reparse(request, pk):
-    get_object_or_404(Document, pk=pk)
+    source = get_object_or_404(Document, pk=pk)
+    if source.source == Document.Source.MANUAL:
+        messages.error(request, "Manual entries have no original PDF to re-parse.")
+        return redirect("bills:document", pk=pk)
     form = ReparseForm(request.POST)
     if not form.is_valid():
         messages.error(request, "The re-parsing form is invalid; reload the document.")
@@ -374,7 +397,9 @@ def retry_storage(request, pk):
 @never_cache
 @require_GET
 def source(request, pk, download=True):
-    get_object_or_404(Document, pk=pk)
+    document = get_object_or_404(Document, pk=pk)
+    if not document.original_path:
+        raise Http404("This document has no original PDF.")
     try:
         handle, filename = open_original(pk)
     except OSError, ValidationError:

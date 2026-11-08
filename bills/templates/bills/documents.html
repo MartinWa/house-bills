@@ -20,7 +20,7 @@
     <tbody>
       {% for document in page %}
         <tr>
-          <td class="document-name"><a href="{% url 'bills:document' document.pk %}">{{ document.original_filename }}</a></td>
+          <td class="document-name"><a href="{% url 'bills:document' document.pk %}">{{ document.display_name }}</a>{% if document.source == 'manual' %} <span class="status status-manual">Manual entry</span>{% endif %}</td>
           <td>{{ document.created_at|date:"Y-m-d H:i" }}</td>
           <td><span class="status status-{{ document.state }}">{{ document.get_state_display }}</span></td>
           <td><span class="status status-{{ document.storage_state }}">{{ document.get_storage_state_display }}</span></td>

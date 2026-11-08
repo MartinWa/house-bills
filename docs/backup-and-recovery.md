@@ -43,7 +43,10 @@ Packages use `database.sqlite3`, `invoices/`, `configuration/` and a versioned
 operator inspection; transient originals/parse locks are recreated on restore.
 Verification checks every file's SHA-256 and size, rejects unlisted files and
 symlinks, checks SQLite integrity and foreign keys, and verifies checksum-correct
-recoverable bytes for each document and valid complete intake receipt. Missing
+recoverable bytes for each uploaded document and valid complete intake receipt.
+Manual invoices have no original by design: their database rows are verified to have an
+empty checksum and no staging/publication paths, and no source file is expected.
+Approved values and review snapshots remain recoverable from the database snapshot. Missing
 or corrupt originals prevent publication of a complete backup.
 
 The snapshot uses rollback journaling and is self-contained. Never copy a live

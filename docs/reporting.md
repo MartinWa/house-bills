@@ -3,7 +3,11 @@
 **Reports** shows current approved service costs and billed consumption, with property
 and date filters. Approval and correction appear on the next request. Proposals,
 failed extraction attempts and earlier approval revisions do not contribute to totals.
-Reports require login and are never cached.
+Reports require login and are never cached. Invoices transcribed without an original
+PDF contribute normally and carry a **Manual entry** badge; the page also states how
+many currently filtered invoices are manual entries.
+The count covers invoices represented in the filtered costs, selected consumption
+or consumption issues.
 
 Costs use invoice dates. Consumption filters include the complete billed intervals
 that overlap the chosen dates; selecting one day inside a monthly interval includes
@@ -121,9 +125,12 @@ Normal IMMEDIATE approval writes can proceed in WAL mode while the report keeps 
 previous complete snapshot. The next request sees the committed revision. The
 application creates no separate reporting database and needs no refresh status.
 
-Synthetic checks cover exact totals, multiple readings, shared invoices, source
-fallbacks, gaps/overlaps, signed reversals and replacements, duplicate files,
-corrections/rollback, reversible migration and read consistency during writes.
+Manual invoices without originals are included in costs and in the manual count/badge;
+the application determines them from `bills_document.source` while rendering, not from
+a reporting-view column. Synthetic checks cover exact totals, multiple readings, shared
+invoices, source fallbacks, gaps/overlaps, signed reversals and replacements, duplicate
+files, corrections/rollback, reversible migration, manual entries and read consistency
+during writes.
 The Chromium suite checks the authenticated report workflow and mobile layout;
 the production probe verifies the same reports through Waitress.
 

@@ -83,12 +83,23 @@ def ledger(tmp_path, settings, django_user_model):
     candidates, assignments = {}, {}
 
     def make(
-        specifications, *, invoice_date=date(2024, 3, 5), rounding=0, kind="invoice", issuer=None
+        specifications,
+        *,
+        invoice_date=date(2024, 3, 5),
+        rounding=0,
+        kind="invoice",
+        issuer=None,
+        source=Document.Source.UPLOAD,
     ):
         number = Document.objects.count() + 1
         document = Document.objects.create(
-            sha256=hashlib.sha256(f"wholly-synthetic-report-{number}".encode()).hexdigest(),
-            original_filename=f"synthetic-{number}.pdf",
+            source=source,
+            sha256=(
+                hashlib.sha256(f"wholly-synthetic-report-{number}".encode()).hexdigest()
+                if source == Document.Source.UPLOAD
+                else ""
+            ),
+            original_filename=f"synthetic-{number}.pdf" if source == Document.Source.UPLOAD else "",
         )
         invoice = Invoice.objects.create(document=document)
         sections = [
@@ -167,6 +178,58 @@ def rows(view):
         return [dict(row) for row in reader.execute(f"SELECT * FROM {view}")]
 
 
+@pytest.mark.parametrize(
+    ("service", "utility"), [("electricity_network", "electricity"), ("water", "water")]
+)
+def test_manual_consumption_sources_follow_billed_dates(ledger, client, service, utility):
+    house = ledger["houses"][0]
+    invoice = ledger["make"](
+        [allocation(house, service=service, usages=[usage(utility=utility)])],
+        source=Document.Source.MANUAL,
+    )
+    filters = {"property_id": house.pk, "date_from": START, "date_to": date(2024, 2, 29)}
+    report = read_report(**filters)
+    assert report["costs"] == []
+    assert report["consumption"][0]["quantity_milli"] == 100_125
+    assert report["manual_invoices"] == 1
+    assert report["manual_document_ids"] == [invoice.document_id]
+    assert read_report()["manual_invoices"] == 1
+    assert read_report(**{**filters, "property_id": ledger["houses"][1].pk})["manual_invoices"] == 0
+    assert read_report(date_to=date(2024, 1, 31))["manual_document_ids"] == []
+
+    client.force_login(ledger["actor"])
+    page = client.get(
+        reverse("bills:reports"),
+        {"property": house.pk, "date_from": "2024-02-01", "date_to": "2024-02-29"},
+    )
+    assert page.status_code == 200
+    assert b"1 manually entered invoice without an original PDF" in page.content
+
+
+def test_filtered_consumption_issues_hide_only_manual_pdf_links(ledger, client):
+    specifications = [allocation(ledger["houses"][0], usages=[usage()])]
+    manual_invoices = [
+        ledger["make"](specifications, source=Document.Source.MANUAL) for _ in range(2)
+    ]
+    uploaded_invoice = ledger["make"](specifications)
+    report = read_report(date_from=START, date_to=date(2024, 2, 29))
+    assert report["costs"] == report["consumption"] == []
+    assert len(report["issues"]) == 3
+    assert report["manual_invoices"] == 2
+    assert report["manual_document_ids"] == [invoice.document_id for invoice in manual_invoices]
+
+    client.force_login(ledger["actor"])
+    page = client.get(
+        reverse("bills:reports"), {"date_from": "2024-02-01", "date_to": "2024-02-29"}
+    )
+    assert page.status_code == 200
+    html = page.content.decode()
+    for invoice in manual_invoices:
+        assert reverse("bills:review", args=[invoice.document_id]) in html
+        assert reverse("bills:source_view", args=[invoice.document_id]) not in html
+    assert reverse("bills:source_view", args=[uploaded_invoice.document_id]) in html
+
+
 def test_review_records_and_private_proposals_are_absent_from_all_reporting_views(ledger):
     draft = Invoice.objects.create(
         document=Document.objects.create(sha256="a" * 64, original_filename="synthetic-draft.pdf")
@@ -202,7 +265,14 @@ def test_review_records_and_private_proposals_are_absent_from_all_reporting_view
         "reporting_electricity_usage",
     ):
         assert rows(view) == []
-    assert read_report() == {"costs": [], "consumption": [], "breakdown": [], "issues": []}
+    assert read_report() == {
+        "costs": [],
+        "consumption": [],
+        "breakdown": [],
+        "issues": [],
+        "manual_invoices": 0,
+        "manual_document_ids": [],
+    }
 
 
 def test_costs_and_usage_have_independent_grains_exact_values_and_native_timestamps(ledger):
