@@ -1,5 +1,14 @@
 # Invoice review and correction
 
+On **Invoices**, switch between **List** and **Folders**. Folders follow each approved
+PDF's stored property, vendor and invoice-year path, with shared originals shown once.
+Expand a folder to see one line per invoice: its date, a reference linking to invoice
+details and the stored filename linking directly to its PDF download. Counts cover
+all matching documents, including those beyond the list's first page. Approved manual
+entries appear in their own group by property, vendor and year. Filters and
+**Clear filters** retain the selected view; the folder controls also work without
+JavaScript.
+
 Sign in and upload a PDF. **Documents** keeps its original, processing status and latest
 extraction. **Review invoice** on document detail opens editable values for both supported and
 unsupported PDFs. All invoices require explicit approval.

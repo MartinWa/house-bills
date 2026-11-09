@@ -28,6 +28,9 @@ extraction only inside review. Reports show rounded totals and distinct PDF/manu
 invoice counts. Manual entries have one source explanation and leave the queue after
 approval. Invalid date ranges are checked both in the browser and through direct URLs.
 Desktop and mobile previews are saved with the synthetic browser artifacts.
+Invoice folder checks cover shared-original counts, manual entries, stored filenames,
+PDF downloads, retained filters, keyboard controls without JavaScript and an expanded
+320-pixel mobile layout. Folder previews are saved alongside the other screenshots.
 
 Footer checks cover release/GitHub links, no anonymous status requests, and a visible
 update indicator only for a newer release. The container runner supplies a synthetic

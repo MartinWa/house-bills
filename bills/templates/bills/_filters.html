@@ -1,7 +1,8 @@
 <form method="get" class="filters" data-auto-filter>
+  {% if invoice_view %}<input type="hidden" name="view" value="{{ invoice_view }}">{% endif %}
   {{ form.non_field_errors }}
   {% for field in form %}<div class="filter-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
   <noscript><button type="submit">Apply filters</button></noscript>
-  <a class="clear-filters" href="{% url clear_url %}">Clear filters</a>
+  <a class="clear-filters" href="{% if clear_filters_url %}{{ clear_filters_url }}{% else %}{% url clear_url %}{% endif %}">Clear filters</a>
   <span class="visually-hidden" role="status" data-filter-status></span>
 </form>

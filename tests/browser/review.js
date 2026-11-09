@@ -434,6 +434,46 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   const summary = await page.locator(".report-summary").innerText();
   assert(summary.includes("8 approved invoices") && summary.includes("7 from PDFs") && summary.includes("1 manual"), "Report source counts repeat allocations or omit manual entries");
 
+  await page.goto(`${base}/invoices/`);
+  await page.getByRole("navigation", { name: "Invoice view", exact: true }).getByRole("link", { name: "Folders", exact: true }).click();
+  assert(new URL(page.url()).searchParams.get("view") === "folders", "Folders switch did not select the folder view");
+  assert((await page.locator(".folder-overview").innerText()).includes("7 PDFs · 1 manual entry"), "Folder counts omit or duplicate documents");
+  assert(await page.locator(".invoice-folders > .invoice-folder > summary").filter({ hasText: "Shared" }).count() === 1, "Shared originals are not grouped once");
+  for (const folderSummary of await page.locator(".invoice-folder > summary").all()) await folderSummary.click();
+  assert(await page.locator(".folder-document").count() === 8, "Folder view duplicated allocations or omitted manual entries");
+  const manualFolder = page.locator(".invoice-folders > .invoice-folder").filter({ has: page.locator(":scope > summary", { hasText: "Manual entries" }) });
+  assert(await manualFolder.getByRole("link", { name: "BROWSER-LEDGER-001", exact: true }).isVisible(), "Manual invoice is missing from its folder");
+  assert(await manualFolder.locator(".folder-filename").count() === 0, "Manual entry acquired a PDF action");
+  const sharedFolderDocument = page.locator(".folder-document").filter({ has: page.getByRole("link", { name: "880003", exact: true }) });
+  const filenameLink = sharedFolderDocument.locator(".folder-filename");
+  assert(await filenameLink.getAttribute("href") === `${new URL(supported.url).pathname}source/`, "Folder filename linked to another original");
+  assert(/^2024-03-05_880003_[a-f0-9]{12}\.pdf$/.test(await filenameLink.innerText()), "Folder row does not show the stored filename");
+  assert(await sharedFolderDocument.locator("details").count() === 0, "Invoice row contains a dropdown");
+  const folderDownload = page.waitForEvent("download");
+  await filenameLink.click();
+  assert((await folderDownload).suggestedFilename() === "shared.pdf", "Folder download lost the original filename");
+  await page.screenshot({ path: `${artifacts}/invoice-folders-desktop.png`, fullPage: true });
+  await page.setViewportSize({ width: 320, height: 844 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Expanded invoice folders overflow on mobile");
+  assert(await sharedFolderDocument.locator(".folder-invoice-row").evaluate(row => Array.from(row.children).every(child => Math.abs(child.getBoundingClientRect().top - row.firstElementChild.getBoundingClientRect().top) < 8)), "Invoice row wraps onto multiple lines");
+  await page.screenshot({ path: `${artifacts}/invoice-folders-mobile.png`, fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await manualFolder.getByRole("link", { name: "BROWSER-LEDGER-001", exact: true }).click();
+  await text("12,50 SEK");
+  await page.goto(`${base}/invoices/?view=folders`);
+  await select("property", houseTwo);
+  await select("service", "water");
+  assert(new URL(page.url()).searchParams.get("view") === "folders", "Automatic filters lost the folder view");
+  assert((await page.locator(".folder-overview").innerText()).includes("1 PDF · 0 manual entries"), "Folder filters joined unrelated allocations");
+  await page.getByRole("navigation", { name: "Invoice view", exact: true }).getByRole("link", { name: "List", exact: true }).click();
+  assert(new URL(page.url()).searchParams.get("property") === houseTwo && new URL(page.url()).searchParams.get("service") === "water", "List switch lost the invoice filters");
+  await page.getByRole("navigation", { name: "Invoice view", exact: true }).getByRole("link", { name: "Folders", exact: true }).click();
+  await page.getByRole("link", { name: "Clear filters", exact: true }).click();
+  assert(new URL(page.url()).searchParams.get("view") === "folders", "Clearing filters lost the folder view");
+  await page.goto(`${base}/invoices/?view=folders&date_from=2024-03-06&date_to=2024-03-05`);
+  await text("End date must be on or after start date.");
+  assert(await page.locator(".folder-document").count() === 0, "Invalid folder filters produced invoices");
+
   await page.goto(`${base}/documents/`);
   await page.waitForLoadState("load");
   const invalidChooserPromise = page.waitForEvent("filechooser");
@@ -448,6 +488,17 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   const fallbackContext = await page.context().browser().newContext({ javaScriptEnabled: false, storageState: await page.context().storageState() });
   try {
     const fallback = await fallbackContext.newPage();
+    await fallback.goto(`${base}/invoices/?view=folders`);
+    const rootFolder = fallback.locator(".invoice-folders > .invoice-folder").first();
+    await rootFolder.locator(":scope > summary").focus();
+    await fallback.keyboard.press("Enter");
+    assert(await rootFolder.evaluate(element => element.open), "Folders cannot be opened by keyboard without JavaScript");
+    await fallback.locator('[name="property"]').selectOption(houseTwo);
+    await Promise.all([
+      fallback.waitForURL(url => url.searchParams.get("property") === houseTwo),
+      fallback.getByRole("button", { name: "Apply filters", exact: true }).click(),
+    ]);
+    assert(new URL(fallback.url()).searchParams.get("view") === "folders", "Filters lost the folder view without JavaScript");
     await fallback.goto(`${base}/documents/`);
     assert(await fallback.locator('input[type="file"]').isVisible(), "Upload has no fallback without JavaScript");
     await fallback.locator('input[type="file"]').setInputFiles(`${artifacts}/fixtures/shared.pdf`);
@@ -473,5 +524,5 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   await submit("Sign out");
   assert(new URL(page.url()).pathname === "/login/", "User-menu sign out did not return to sign in");
   assert(errors.length === 0, `Browser script errors: ${errors.join(", ")}`);
-  return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, reporting sources/totals/filters, mobile layout and private source checks passed.";
+  return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, invoice folders, reporting sources/totals/filters, mobile layout and private source checks passed.";
 }
