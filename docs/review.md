@@ -72,6 +72,10 @@ allocation whose net + VAT and rounding reconcile with the invoice total, plus i
 billing period. Consumption is optional. Approval follows all normal checks and
 records the reviewer and note.
 
+Before an invoice is saved, **Cancel** in the manual-entry form deletes the empty entry.
+Leaving the page keeps the placeholder until it is completed or deleted; entered values
+are not saved. Cancelling a correction keeps the saved invoice.
+
 Manual invoices show a **Manual entry** badge instead of a source link. They have no
 **View/Download original**, **Re-parse**, or **Retry storage** action, and storage
 recovery ignores them. They are otherwise normal approved invoices: corrections,
@@ -101,6 +105,18 @@ Different files with the same vendor/reference/type show source conflicts. Only 
 invoice with that identity can be approved. Open both sources and resolve the identity
 before approving the other file. Exact duplicate uploads reopen the existing document
 and preserve its approvals.
+
+## Delete a document and start again
+
+Every document has **Delete document**, including uploaded PDFs, manual invoices,
+failed extractions and approved invoices. The delete page identifies the document and
+its invoices. Confirming deletion removes its original PDF, extracted proposals,
+invoice values, allocations, consumption and review history. Its approved costs and
+consumption immediately leave reports. Vendor and property configuration stays available.
+
+Uploading the same PDF after deletion creates a fresh document and extraction requiring
+approval. A delete page opened before a new extraction or saved correction must be reloaded
+so the current document can be checked before deletion.
 
 ## Re-parsing and stale forms
 

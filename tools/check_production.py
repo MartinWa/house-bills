@@ -24,9 +24,10 @@ from .synthetic_pdf import invoice_pdf
 class ReviewFields(HTMLParser):
     """Read rendered form values, including signed context, over real HTTP."""
 
-    def __init__(self, page):
+    def __init__(self, page, *, form_id="review-form"):
         super().__init__()
         self.values = {}
+        self.form_id = form_id
         self.active = False
         self.templates = 0
         self.select = None
@@ -36,7 +37,7 @@ class ReviewFields(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if tag == "form":
-            self.active = attrs.get("id") == "review-form"
+            self.active = attrs.get("id") == self.form_id
         if tag == "template":
             self.templates += 1
         if not self.active or self.templates:
@@ -82,6 +83,7 @@ def check_ingestion_http():
         Document,
         Invoice,
         Property,
+        ReviewRevision,
         Usage,
         Vendor,
         VendorIssuerIdentifier,
@@ -318,9 +320,45 @@ def check_ingestion_http():
     ):
         with get(path, host="ci.invalid", secure=True) as response:
             assert response.status == 302 and response.headers["Location"].startswith("/login/")
+
+    # Keep the retained recovery fixture intact while exercising a full restart over HTTP.
+    replay_bytes = invoice_pdf(reference="880100")
+    with request("/upload/", multipart(payload=replay_bytes)) as response:
+        assert response.status == 302
+        replay_location = response.headers["Location"]
+    replay_id = int(replay_location.split("/")[2])
+    replay = review_values(replay_location + "review/")
+    replay["reference"] = "SYNTHETIC-DELETE-REPLAY-001"
+    with post_review(replay_location + "review/", replay) as response:
+        assert response.status == 302
+    assert Invoice.objects.get(document_id=replay_id).status == Invoice.Status.APPROVED
+
+    def confirm_delete(location):
+        with request(location + "delete/") as response:
+            assert response.status == 200
+            fields = ReviewFields(response.read(), form_id="delete-form").values
+        assert "token" in fields and "csrfmiddlewaretoken" in fields
+        with post_review(location + "delete/", fields) as response:
+            assert response.status == 302 and response.headers["Location"] == "/documents/"
+        with request(location + "view/") as response:
+            assert response.status == 404
+
+    confirm_delete(replay_location)
+    assert not ReviewRevision.objects.filter(invoice__document_id=replay_id).exists()
+    with request("/upload/", multipart(payload=replay_bytes)) as response:
+        assert response.status == 302
+        fresh_location = response.headers["Location"]
+    assert fresh_location != replay_location
+    fresh_id = int(fresh_location.split("/")[2])
+    fresh = Document.objects.get(pk=fresh_id)
+    assert fresh.state == Document.State.REVIEW and fresh.extraction_revision == 1
+    assert fresh.invoices.get().review_revision == 0
+    confirm_delete(fresh_location)
+    assert Document.objects.count() == 2 and Invoice.objects.count() == 2
     print(
         "Production upload, manual entry, approval, correction, stale review, "
-        "re-parsing, duplicates, reporting, CSRF and private source checks passed."
+        "re-parsing, duplicates, deletion and re-upload, reporting, CSRF "
+        "and private source checks passed."
     )
 
 

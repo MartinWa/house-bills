@@ -160,6 +160,11 @@ After approval commits, original publication runs under the shared storage lock;
 failed moves preserve approved values and a recoverable publication journal.
 See [uploads and private originals](ingestion.md).
 
+Explicit whole-document deletion removes its invoices, allocations, usage, review
+revisions and extraction attempts together. The delete form binds the observed invoice
+and extraction revisions, and file cleanup resumes from a private deletion receipt.
+The removed document's checksum no longer prevents a fresh upload of the same PDF.
+
 Migration `0007_cost_totals` archives existing fee rows in the document's private,
 non-editable `legacy_charge_details` field before dropping the old table. It retains every
 fee field and derives the allocation's covering period from those rows, falling back to

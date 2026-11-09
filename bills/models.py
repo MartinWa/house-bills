@@ -284,6 +284,16 @@ class Document(ValidatedModel):
         return self.original_filename or f"Manual entry #{self.pk}"
 
     @computed_property
+    def can_discard_manual_entry(self):
+        return (
+            self.source == self.Source.MANUAL
+            and self.state == self.State.REVIEW
+            and self.extraction_revision == 0
+            and not self.invoices.exists()
+            and not self.extractions.exists()
+        )
+
+    @computed_property
     def storage_needs_attention(self):
         return bool(
             self.storage_error

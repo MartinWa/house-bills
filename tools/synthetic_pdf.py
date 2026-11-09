@@ -1,11 +1,11 @@
 """Tiny wholly invented PDF for the production probe, without test dependencies."""
 
 
-def invoice_pdf():
+def invoice_pdf(*, reference="880099"):
     lines = [
         "Samfaktura.",
         "Fakturadatum: 2024-03-05",
-        "OCR-/fakturanummer: 880099",
+        f"OCR-/fakturanummer: {reference}",
         "Kundnummer: 9900",
         "Att betala: 125,00 kr",
         "Oss tillhanda senast: 2024-03-29",

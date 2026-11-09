@@ -135,6 +135,16 @@ def invoice_for_review(document_id):
 
 @coordinated_write
 @transaction.atomic
+def discard_manual_entry(document_id):
+    """Remove an empty manual placeholder, checking again inside the write transaction."""
+    document = Document.objects.select_for_update().get(pk=document_id)
+    if not document.can_discard_manual_entry:
+        raise ValidationError("Only unfinished manual entries can be cancelled.")
+    document.delete()
+
+
+@coordinated_write
+@transaction.atomic
 def register_invoice_identity(document_id, *, vendor, reference, kind=Invoice.Kind.INVOICE):
     """Register a reviewed/recognized identity without promoting costs or usage."""
     reference = reference.strip()

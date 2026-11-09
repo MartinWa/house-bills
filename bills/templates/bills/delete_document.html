@@ -1,0 +1,18 @@
+{% extends "bills/base.html" %}
+{% block title %}Delete document · House Bills{% endblock %}
+{% block content %}
+  <h2>Delete document</h2>
+  <p><a href="{% url 'bills:document' document.pk %}">{{ document.display_name }}</a></p>
+  <p>This permanently deletes the document, its original PDF, invoice values, consumption and review history. Approved costs and consumption will be removed from reports.</p>
+  {% if invoices %}
+    <ul>{% for invoice in invoices %}<li>{{ invoice.vendor|default:"Unassigned vendor" }} · {{ invoice.reference|default:"Unfinished invoice" }} · {{ invoice.get_status_display }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if document.source == 'upload' %}<p>You can upload the same PDF again to start a new entry.</p>{% endif %}
+  {% if form.errors %}
+    <div role="alert">{{ form.non_field_errors }}{{ form.token.errors }}{% if stale %}<p><a href="{% url 'bills:delete_document' document.pk %}">Reload the delete page</a> to check the current document.</p>{% endif %}</div>
+  {% endif %}
+  <form method="post" id="delete-form">
+    {% csrf_token %}{{ form.token }}
+    <p><button type="submit">Delete document</button> <a href="{% url 'bills:document' document.pk %}">Cancel</a></p>
+  </form>
+{% endblock %}

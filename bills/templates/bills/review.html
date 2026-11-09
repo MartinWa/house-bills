@@ -4,6 +4,7 @@
 {% block content %}
   <h2>Review invoice</h2>
   <p><a href="{% url 'bills:document' document.pk %}">{{ document.display_name }}</a>{% if document.original_path %} · Original PDF: <a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View</a> · <a href="{% url 'bills:source' document.pk %}">Download</a>{% endif %}</p>
+  {% if can_discard_manual_entry %}<p>This manual entry has not been saved. Cancel removes the unfinished entry.</p>{% endif %}
   {% if invoice.review_revision %}<p><a href="{% url 'bills:invoice' invoice.pk %}">Approved revision {{ invoice.review_revision }}</a> is retained until you save this correction.</p>{% endif %}
   {% if invoice.review_revision and from_proposal %}
     <p>You are reviewing the latest extraction. <a href="{% url 'bills:review' document.pk %}">Return to approved values</a>.</p>
@@ -37,7 +38,7 @@
         <p role="status" data-formset-status></p>
       </section>
     {% endfor %}
-    <p><button type="submit">{% if invoice.review_revision %}Save correction{% else %}Approve invoice{% endif %}</button> <a href="{% url 'bills:document' document.pk %}">Cancel</a></p>
+    <p><button type="submit">{% if invoice.review_revision %}Save correction{% else %}Approve invoice{% endif %}</button> {% if can_discard_manual_entry %}<button type="submit" formaction="{% url 'bills:cancel_manual_entry' document.pk %}" formnovalidate>Cancel</button>{% else %}<a href="{% url 'bills:document' document.pk %}">Cancel</a>{% endif %}</p>
   </form>
 {% endblock %}
 {% block scripts %}<script src="{% static 'bills/review.js' %}" defer></script>{% endblock %}

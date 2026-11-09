@@ -410,6 +410,29 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
 
   await page.goto(`${base}/invoices/`);
   await submit("Add manual invoice");
+  await page.getByRole("link", { name: /^Manual entry #\d+$/ }).click();
+  const unfinishedDocument = new URL(page.url()).pathname;
+  const unfinishedName = await page.getByRole("heading", { level: 2 }).innerText();
+  await text("No invoice has been saved.");
+  await page.getByRole("link", { name: "Delete document", exact: true }).click();
+  await page.getByRole("link", { name: "Cancel", exact: true }).click();
+  assert(new URL(page.url()).pathname === unfinishedDocument, "Cancelling deletion did not keep the document");
+  await page.getByRole("link", { name: "Delete document", exact: true }).click();
+  await submit("Delete document");
+  assert(new URL(page.url()).pathname === "/documents/", "Deleting a manual entry did not return to Documents");
+  assert(await page.getByRole("link", { name: unfinishedName, exact: true }).count() === 0, "Deleted manual entry remains in Documents");
+  assert((await page.context().request.get(`${base}${unfinishedDocument}`)).status() === 404, "Deleted manual entry is still accessible");
+
+  await page.goto(`${base}/invoices/`);
+  await submit("Add manual invoice");
+  const cancelledDocument = new URL(page.url()).pathname.replace(/review\/$/, "");
+  await fill("reference", "BROWSER-UNSAVED-MANUAL");
+  await submit("Cancel");
+  assert(new URL(page.url()).pathname === "/documents/", "Cancelling a manual entry did not return to Documents");
+  assert((await page.context().request.get(`${base}${cancelledDocument}`)).status() === 404, "Cancelled manual entry left an empty placeholder");
+
+  await page.goto(`${base}/invoices/`);
+  await submit("Add manual invoice");
   await select("vendor", { label: "Browser Utilities" });
   await fill("reference", "BROWSER-LEDGER-001");
   await fill("invoice_date", "2024-03-05");
@@ -422,6 +445,7 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   await page.getByRole("link", { name: "Open document", exact: true }).click();
   const ledgerDocument = new URL(page.url()).pathname;
   const ledgerName = await page.getByRole("heading", { level: 2 }).innerText();
+  assert(await page.getByRole("link", { name: "Delete document", exact: true }).isVisible(), "Approved manual invoice does not offer deletion");
   assert((await page.locator("body").innerText()).match(/no original PDF/gi).length === 1, "Manual document repeats its source explanation");
   assert(await page.getByRole("link", { name: "Review invoice", exact: true }).getAttribute("class") !== "button", "Manual review uses inconsistent action styling");
   await page.goto(`${base}/documents/`);
@@ -504,9 +528,52 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
     await fallback.locator('input[type="file"]').setInputFiles(`${artifacts}/fixtures/shared.pdf`);
     await submit("Upload invoice", 302, fallback);
     await text("This PDF is already stored.", fallback);
+    await fallback.goto(`${base}/invoices/`);
+    await submit("Add manual invoice", 302, fallback);
+    const cancelledFallback = new URL(fallback.url()).pathname.replace(/review\/$/, "");
+    await fill("reference", "BROWSER-NO-JS-UNSAVED", fallback);
+    await submit("Cancel", 302, fallback);
+    assert(new URL(fallback.url()).pathname === "/documents/", "Manual cancellation needs JavaScript");
+    assert((await fallbackContext.request.get(`${base}${cancelledFallback}`)).status() === 404, "Cancellation without JavaScript left an empty entry");
+    await fallback.goto(`${base}/invoices/`);
+    await submit("Add manual invoice", 302, fallback);
+    await fallback.getByRole("link", { name: /^Manual entry #\d+$/ }).click();
+    const deletedFallback = new URL(fallback.url()).pathname;
+    await fallback.getByRole("link", { name: "Delete document", exact: true }).click();
+    await submit("Delete document", 302, fallback);
+    assert((await fallbackContext.request.get(`${base}${deletedFallback}`)).status() === 404, "Document deletion needs JavaScript");
   } finally {
     await fallbackContext.close();
   }
+
+  await page.goto(`${base}${ledgerDocument}`);
+  await page.getByRole("link", { name: "Review invoice", exact: true }).click();
+  await page.getByRole("link", { name: "Cancel", exact: true }).click();
+  assert(new URL(page.url()).pathname === ledgerDocument, "Cancelling a correction removed the saved invoice");
+  await page.getByRole("link", { name: "Delete document", exact: true }).click();
+  await text("BROWSER-LEDGER-001");
+  await submit("Delete document");
+  assert((await page.context().request.get(`${base}${ledgerDocument}`)).status() === 404, "Deleted approved manual invoice remains accessible");
+  await page.goto(`${base}/reports/`);
+  const afterManualDeletion = await page.locator(".report-summary").innerText();
+  assert(afterManualDeletion.includes("7 approved invoices") && afterManualDeletion.includes("0 manual"), "Deleting a manual invoice did not update reports");
+
+  await page.goto(supported.url);
+  await page.getByRole("link", { name: "Delete document", exact: true }).click();
+  await submit("Delete document");
+  assert((await page.context().request.get(`${supported.url}view/`)).status() === 404, "Deleted approved PDF remains accessible");
+  const restarted = await upload("shared.pdf");
+  assert(restarted.url !== supported.url, "Re-upload after deletion reopened the old document");
+  await text("PDF uploaded.");
+  assert(await page.getByRole("region", { name: "Approved invoice", exact: true }).count() === 0, "Fresh upload retained an earlier approval");
+  await page.getByRole("link", { name: "Delete document", exact: true }).click();
+  await submit("Delete document");
+  const restartedAgain = await upload("shared.pdf");
+  assert(restartedAgain.url !== restarted.url, "A parsed entry cannot be deleted and uploaded again");
+  assert((await page.context().request.get(`${restartedAgain.url}view/`)).status() === 200, "Restarted PDF lost its source");
+  await page.goto(`${base}/reports/`);
+  const afterPdfDeletion = await page.locator(".report-summary").innerText();
+  assert(afterPdfDeletion.includes("6 approved invoices") && afterPdfDeletion.includes("6 from PDFs"), "Deleted PDF approvals remain in reports");
 
   const anonymous = await page.context().browser().newContext();
   try {
@@ -524,5 +591,5 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   await submit("Sign out");
   assert(new URL(page.url()).pathname === "/login/", "User-menu sign out did not return to sign in");
   assert(errors.length === 0, `Browser script errors: ${errors.join(", ")}`);
-  return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, invoice folders, reporting sources/totals/filters, mobile layout and private source checks passed.";
+  return "Configuration, upload, duplicates, validation, manual entry, approval, correction, stale saves, re-parsing, invoice folders, document deletion and re-upload, reporting sources/totals/filters, mobile layout and private source checks passed.";
 }

@@ -74,6 +74,10 @@ class ReparseForm(forms.Form):
     extraction_revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
 
 
+class DeleteDocumentForm(forms.Form):
+    token = forms.CharField(widget=forms.HiddenInput)
+
+
 class IdentifierForm(forms.ModelForm):
     def clean_value(self):
         return normalize_identifier(self.cleaned_data.get("kind", ""), self.cleaned_data["value"])

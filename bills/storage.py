@@ -254,12 +254,20 @@ def ingest_pdf(source, *, filename):
     # Bound streaming intake also for future folder-import callers. No database
     # transaction is held while receiving bytes or waiting for the storage lock.
     with originals_lock():
+        from .deleting import recover_document_deletions
+
+        recover_document_deletions()
         receipt = _stage(source, filename)
         document, duplicate = _accept_receipt(receipt)
     from .processing import parse_document
 
     parse_document(document.pk)
-    document.refresh_from_db()
+    try:
+        document.refresh_from_db()
+    except Document.DoesNotExist:
+        raise ValidationError(
+            "This document was deleted while processing. Upload it again."
+        ) from None
     return document, duplicate
 
 
@@ -352,6 +360,9 @@ def retry_document(document_id):
 def recover_originals():
     """Resume durable receipts and journal rows after a process interruption."""
     with originals_lock():
+        from .deleting import recover_document_deletions
+
+        recover_document_deletions()
         staging = private_path(".staging")
         invalid = 0
         for path in sorted(staging.glob("*.json")):
@@ -367,12 +378,17 @@ def recover_originals():
             raise ValidationError(
                 f"{invalid} invalid staging receipts remain; inspect private storage."
             )
-    return [
-        retry_document(pk)
-        for pk in Document.objects.exclude(source=Document.Source.MANUAL)
+    recovered = []
+    for pk in (
+        Document.objects.exclude(source=Document.Source.MANUAL)
         .order_by("pk")
         .values_list("pk", flat=True)
-    ]
+    ):
+        try:
+            recovered.append(retry_document(pk))
+        except Document.DoesNotExist:
+            continue
+    return recovered
 
 
 def open_original(document_id):

@@ -24,11 +24,17 @@ def parse_document(document_id, *, force=False, expected_revision=None):
     """
     if transaction.get_connection().in_atomic_block:
         raise RuntimeError("Parse outside database transactions.")
-    source = Document.objects.get(pk=document_id)
+    try:
+        source = Document.objects.get(pk=document_id)
+    except Document.DoesNotExist:
+        return None
     # Separate from the backup/move lock, so PDF work does not block other intake.
     lock_path = private_path(f".parse-{source.sha256}.lock")
     with FileLock(str(lock_path), timeout=10, mode=0o600):
-        source.refresh_from_db()
+        try:
+            source.refresh_from_db()
+        except Document.DoesNotExist:
+            return None
         if expected_revision is not None and (
             type(expected_revision) is not int or source.extraction_revision != expected_revision
         ):
@@ -49,6 +55,8 @@ def parse_document(document_id, *, force=False, expected_revision=None):
                 pages = read_pdf(handle)
         except PDFReadError as exc:
             pages, read_error = exc.pages, str(exc)
+        except Document.DoesNotExist:
+            return None
         except OSError, ValidationError:
             read_error = "Original is unavailable or its checksum does not match. Retry storage."
 

@@ -6,6 +6,13 @@ original bytes with SHA-256 and preserves them without preprocessing. A repeated
 upload opens the existing document, even if its filename or source house folder
 differs. Filenames never assign a property.
 
+**Delete document** is available for every document, including approved invoices.
+Its delete page identifies the source and invoices before confirmation. Deletion removes
+the document's invoice data, review and extraction history, and all original/staged PDF
+copies. Uploading the same bytes afterward creates a new entry. File cleanup is journaled
+under private storage's `.deletions/` directory and resumes before new uploads, storage
+recovery and backups, so interrupted cleanup cannot restore a deleted staging receipt.
+
 **Documents** defaults to **Needs attention**, showing unfinished reviews and storage
 problems. Select **All** or **Done** to include completed PDFs and manual entries.
 The status filter applies when changed. **Upload invoice** opens the file picker and
