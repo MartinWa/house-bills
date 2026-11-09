@@ -19,6 +19,9 @@ def main():
     environment = {
         **os.environ,
         "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
+        # Synthetic release identity; the browser scenario intercepts status requests.
+        "HOUSE_BILLS_VERSION": "0.0.1",
+        "HOUSE_BILLS_UPDATE_CHECK": "true",
         "HOUSE_BILLS_BROWSER_CHECK": "true",
         "HOUSE_BILLS_BROWSER_ARTIFACT_DIR": str(run_artifacts),
     }

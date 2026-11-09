@@ -8,6 +8,7 @@
     <link rel="icon" href="{% static 'bills/favicon.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'bills/app.css' %}">
     <script src="{% static 'bills/app.js' %}?v=2" defer></script>
+    <script src="{% static 'bills/releases.js' %}" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -40,6 +41,15 @@
       {% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
       {% block content %}{% endblock %}
     </main>
+    <footer class="app-footer">
+      <span>House Bills</span>
+      <a href="{{ app_releases_url }}" rel="noreferrer"{% if app_version != 'development' %} title="{{ app_version }}"{% endif %} data-release-link{% if app_check_updates and app_is_release %} data-release-status-url="{% url 'bills:release-status' %}"{% endif %}>
+        {% if app_version_label %}{{ app_version_label }}{% else %}Development{% endif %}
+        <span class="update-indicator" data-update-indicator hidden title="Update available"><span class="visually-hidden">Update available</span></span>
+      </a>
+      <span aria-hidden="true">·</span>
+      <a href="{{ app_repository_url }}" rel="noreferrer">GitHub</a>
+    </footer>
     {% block scripts %}{% endblock %}
   </body>
 </html>

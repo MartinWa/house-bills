@@ -30,11 +30,42 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
     await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   };
 
+  let releaseStatus = { update_available: false };
+  let releaseStatusCode = 200;
+  let releaseStatusRequests = 0;
+  await page.context().route("**/release-status/", route => {
+    releaseStatusRequests += 1;
+    return route.fulfill({ status: releaseStatusCode, contentType: "application/json", body: JSON.stringify(releaseStatus) });
+  });
   await page.goto(`${base}/login/`);
+  const releaseLink = page.locator("[data-release-link]");
+  const updateIndicator = page.locator("[data-update-indicator]");
+  assert(await releaseLink.getAttribute("href") === "https://github.com/MartinWa/house-bills/releases", "Footer release link is incorrect");
+  assert(await page.locator(".app-footer").getByRole("link", { name: "GitHub", exact: true }).getAttribute("href") === "https://github.com/MartinWa/house-bills", "Footer repository link is incorrect");
+  assert(!await updateIndicator.isVisible(), "Login shows an update indicator");
+  assert(!await releaseLink.getAttribute("data-release-status-url"), "Login enables update checks");
+  assert(releaseStatusRequests === 0, "Login requested release status");
   await page.getByLabel("Username").fill("synthetic-browser-reviewer");
   await page.getByLabel("Password").fill("synthetic-browser-password");
   await submit("Sign in");
   assert(new URL(page.url()).pathname === "/invoices/", "Sign-in did not open Invoices");
+  if (await releaseLink.getAttribute("data-release-status-url")) {
+    // The container runner uses a synthetic stable version; CLI development runs may skip checks.
+    releaseStatus = { update_available: true };
+    await page.reload();
+    await page.waitForFunction(() => !document.querySelector("[data-update-indicator]").hidden);
+    assert(await updateIndicator.isVisible(), "Newer release did not show the update indicator");
+    releaseStatus = { update_available: false };
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    assert(!await updateIndicator.isVisible(), "Current release shows an update indicator");
+    releaseStatusCode = 503;
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    assert(!await updateIndicator.isVisible(), "Failed release check shows an update indicator");
+    assert(await releaseLink.isVisible(), "Failed release check hid the version link");
+    releaseStatusCode = 200;
+  }
   assert(await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").count() === 3, "Main navigation still contains Home or Upload");
   assert((await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").allTextContents()).join(",") === "Invoices,Documents,Reports", "Main navigation order is incorrect");
   await page.locator(".user-menu summary").click();

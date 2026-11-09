@@ -25,6 +25,8 @@ extraction service or runtime CDN dependencies.
 - Report approved costs and consumption with independent totals, network-first
   electricity selection and visible exclusions for ambiguous coverage.
 - Create verified database/original backups and restore into a new instance.
+- Show the application version and GitHub/release links in the footer, with an
+  update indicator when a newer stable release is available.
 
 ## Vendors and formats
 

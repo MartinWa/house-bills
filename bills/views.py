@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import DatabaseError
 from django.db.models import Prefetch, Q
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
@@ -17,6 +17,7 @@ from .forms import DocumentFilterForm, InvoiceFilterForm, ReparseForm, ReportFil
 from .models import BillingSection, Document, Invoice
 from .presentation import extraction_summary, proposal_differences, review_summary, warning_details
 from .processing import parse_document
+from .releases import update_available
 from .reporting import read_report
 from .review_forms import ReviewForms
 from .reviewing import ReviewContext, current_review_context
@@ -27,6 +28,12 @@ from .services import (
     invoice_identity_conflicts,
 )
 from .storage import ingest_pdf, open_original, retry_document
+
+
+@never_cache
+@require_GET
+def release_status(request):
+    return JsonResponse({"update_available": update_available()})
 
 
 @never_cache

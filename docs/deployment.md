@@ -50,6 +50,7 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `HOUSE_BILLS_ALLOWED_HOSTS` | Comma-separated exact hostnames, without schemes or wildcards. |
 | `HOUSE_BILLS_CSRF_TRUSTED_ORIGINS` | Comma-separated exact trusted HTTPS origins. |
 | `HOUSE_BILLS_TIME_ZONE` | Defaults to `Europe/Stockholm`. |
+| `HOUSE_BILLS_UPDATE_CHECK` | Check public GitHub release metadata; defaults to `true`. Set `false` to disable outbound checks. |
 | `HOUSE_BILLS_MIGRATE_ON_START` | Apply migrations before serving; defaults to `true`. |
 | `HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES` | Original PDF limit; defaults to 20971520 (20 MiB), with 64 KiB extra request allowance. |
 | `HOUSE_BILLS_TRUST_PROXY` | Trust only `X-Forwarded-Proto`; defaults to `false`. |
@@ -63,6 +64,22 @@ targets Linux/amd64. Keep the selected version/digest with the recovery configur
 avoid silently following `latest` for installation upgrades. The local Docker build
 sets `HOUSE_BILLS_VERSION=development` unless a version is explicitly supplied with
 `--build-arg HOUSE_BILLS_VERSION=X.Y.Z`.
+
+The footer shows the application version and links to releases and GitHub. Local
+development detects the checkout's Git version at startup when `HOUSE_BILLS_VERSION`
+is unset. The footer shows the base release version and keeps the exact identifier,
+including commit distance/hash and `-dirty`, in its tooltip. Without a release tag or
+Git metadata, it shows **Development**. Restart the server after checkout changes to
+refresh the identifier. The static package version is local tooling metadata.
+
+On signed-in page loads, JavaScript requests release status from the application.
+For stable release versions, the server checks GitHub's public latest-release API
+without credentials or billing data, caching valid metadata for six hours and failures
+for one hour. A small dot appears beside the version when a newer stable release
+exists. The check has a three-second network timeout and runs separately from page
+rendering. Development versions skip checks. Set `HOUSE_BILLS_UPDATE_CHECK=false`
+to disable them; version and GitHub links still appear. Install updates manually
+using the [upgrade procedure](#manual-upgrades).
 
 Create the data directory and grant the configured UID/GID access before startup.
 Compose mounts it at `/data`, keeps the image filesystem read-only, provides `/tmp`
