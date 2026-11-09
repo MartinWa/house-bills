@@ -31,6 +31,21 @@ def extraction_summary(attempt):
     return candidate_summary(attempt.candidate, error=attempt.error)
 
 
+def review_summary(review):
+    if review is None:
+        return None
+    snapshot = review.snapshot
+    return candidate_summary(
+        {
+            **snapshot["values"],
+            "routing": {
+                "vendor_id": snapshot["vendor_id"],
+                "section_properties": snapshot["properties"],
+            },
+        }
+    )
+
+
 def warning_details(warnings, sections, assignments):
     """Name the visible allocation and source pages without changing parser evidence."""
     properties = Property.objects.in_bulk(
@@ -152,6 +167,8 @@ def candidate_summary(candidate, *, error=""):
         "invoice_date": candidate.get("invoice_date") or "Unknown",
         "due_date": candidate.get("due_date") or "Unknown",
         "currency": candidate.get("currency") or "",
+        "net": scaled_value(candidate.get("net_minor"), 100, 2),
+        "vat": scaled_value(candidate.get("vat_minor"), 100, 2),
         "total": scaled_value(candidate.get("invoice_total_minor"), 100, 2),
         "amount_due": scaled_value(candidate.get("amount_due_minor"), 100, 2),
         "rounding": scaled_value(candidate.get("rounding_minor"), 100, 2),

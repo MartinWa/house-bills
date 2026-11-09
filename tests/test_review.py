@@ -102,6 +102,67 @@ def approved(client, document):
     return document.invoices.get()
 
 
+def test_document_shows_manual_approval_and_archives_failed_extraction(
+    client, configured, tmp_path
+):
+    _, vendor, houses = configured
+    VendorIssuerIdentifier.objects.filter(vendor=vendor).delete()
+    document, _ = upload(client, tmp_path, [["Unsupported synthetic invoice"]])
+    attempt = document.extractions.get()
+    original = copy.deepcopy(attempt.candidate)
+    path, data = review_data(client, document)
+    data = manual_fields(data, vendor, houses[0])
+    assert client.post(path, data).status_code == 302
+    invoice = document.invoices.get()
+    snapshot = copy.deepcopy(invoice.reviews.get().snapshot)
+
+    response = client.get(f"/documents/{document.pk}/")
+    page = response.content.decode()
+    current, separator, history = page.partition('<details class="extraction-history">')
+    assert response.status_code == 200 and separator
+    assert "Approved invoice" in current and "Synthetic Utilities" in current
+    assert "SYNTHETIC-CREDIT-001" in current and "-125,00 SEK" in current
+    assert "House 1" in current and "2024-02-29" in current
+    assert "Unknown vendor" not in current and "Needs attention" not in current
+    assert "Review is required before costs and usage are approved." not in page
+    assert "Extraction history" in history and "Extraction warnings" in history
+    assert "Unknown vendor" in history and "No billing sections could be extracted." in history
+    assert response.context["proposal_reviewed"] and not response.context["differences"]
+    attempt.refresh_from_db()
+    assert attempt.candidate == original
+    assert invoice.reviews.get().snapshot == snapshot
+
+
+def test_document_keeps_new_failed_extraction_visible_until_reviewed(client, configured, tmp_path):
+    from bills.services import record_extraction
+
+    document, _ = upload(client, tmp_path)
+    invoice = approved(client, document)
+    snapshot = copy.deepcopy(invoice.reviews.get().snapshot)
+    attempt = record_extraction(document.pk, error="Synthetic re-parsing failure")
+    document_path = f"/documents/{document.pk}/"
+    response = client.get(document_path)
+    page = response.content.decode()
+    assert response.status_code == 200 and not response.context["proposal_reviewed"]
+    assert "Approved invoice" in page and "447,00 SEK" in page
+    assert "Extracted proposal" in page and "Needs attention" in page
+    assert "Synthetic re-parsing failure" in page
+    assert '<details class="extraction-history">' not in page
+    assert invoice.reviews.get().snapshot == snapshot
+
+    path, data = review_data(client, document)
+    assert client.post(path, data).status_code == 302
+    response = client.get(document_path)
+    assert response.context["proposal_reviewed"] and not response.context["differences"]
+    assert b"Synthetic re-parsing failure" in response.content
+    assert b"Needs attention" not in response.content
+    assert document.extractions.count() == 2
+    attempt.refresh_from_db()
+    assert attempt.error == "Synthetic re-parsing failure"
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2 and invoice.invoice_total_minor == 44700
+
+
 def test_waste_subcategories_survive_review_correction_and_proposal_comparison(
     configured, client, tmp_path
 ):
@@ -571,6 +632,17 @@ def test_correction_and_reparse_proposals_preserve_edits_until_accepted(
     )
     assert document.extractions.get().candidate == extraction
     assert not client.get(path).context["has_latest_changes"]
+    document_page = client.get(f"/documents/{document.pk}/")
+    assert document_page.context["proposal_reviewed"]
+    summary = document_page.context["approved"]
+    assert summary["reference"] == "SYNTHETIC-CORRECTED-001"
+    assert summary["sections"][0]["property"] == houses[1].name
+    assert summary["usages"][0]["quantity"] == "141,125"
+    current, separator, history = document_page.content.decode().partition(
+        '<details class="extraction-history">'
+    )
+    assert separator and "141,125 kWh" in current and "140,250 kWh" in history
+    assert "140,250 kWh" not in current
     _, old_form = review_data(client, document)
     document.refresh_from_db()
     reparse = {"extraction_revision": document.extraction_revision}
@@ -580,6 +652,7 @@ def test_correction_and_reparse_proposals_preserve_edits_until_accepted(
     invoice.refresh_from_db()
     assert invoice.reference == "SYNTHETIC-CORRECTED-001" and invoice.review_revision == 2
     page = client.get(f"/documents/{document.pk}/")
+    assert not page.context["proposal_reviewed"]
     assert b"Proposed differences" in page.content and b"141,125 kWh" in page.content
     differences = page.context["differences"]
     assert any(

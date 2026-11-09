@@ -1,5 +1,5 @@
 <ul class="extraction-warnings">
   {% for warning in warning_details %}
-    <li>{% for part in warning.parts %}{% if part.anchor %}<a href="{% if link_to_review %}{% url 'bills:review' document.pk %}?proposal=latest{% endif %}#{{ part.anchor }}">{{ part.text }}</a>{% if document.original_path %}{% for page in part.pages %} · <a href="{% url 'bills:source_view' document.pk %}#page={{ page }}" target="_blank" rel="noopener">PDF page {{ page }}</a>{% endfor %}{% endif %}{% else %}{{ part.text }}{% endif %}{% endfor %}</li>
+    <li>{% for part in warning.parts %}{% if part.anchor %}{% if historical %}{{ part.text }}{% else %}<a href="{% if link_to_review %}{% url 'bills:review' document.pk %}?proposal=latest{% endif %}#{{ part.anchor }}">{{ part.text }}</a>{% endif %}{% if document.original_path %}{% for page in part.pages %} · <a href="{% url 'bills:source_view' document.pk %}#page={{ page }}" target="_blank" rel="noopener">PDF page {{ page }}</a>{% endfor %}{% endif %}{% else %}{{ part.text }}{% endif %}{% endfor %}</li>
   {% endfor %}
 </ul>

@@ -20,11 +20,13 @@ Both use private/no-store headers. No static or media URL serves the originals.
 An approved PDF left in the inbox stays in **Needs attention**, with **Retry storage**
 available until its original is published.
 
-The document page also shows the latest **Extracted proposal**, with invoice fields,
-property/service costs, signed usage and issues needing attention. Missing fields
-are marked unknown. Choose **Review invoice** to fill in or correct the values.
-For approved invoices, review starts from the saved values. A newer extraction with
-pending differences offers **Load latest extraction** inside review.
+The document page shows the **Approved invoice** once reviewed, with saved invoice
+fields, property/service costs and signed usage. Earlier extracted values remain in
+collapsed **Extraction history**; their warnings do not require another approval.
+An unreviewed extraction appears as **Extracted proposal**, with missing fields marked
+unknown and issues needing attention. Choose **Review invoice** to fill in or correct
+the values. For approved invoices, review starts from the saved values. A newer
+extraction with pending differences offers **Load latest extraction** inside review.
 See [review and correction](review.md).
 
 Invoices without a obtainable original start under **Invoices → Add manual invoice**

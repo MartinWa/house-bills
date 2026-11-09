@@ -78,6 +78,9 @@ invoice-date range. Filters apply when changed. Each row shows the invoice total
 groups allocations by property, showing each property name once.
 Detail pages show service costs, consumption, billing periods, reviewer and approval
 history. **Open document** leads to the source PDF and review actions.
+The document page also shows the approved fields, costs and usage, with earlier
+parser output kept in collapsed **Extraction history**. Warnings from an extraction
+reviewed before approval remain as history; a new extraction still needs review.
 
 Choose **Open document**, then **Review invoice**, to start from the latest approved
 values. Edit the relevant fields,

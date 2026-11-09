@@ -15,7 +15,7 @@ from filelock import Timeout
 
 from .forms import DocumentFilterForm, InvoiceFilterForm, ReparseForm, ReportFilterForm, UploadForm
 from .models import BillingSection, Document, Invoice
-from .presentation import extraction_summary, proposal_differences, warning_details
+from .presentation import extraction_summary, proposal_differences, review_summary, warning_details
 from .processing import parse_document
 from .reporting import read_report
 from .review_forms import ReviewForms
@@ -146,12 +146,21 @@ def document(request, pk):
                 .values_list("document_id", flat=True)
             )
     invoice = invoice_for_review(pk)
+    review = (
+        invoice.reviews.get(revision=invoice.review_revision)
+        if invoice and invoice.status == Invoice.Status.APPROVED
+        else None
+    )
     return render(
         request,
         "bills/document.html",
         {
             "document": source,
+            "approved": review_summary(review),
             "proposal": extraction_summary(attempt),
+            "proposal_reviewed": bool(
+                attempt and review and attempt.created_at <= review.created_at
+            ),
             "invoice": invoice,
             "differences": proposal_differences(invoice, attempt, pending_only=True),
             "reparse_form": ReparseForm(
