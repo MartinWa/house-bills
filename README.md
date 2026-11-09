@@ -18,6 +18,8 @@ extraction service or runtime CDN dependencies.
   consumption. One invoice can cover several services or properties.
 - Review missing or uncertain fields, enter unsupported invoices manually,
   approve records and retain correction and extraction history.
+- Add invoices without an original PDF, such as historical paper or ledger
+  entries, and include them in reports with a manual-entry badge.
 - Re-parse selected originals and review proposed changes while retaining
   approved corrections until changes are accepted.
 - Report approved costs and consumption with independent totals, network-first

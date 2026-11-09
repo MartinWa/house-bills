@@ -296,6 +296,10 @@ def _approved_path(document):
 def publish_original(document_id):
     with originals_lock():
         document = Document.objects.get(pk=document_id)
+        if document.source == Document.Source.MANUAL or (
+            document.storage_state == Document.StorageState.NONE
+        ):
+            return document
         if document.publication_path:
             return _resume(document)
         if document.staging_path:
@@ -326,7 +330,12 @@ def publish_original(document_id):
 
 def retry_document(document_id):
     with originals_lock():
-        document = _resume(Document.objects.get(pk=document_id))
+        document = Document.objects.get(pk=document_id)
+        if document.source == Document.Source.MANUAL or (
+            document.storage_state == Document.StorageState.NONE
+        ):
+            return document
+        document = _resume(document)
         if document.storage_state != Document.StorageState.FAILED:
             if (
                 document.invoices.exists()
@@ -359,7 +368,10 @@ def recover_originals():
                 f"{invalid} invalid staging receipts remain; inspect private storage."
             )
     return [
-        retry_document(pk) for pk in Document.objects.order_by("pk").values_list("pk", flat=True)
+        retry_document(pk)
+        for pk in Document.objects.exclude(source=Document.Source.MANUAL)
+        .order_by("pk")
+        .values_list("pk", flat=True)
     ]
 
 

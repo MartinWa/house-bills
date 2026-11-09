@@ -160,7 +160,12 @@ class PropertyIdentifier(ValidatedModel):
 
 
 class Document(ValidatedModel):
+    class Source(models.TextChoices):
+        UPLOAD = "upload", "Uploaded PDF"
+        MANUAL = "manual", "Manual entry"
+
     class StorageState(models.TextChoices):
+        NONE = "none", "No original"
         PENDING = "pending", "Awaiting storage"
         INBOX = "inbox", "In inbox"
         PUBLISHING = "publishing", "Publishing original"
@@ -174,8 +179,9 @@ class Document(ValidatedModel):
         FAILED = "failed", "Failed"
         READY = "ready", "Original stored"
 
-    sha256 = models.CharField(max_length=64, unique=True, validators=[sha256_validator])
-    original_filename = models.CharField(max_length=255)
+    source = models.CharField(max_length=20, choices=Source, default=Source.UPLOAD)
+    sha256 = models.CharField(max_length=64, blank=True, validators=[sha256_validator])
+    original_filename = models.CharField(max_length=255, blank=True)
     original_path = models.CharField(max_length=500, blank=True, validators=[validate_storage_path])
     staging_path = models.CharField(max_length=500, blank=True, validators=[validate_storage_path])
     publication_path = models.CharField(
@@ -194,8 +200,18 @@ class Document(ValidatedModel):
     class Meta:
         constraints = [
             models.CheckConstraint(
+                condition=Q(source__in=["upload", "manual"]), name="document_source_valid"
+            ),
+            models.CheckConstraint(
                 condition=Q(
-                    storage_state__in=["pending", "inbox", "publishing", "approved", "failed"]
+                    storage_state__in=[
+                        "none",
+                        "pending",
+                        "inbox",
+                        "publishing",
+                        "approved",
+                        "failed",
+                    ]
                 ),
                 name="document_storage_state_valid",
             ),
@@ -204,37 +220,70 @@ class Document(ValidatedModel):
                 name="document_stored_path_present",
             ),
             models.CheckConstraint(
-                condition=Exact(Length("sha256"), models.Value(64))
-                & ~models.Func(
-                    models.Value("*[^0-9a-f]*"),
-                    F("sha256"),
-                    function="glob",
-                    output_field=models.BooleanField(),
+                condition=(
+                    Q(source="manual", sha256="")
+                    | Q(source="upload")
+                    & Exact(Length("sha256"), models.Value(64))
+                    & ~models.Func(
+                        models.Value("*[^0-9a-f]*"),
+                        F("sha256"),
+                        function="glob",
+                        output_field=models.BooleanField(),
+                    )
                 ),
                 name="document_sha256_valid",
             ),
             models.CheckConstraint(
-                condition=Q(state__in=["pending", "processing", "review", "failed", "ready"]),
-                name="document_state_valid",
+                condition=~Q(source="manual")
+                | Q(
+                    original_filename="",
+                    original_path="",
+                    staging_path="",
+                    publication_path="",
+                    storage_state="none",
+                ),
+                name="document_manual_has_no_original",
             ),
             models.CheckConstraint(
-                condition=~Q(original_filename=""), name="document_filename_present"
+                condition=Q(source="manual") | ~Q(original_filename=""),
+                name="document_filename_present",
+            ),
+            models.CheckConstraint(
+                condition=Q(state__in=["pending", "processing", "review", "failed", "ready"]),
+                name="document_state_valid",
             ),
             models.UniqueConstraint(
                 fields=["original_path"],
                 condition=~Q(original_path=""),
                 name="document_path_unique",
             ),
+            models.UniqueConstraint(
+                fields=["sha256"],
+                condition=~Q(sha256=""),
+                name="document_sha256_unique",
+            ),
         ]
 
     def clean(self):
         if self.pk:
-            digest = type(self).objects.filter(pk=self.pk).values_list("sha256", flat=True).first()
-            if digest is not None and digest != self.sha256:
-                raise ValidationError({"sha256": "An original's hash cannot be changed."})
+            previous = type(self).objects.filter(pk=self.pk).values("sha256", "source").first()
+            if previous is not None:
+                if previous["sha256"] != self.sha256:
+                    raise ValidationError({"sha256": "An original's hash cannot be changed."})
+                if previous["source"] != self.source:
+                    raise ValidationError({"source": "A document's source cannot be changed."})
+
+    def save(self, *args, **kwargs):
+        if self.source == self.Source.MANUAL:
+            self.storage_state = self.StorageState.NONE
+        return super().save(*args, **kwargs)
+
+    @computed_property
+    def display_name(self):
+        return self.original_filename or f"Manual entry #{self.pk}"
 
     def __str__(self):
-        return self.original_filename
+        return self.display_name
 
 
 class ExtractionAttempt(ValidatedModel):

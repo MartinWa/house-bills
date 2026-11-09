@@ -18,11 +18,11 @@ SELECTION_REASONS = {
 
 SELECTED_USAGE = """
 WITH selected_usage AS (
-    SELECT property_id, property_name, utility, unit, quantity_milli,
+    SELECT invoice_id, property_id, property_name, utility, unit, quantity_milli,
            source_service, subcategory, basis, period_start, period_end, source_selection
     FROM reporting_electricity_usage
     UNION ALL
-    SELECT property_id, property_name, utility, unit, quantity_milli,
+    SELECT invoice_id, property_id, property_name, utility, unit, quantity_milli,
            source_service, subcategory, basis, period_start, period_end,
            'billed' AS source_selection
     FROM reporting_usage WHERE utility <> 'electricity'
@@ -112,6 +112,29 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             """,
             usage_params,
         )
+        # Costs use invoice dates; usage and its issues use billed periods.
+        # Identify sources from every displayed part of the same report snapshot.
+        manual_rows = _rows(
+            reader,
+            SELECTED_USAGE
+            + f"""
+            SELECT DISTINCT i.id AS invoice_id, i.document_id
+            FROM bills_invoice AS i
+            JOIN bills_document AS d ON d.id = i.document_id
+            WHERE d.source = 'manual' AND i.id IN (
+                SELECT invoice_id FROM reporting_costs WHERE {cost_where}
+                UNION
+                SELECT invoice_id FROM selected_usage WHERE {usage_where}
+                UNION
+                SELECT invoice_id FROM reporting_electricity_selection
+                WHERE source_selection = 'needs_review' AND {usage_where}
+            )
+            ORDER BY i.document_id, i.id
+            """,
+            [*cost_params, *usage_params, *usage_params],
+        )
+        manual_invoices = len(manual_rows)
+        manual_document_ids = sorted({row["document_id"] for row in manual_rows})
     for row in costs:
         row["service_label"] = Service(row["service"]).label
         row["category_label"] = CATEGORY_LABELS[row["service"]]
@@ -132,4 +155,11 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         row["reason"] = SELECTION_REASONS[row["selection_reason"]]
         row["period_start"] = date.fromisoformat(row["period_start"])
         row["period_end"] = date.fromisoformat(row["period_end"])
-    return {"costs": costs, "consumption": consumption, "breakdown": breakdown, "issues": issues}
+    return {
+        "costs": costs,
+        "consumption": consumption,
+        "breakdown": breakdown,
+        "issues": issues,
+        "manual_invoices": manual_invoices,
+        "manual_document_ids": manual_document_ids,
+    }

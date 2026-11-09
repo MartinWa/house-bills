@@ -3,7 +3,7 @@
 {% block title %}Review invoice · House Bills{% endblock %}
 {% block content %}
   <h2>{% if invoice.review_revision and from_proposal %}Review extracted changes{% elif invoice.review_revision %}Correct invoice{% else %}Review invoice{% endif %}</h2>
-  <p><a href="{% url 'bills:document' document.pk %}">{{ document.original_filename }}</a>{% if document.original_path %} · <a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' document.pk %}">Download original PDF</a>{% endif %}</p>
+  <p><a href="{% url 'bills:document' document.pk %}">{{ document.display_name }}</a>{% if document.original_path %} · <a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' document.pk %}">Download original PDF</a>{% endif %}</p>
   {% if invoice.review_revision %}<p><a href="{% url 'bills:invoice' invoice.pk %}">Approved revision {{ invoice.review_revision }}</a> is retained until you save this correction.</p>{% endif %}
   {% if invoice.review_revision and from_proposal %}{% include "bills/_differences.html" %}{% endif %}
   {% if warnings %}

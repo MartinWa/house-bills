@@ -102,13 +102,21 @@ def check_database(snapshot):
 
 def check_originals(snapshot, root, originals):
     try:
+        columns = {row[1] for row in snapshot.execute("PRAGMA table_info(bills_document)")}
+        source = "source" if "source" in columns else "'upload'"
         documents = snapshot.execute(
-            "SELECT sha256, original_path, staging_path, publication_path "
+            f"SELECT sha256, original_path, staging_path, publication_path, {source} "
             "FROM bills_document ORDER BY id"
         ).fetchall()
     except sqlite3.Error as exc:
         raise BackupError("The snapshot does not contain the supported document schema.") from exc
-    for checksum, *references in documents:
+    for checksum, *references, kind in documents:
+        if kind == "manual":
+            # Manual entries have no original bytes; their approved snapshot is
+            # the recoverable record and must not point at private storage.
+            if checksum or any(references):
+                raise BackupError("A manual document unexpectedly references an original.")
+            continue
         if not isinstance(checksum, str) or not CHECKSUM.fullmatch(checksum):
             raise BackupError("A document has an invalid original checksum.")
         found = False

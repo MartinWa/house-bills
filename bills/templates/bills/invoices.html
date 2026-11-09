@@ -4,6 +4,10 @@
 {% block content %}
   <h2>Invoices</h2>
   <p>Approved invoices with their property and service allocations.</p>
+  <form method="post" action="{% url 'bills:manual_invoice' %}">
+    {% csrf_token %}<button type="submit">Add manual invoice</button>
+  </form>
+  <p>Use manual entry for older paper or ledger invoices whose original PDF is unavailable.</p>
   {% include "bills/_filters.html" with clear_url="bills:invoices" %}
   <div class="table-scroll"><table>
     <thead><tr><th scope="col">Invoice date</th><th scope="col">Vendor</th><th scope="col">Reference</th><th scope="col">Allocations</th><th scope="col">Invoice total</th><th scope="col">Source</th></tr></thead>
@@ -21,7 +25,7 @@
           {% endfor %}
         </td>
         <td class="amount invoice-total">{{ invoice.invoice_total_minor|money }} {{ invoice.currency }}</td>
-        <td><a href="{% url 'bills:source_view' invoice.document_id %}" target="_blank" rel="noopener">View PDF</a></td>
+        <td>{% if invoice.document.source == 'manual' %}<span class="status status-manual">Manual entry</span>{% else %}<a href="{% url 'bills:source_view' invoice.document_id %}" target="_blank" rel="noopener">View PDF</a>{% endif %}</td>
       </tr>
     {% empty %}<tr><td colspan="6">No approved invoices match these filters. <a href="{% url 'bills:documents' %}">Review uploaded documents</a>.</td></tr>{% endfor %}</tbody>
   </table></div>

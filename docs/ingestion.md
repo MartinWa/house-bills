@@ -21,6 +21,12 @@ are marked unknown. Choose **Review and approve invoice** to fill in or correct 
 values. Approved invoices provide **Correct approved values** and **Review extracted
 changes**. See [review and correction](review.md).
 
+Invoices without a obtainable original start under **Invoices → Add manual invoice**
+instead of intake. They have no bytes, hash, staging receipt or publication path and
+store storage state `none`; approval and reporting are unchanged. Source view/download,
+re-parsing, storage retry and recovery are disabled for them. See
+[manual invoices](review.md#manual-invoices-without-an-original).
+
 After storing the original, intake runs versioned deterministic parsing and retains
 private review proposals. Recognized identities can create review records; intake
 creates no approved costs or usage. Unknown, damaged, textless or password-protected
@@ -61,7 +67,8 @@ an approved invoice proposes changes to that invoice and preserves its approved 
 
 `bills.storage.ingest_pdf(stream, filename=...)` is the shared intake service for web
 uploads and the later folder importer. It stores the original, runs initial parsing
-and returns `(document, duplicate)`. Exact duplicates retain the existing attempt.
+and returns `(document, duplicate)`. Manual documents never enter this service;
+`recover_documents`, `publish_original` and `retry_document` skip them. Exact duplicates retain the existing attempt.
 Storage recovery resumes initial parsing when no attempt was committed; selected
 re-parsing creates a new proposal and preserves approved values.
 `register_invoice_identity()` and the optional vendor argument to `record_extraction()`
@@ -106,7 +113,8 @@ account changes can continue against the live database after the consistent snap
 Do not copy a live database/WAL as separate ordinary files.
 
 `verify_backup` checks the package manifest, every file's size/checksum, SQLite integrity,
-foreign keys and recoverable document references. `restore_bills` requires a new directory
+foreign keys and recoverable document references. Manual documents are checked for an
+empty checksum and absent paths instead of recoverable bytes. `restore_bills` requires a new directory
 outside live storage and retains supplied recovery configuration for operator review.
 See [operational backup and recovery](backup-and-recovery.md) for private mounts,
 commands and the clean-instance verification procedure. Synthetic tests and the production

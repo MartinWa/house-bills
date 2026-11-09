@@ -54,7 +54,7 @@ specific assignment. Changing this setting does not alter previously approved in
 | Property / Vendor | Display names and safe unique storage slugs; vendors also have an optional default property. |
 | VendorIssuerIdentifier / VendorLayoutFamily | Private vendor identification numbers and compatible installed invoice formats. |
 | PropertyIdentifier | A vendor-scoped installation, contract or delivery-address key mapped to one property. |
-| Document | Unique SHA-256, original filename, relative private path, separate processing/storage state and messages, staging/publication journal paths, extraction counter and a private legacy fee archive. |
+| Document | Source (`upload` or `manual`), unique SHA-256 for uploads, original filename, relative private path, separate processing/storage state and messages, staging/publication journal paths, extraction counter and a private legacy fee archive. |
 | ExtractionAttempt | Append-only candidate JSON, page evidence, layout family/version, parser revision, error/state and attempt number. Invalid and failed results remain private proposals. |
 | Invoice | Document, vendor, reference/kind, dates, SEK, net/VAT/rounding/total/amount due, header evidence, supporting identifiers, source pages and approval metadata. |
 | BillingSection | Invoice, section key, assigned property, service, source identifiers, explicit signed net/VAT/gross, overall billing period and period/tax/total evidence. |
@@ -94,6 +94,17 @@ The document hash and nonempty original path are unique. Ingestion reuses exact
 duplicates; recognized vendor/reference/kind conflicts show both source documents for
 review without changing approved allocations.
 
+A manual document represents a transcribed invoice whose original is unavailable. It
+has `source = manual`, blank SHA-256 and filename, no staging/publication path and
+storage state `none`; database constraints enforce that combination and forbid later
+changes to `source` or `sha256`. Approved manual invoices use the same review,
+identity, allocation and reporting paths as uploaded ones. They provide no source
+PDF, so source view/download, re-parsing and storage recovery are unavailable; their
+display name is `Manual entry #<id>`. The nonempty-hash unique index applies only to
+uploaded documents. Backups keep their database row and review snapshot but require
+no recoverable original. Bulk ledger backfills use the same manual-entry service;
+see [review](review.md#manual-invoices-without-an-original).
+
 ## Persistence services
 
 `record_extraction()` appends a private proposal with page evidence and parser metadata.
@@ -113,8 +124,9 @@ validates the proposed headers and allocations, replaces normalized rows atomica
 records a snapshot and increments the revision. A stale request, conflicting approved
 identity, invalid unit, unknown property or financial mismatch rolls back the entire
 change, preserving previous approvals. A different amount due requires explicit
-confirmation and is retained separately from invoice total. Manual proposals can be
-approved without a supported parser.
+confirmation and is retained separately from invoice total. Manual proposals, and
+manual documents without an extraction attempt, can be approved without a supported
+parser.
 
 The web workflow uses `approve_document_review()` to check the observed extraction
 revision and invoice identity before calling `approve_review()` in the same short
