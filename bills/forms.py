@@ -8,7 +8,10 @@ from .validators import normalize_identifier
 
 class UploadForm(forms.Form):
     pdf = forms.FileField(
-        label="PDF invoice", widget=forms.ClearableFileInput(attrs={"accept": ".pdf"})
+        label="PDF invoice",
+        widget=forms.ClearableFileInput(
+            attrs={"accept": ".pdf", "aria-describedby": "upload-hint"}
+        ),
     )
 
 
@@ -58,14 +61,11 @@ class ReportFilterForm(DateRangeFilterForm):
 
 
 class DocumentFilterForm(forms.Form):
+    ATTENTION = "attention"
+
     processing = forms.ChoiceField(
-        label="Processing",
-        choices=[("", "All processing states"), *Document.State.choices],
-        required=False,
-    )
-    storage = forms.ChoiceField(
-        label="Storage",
-        choices=[("", "All storage states"), *Document.StorageState.choices],
+        label="Status",
+        choices=[(ATTENTION, "Needs attention"), ("", "All"), *Document.State.choices],
         required=False,
     )
 

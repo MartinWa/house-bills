@@ -7,7 +7,7 @@
     <title>{% block title %}House Bills{% endblock %}</title>
     <link rel="icon" href="{% static 'bills/favicon.svg' %}" type="image/svg+xml">
     <link rel="stylesheet" href="{% static 'bills/app.css' %}">
-    <script src="{% static 'bills/app.js' %}" defer></script>
+    <script src="{% static 'bills/app.js' %}?v=2" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
@@ -20,8 +20,8 @@
         {% if user.is_authenticated %}
           <nav class="main-nav" aria-label="Main">
             <a href="{% url 'bills:invoices' %}"{% if request.resolver_match.url_name == 'invoices' or request.resolver_match.url_name == 'invoice' %} aria-current="page"{% endif %}>Invoices</a>
-            <a href="{% url 'bills:reports' %}"{% if request.resolver_match.url_name == 'reports' %} aria-current="page"{% endif %}>Reports</a>
             <a href="{% url 'bills:documents' %}"{% if request.resolver_match.url_name == 'documents' or request.resolver_match.url_name == 'document' or request.resolver_match.url_name == 'upload' or request.resolver_match.url_name == 'review' %} aria-current="page"{% endif %}>Documents</a>
+            <a href="{% url 'bills:reports' %}"{% if request.resolver_match.url_name == 'reports' %} aria-current="page"{% endif %}>Reports</a>
           </nav>
           <details class="user-menu">
             <summary>{% include "bills/_icon.html" with name="user" %}<span>User</span>{% include "bills/_icon.html" with name="chevron" %}</summary>

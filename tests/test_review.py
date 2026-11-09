@@ -129,6 +129,16 @@ def test_waste_subcategories_survive_review_correction_and_proposal_comparison(
         )
     ) == [("restavfall", 12000), ("restavfall", 7500)]
     response = client.get(f"/documents/{document.pk}/")
+    assert response.context["differences"] == []
+    document.refresh_from_db()
+    assert (
+        client.post(
+            f"/documents/{document.pk}/reparse/",
+            {"extraction_revision": document.extraction_revision},
+        ).status_code
+        == 302
+    )
+    response = client.get(f"/documents/{document.pk}/")
     assert any(
         row["field"].endswith("subcategory")
         and row["approved"] == "Restavfall"
@@ -368,6 +378,10 @@ def test_supported_upload_approval_list_detail_and_private_original(client, conf
     detail = client.get(f"/invoices/{invoice.pk}/").content.decode()
     for text in ("House 1", "House 2", "447,00 SEK", "140,250 kWh", "2024-02-29"):
         assert text in detail
+    assert f'href="/documents/{document.pk}/"' in detail
+    assert f'href="/documents/{document.pk}/review/"' not in detail
+    assert f'href="/documents/{document.pk}/view/"' not in detail
+    assert f'href="/documents/{document.pk}/source/"' not in detail
     for house in houses:
         listing = client.get("/invoices/", {"property": house.pk, "service": "electricity_supply"})
         assert listing.status_code == 200 and listing.context["page"].paginator.count == 1
@@ -556,6 +570,7 @@ def test_correction_and_reparse_proposals_preserve_edits_until_accepted(
         and first["sections"][0]["usages"][0]["quantity_milli"] == 140250
     )
     assert document.extractions.get().candidate == extraction
+    assert not client.get(path).context["has_latest_changes"]
     _, old_form = review_data(client, document)
     document.refresh_from_db()
     reparse = {"extraction_revision": document.extraction_revision}
@@ -573,6 +588,10 @@ def test_correction_and_reparse_proposals_preserve_edits_until_accepted(
     assert client.post(path, old_form).status_code == 409
     _, corrected = review_data(client, document)
     assert corrected["usages-0-quantity_milli"] == "141,125"
+    review_page = client.get(path)
+    assert review_page.context["has_latest_changes"]
+    assert b"Load latest extraction" in review_page.content
+    assert b"Load latest extraction" not in page.content
     _, proposed = review_data(client, document, proposal=True)
     assert proposed["reference"] == "880003" and proposed["usages-0-quantity_milli"] == "140,250"
     assert client.post(path, proposed).status_code == 302
@@ -581,6 +600,104 @@ def test_correction_and_reparse_proposals_preserve_edits_until_accepted(
     assert invoice.reviews.count() == 3 and invoice.reviews.get(revision=2).note.startswith(
         "Corrected"
     )
+    assert not client.get(path).context["has_latest_changes"]
+
+
+def test_matching_reparse_does_not_offer_latest_extraction(client, configured, tmp_path):
+    document, _ = upload(client, tmp_path)
+    approved(client, document)
+    document.refresh_from_db()
+    client.post(
+        f"/documents/{document.pk}/reparse/",
+        {"extraction_revision": document.extraction_revision},
+    )
+    response = client.get(f"/documents/{document.pk}/review/")
+    assert not response.context["has_latest_changes"]
+    assert b"Load latest extraction" not in response.content
+    assert posted_fields(response)["usages-0-quantity_milli"] == "140,250"
+
+
+@pytest.mark.parametrize("target", ["property", "vendor"])
+def test_same_named_routing_changes_can_be_reviewed_and_accepted(
+    client, configured, tmp_path, target
+):
+    _, vendor, houses = configured
+    document, _ = upload(client, tmp_path)
+    invoice = approved(client, document)
+    if target == "property":
+        previous = houses[0]
+        replacement = Property.objects.create(name=previous.name, slug="replacement-house")
+        PropertyIdentifier.objects.filter(vendor=vendor, property=previous).update(
+            property=replacement
+        )
+        field, label = "sections-0-property", "Allocation 1 property"
+    else:
+        previous = vendor
+        replacement = Vendor.objects.create(name=previous.name, slug="replacement-utilities")
+        for model in (VendorIssuerIdentifier, VendorLayoutFamily, PropertyIdentifier):
+            model.objects.filter(vendor=previous).update(vendor=replacement)
+        field, label = "vendor", "Vendor"
+
+    document.refresh_from_db()
+    assert (
+        client.post(
+            f"/documents/{document.pk}/reparse/",
+            {"extraction_revision": document.extraction_revision},
+        ).status_code
+        == 302
+    )
+    assert not document.extractions.latest("revision").candidate["issues"]
+    path = f"/documents/{document.pk}/review/"
+    current = client.get(path)
+    assert current.context["has_latest_changes"]
+    assert b"Load latest extraction" in current.content
+    assert posted_fields(current)[field] == str(previous.pk)
+    expected_difference = {
+        "field": label,
+        "approved": f"{previous.name} ({previous.slug})",
+        "proposed": f"{replacement.name} ({replacement.slug})",
+    }
+    assert expected_difference in current.context["differences"]
+    assert expected_difference in client.get(f"/documents/{document.pk}/").context["differences"]
+
+    _, proposed = review_data(client, document, proposal=True)
+    assert proposed[field] == str(replacement.pk)
+    assert client.post(path, proposed).status_code == 302
+    invoice.refresh_from_db()
+    if target == "property":
+        assert invoice.sections.get(section_id="section_01").property_id == replacement.pk
+    else:
+        assert invoice.vendor_id == replacement.pk
+    assert invoice.review_revision == 2
+    assert document.invoices.count() == 1
+    assert not client.get(path).context["has_latest_changes"]
+
+
+def test_review_can_keep_approved_corrections_when_new_extraction_differs(
+    client, configured, tmp_path
+):
+    document, _ = upload(client, tmp_path)
+    invoice = approved(client, document)
+    path, data = review_data(client, document)
+    data["usages-0-quantity_milli"] = "141,125"
+    assert client.post(path, data).status_code == 302
+    document.refresh_from_db()
+    client.post(
+        f"/documents/{document.pk}/reparse/",
+        {"extraction_revision": document.extraction_revision},
+    )
+    assert client.get(path).context["has_latest_changes"]
+    _, current = review_data(client, document)
+    assert client.post(path, current).status_code == 302
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 3
+    assert (
+        Usage.objects.filter(section__invoice=invoice).order_by("pk").first().quantity_milli
+        == 141125
+    )
+    assert not client.get(path).context["has_latest_changes"]
+    assert document.extractions.count() == 2
+    assert document.pk not in {row.pk for row in client.get("/documents/").context["page"]}
 
 
 @pytest.mark.parametrize("previous_approval", [False, True])

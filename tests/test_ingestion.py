@@ -292,6 +292,43 @@ def test_failed_approval_publication_preserves_approved_values_and_retries(pdf, 
     assert invoice.sections.count() == 2
 
 
+def test_interruption_before_publication_keeps_approved_inbox_original_reviewable(
+    pdf, user, client, monkeypatch
+):
+    document, _ = ingest(pdf)
+    assert not document.storage_needs_attention
+
+    def interrupt_publication(document_id):
+        raise SystemExit("Synthetic interruption before original publication starts")
+
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr("bills.services.publish_original", interrupt_publication)
+        with pytest.raises(SystemExit):
+            approve(document, pdf, user)
+
+    document.refresh_from_db()
+    assert document.invoices.get().status == Invoice.Status.APPROVED
+    assert document.state == Document.State.READY
+    assert document.storage_state == Document.StorageState.INBOX
+    assert not (document.storage_error or document.staging_path or document.publication_path)
+
+    client.force_login(user)
+    queue = client.get("/documents/")
+    assert document.pk in {row.pk for row in queue.context["page"]}
+    assert b"Storage needs attention" in queue.content
+    detail = client.get(f"/documents/{document.pk}/")
+    assert b"Storage: In inbox." in detail.content
+    assert b"Retry storage" in detail.content
+
+    assert client.post(f"/documents/{document.pk}/retry/").status_code == 302
+    document.refresh_from_db()
+    assert document.storage_state == Document.StorageState.APPROVED
+    assert not document.storage_needs_attention
+    assert storage.private_path(document.original_path).read_bytes() == pdf.read_bytes()
+    assert document.pk not in {row.pk for row in client.get("/documents/").context["page"]}
+    assert b"Retry storage" not in client.get(f"/documents/{document.pk}/").content
+
+
 def test_interruption_after_approved_move_before_database_update_recovers(pdf, user, monkeypatch):
     document, _ = ingest(pdf)
     move = storage._move_original
@@ -418,8 +455,7 @@ def test_authenticated_upload_duplicate_and_private_source_with_csrf(pdf, user):
     client = Client(enforce_csrf_checks=True)
     client.force_login(user)
     response = client.get("/upload/", follow=True)
-    assert response.redirect_chain == [("/documents/?upload=1#upload", 302)]
-    assert response.context["upload_open"]
+    assert response.redirect_chain == [("/documents/#upload", 302)]
     token = client.cookies["csrftoken"].value
     assert (
         client.post(
@@ -477,7 +513,7 @@ def test_upload_http_limit_and_invalid_header_are_visible(pdf, settings, client,
     assert not Document.objects.exists()
     response = client.post("/upload/", {"pdf": SimpleUploadedFile("bad.pdf", b"bad")})
     assert response.status_code == 400 and b"PDF header" in response.content
-    assert response.context["upload_open"] and response.context["upload_form"].errors
+    assert response.context["upload_form"].errors
     response = client.post(
         "/upload/",
         {"pdf": SimpleUploadedFile("large.pdf", b"%PDF-1")},
@@ -486,27 +522,77 @@ def test_upload_http_limit_and_invalid_header_are_visible(pdf, settings, client,
     assert response.status_code == 413
 
 
-def test_document_filters_combine_processing_and_storage_and_keep_pagination(client, user):
+def test_document_status_filter_keeps_pagination_and_rejects_invalid_values(client, user):
     client.force_login(user)
-    # Storage and processing are independent; each filter must narrow the same records.
     for index in range(52):
         Document.objects.create(
             sha256=f"{index:064x}",
             original_filename=f"synthetic-{index}.pdf",
             original_path=f"inbox/{index:064x}.pdf",
-            state="review",
+            state="review" if index < 51 else "failed",
             storage_state="inbox" if index < 51 else "failed",
         )
-    filters = {"processing": "review", "storage": "inbox"}
+    filters = {"processing": "review"}
     first = client.get("/documents/", filters)
     assert first.context["page"].paginator.count == 51
-    assert "processing=review&amp;storage=inbox&amp;page=2" in first.content.decode()
+    assert "processing=review&amp;page=2" in first.content.decode()
     second = client.get("/documents/", {**filters, "page": 2})
     assert len(second.context["page"]) == 1
     assert all(row.storage_state == "inbox" for row in second.context["page"])
     invalid = client.get("/documents/", {"processing": "unknown"})
     assert invalid.status_code == 400 and invalid.context["form"].errors
     assert invalid.context["page"].paginator.count == 0
+
+
+def test_default_document_queue_hides_done_entries_but_keeps_storage_problems(client, user):
+    client.force_login(user)
+
+    def pdf_document(number, **changes):
+        return Document.objects.create(
+            sha256=f"{number:064x}",
+            original_filename=f"synthetic-{number}.pdf",
+            original_path=f"inbox/{number:064x}.pdf",
+            state=Document.State.READY,
+            **changes,
+        )
+
+    done_pdf = pdf_document(1, storage_state=Document.StorageState.APPROVED)
+    done_manual = Document.objects.create(source=Document.Source.MANUAL, state=Document.State.READY)
+    manual_review = Document.objects.create(
+        source=Document.Source.MANUAL, state=Document.State.REVIEW
+    )
+    failed_storage = pdf_document(
+        2, storage_state=Document.StorageState.FAILED, storage_error="Synthetic storage failure."
+    )
+    publishing = pdf_document(
+        3,
+        storage_state=Document.StorageState.PUBLISHING,
+        publication_path="approved/synthetic.pdf",
+    )
+    extracted_review = Document.objects.create(
+        sha256="4" * 64,
+        original_filename="synthetic-reparse.pdf",
+        original_path="approved/synthetic-reparse.pdf",
+        storage_state=Document.StorageState.APPROVED,
+        state=Document.State.REVIEW,
+    )
+    pending = {manual_review.pk, failed_storage.pk, publishing.pk, extracted_review.pk}
+    response = client.get("/documents/")
+    assert response.context["form"]["processing"].value() == "attention"
+    assert {row.pk for row in response.context["page"]} == pending
+    assert b"Storage failed" in response.content
+    assert b"Storage needs attention" in response.content
+    assert "storage" not in response.context["form"].fields
+    assert {
+        row.pk for row in client.get("/documents/", {"processing": ""}).context["page"]
+    } == pending | {done_pdf.pk, done_manual.pk}
+    done = client.get("/documents/", {"processing": "ready"})
+    assert {row.pk for row in done.context["page"]} == {
+        done_pdf.pk,
+        done_manual.pk,
+        failed_storage.pk,
+        publishing.pk,
+    }
 
 
 def test_reparse_failure_and_candidates_survive_duplicate_upload(pdf, user):

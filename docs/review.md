@@ -1,7 +1,7 @@
 # Invoice review and correction
 
 Sign in and upload a PDF. **Documents** keeps its original, processing status and latest
-extraction. **Review and approve invoice** opens editable values for both supported and
+extraction. **Review invoice** on document detail opens editable values for both supported and
 unsupported PDFs. All invoices require explicit approval.
 Allocation warnings show the allocation number, property, service and source-page links.
 Select the allocation link to jump to its review fields; select a PDF page link to
@@ -13,7 +13,7 @@ against the printed energy quantities.
 
 ## Check and approve
 
-1. Open **View original PDF** or **Download original PDF** and check the invoice fields:
+1. Choose **View** or **Download** under **Original PDF** and check the invoice fields:
    vendor, reference, invoice/credit type, dates, SEK, net, VAT, rounding, invoice total
    and amount due. Due date is optional. A different amount due needs explicit confirmation.
 2. Assign every allocation to its property and service. Keep different services and
@@ -76,10 +76,11 @@ conflict instead of silently counting the bill twice.
 **Invoices** lists approved records and filters by property, service and an inclusive
 invoice-date range. Filters apply when changed. Each row shows the invoice total and
 groups allocations by property, showing each property name once.
-Detail pages show service costs, consumption, billing periods, private
-source links, reviewer and approval history.
+Detail pages show service costs, consumption, billing periods, reviewer and approval
+history. **Open document** leads to the source PDF and review actions.
 
-**Correct invoice** starts from the latest approved values. Edit the relevant fields,
+Choose **Open document**, then **Review invoice**, to start from the latest approved
+values. Edit the relevant fields,
 add a note and choose **Save correction**. A successful correction records a new immutable
 revision and retains all earlier snapshots. Changing the reference, date or property
 can move the same original to its new approved path; the source links remain stable.
@@ -95,10 +96,16 @@ After changing configuration or installing a parser update, choose **Re-parse do
 on a selected document. Parsing appends a proposal and retains approved values. For an
 approved invoice, **Proposed differences** shows changed headers, identifiers,
 allocation totals/periods and consumption.
+Vendor and property labels include their unique slugs to distinguish records with
+the same name.
 
-**Correct approved values** keeps the current approval as the starting point.
-**Review extracted changes** loads the new proposal separately. Edit/check the proposal
-and choose **Save correction** to accept it. Unsupported or invalid re-parsing outcomes
+**Review invoice** keeps the current approval as the starting point. When a newer
+extraction differs, review shows the proposed differences and **Load latest extraction**
+loads the proposal separately. **Return to approved values** restores the saved starting
+point. Edit/check the values and choose **Save correction** to accept them. Saving the
+approved values also completes review while retaining your corrections. An extraction
+that matches the approval, or predates the latest review, offers no loading option.
+Unsupported or invalid re-parsing outcomes
 still require full manual review; they cannot approve themselves.
 
 Saves check the invoice review revision and document extraction revision inside the

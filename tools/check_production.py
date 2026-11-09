@@ -208,8 +208,8 @@ def check_ingestion_http():
         assert response.status == 200 and b"100,000 kWh" in response.read()
     with request("/reports/") as response:
         report = response.read()
-        assert response.status == 200 and b"100,000 kWh" in report
-        assert b"Electricity supply (fallback)" in report and b"125,00 SEK" in report
+        assert response.status == 200 and b"100 kWh" in report
+        assert b"Electricity supply (fallback)" in report and b"125 SEK" in report
         assert "no-store" in response.headers["Cache-Control"]
     corrected = review_values(review_path)
     corrected["usages-0-quantity_milli"] = "101,125"
@@ -222,7 +222,7 @@ def check_ingestion_http():
     assert invoice.review_revision == 2 and Usage.objects.get().quantity_milli == 101125
     with request("/reports/") as response:
         report = response.read()
-        assert response.status == 200 and b"101,125 kWh" in report and b"100,000 kWh" not in report
+        assert response.status == 200 and b"101 kWh" in report and b"100 kWh" not in report
     with post_review(
         location + "reparse/",
         {"extraction_revision": 1, "csrfmiddlewaretoken": cookies[settings.CSRF_COOKIE_NAME]},
@@ -298,13 +298,11 @@ def check_ingestion_http():
         assert response.status == 200 and b"-1,250 m" in response.read()
     with request("/reports/") as response:
         report = response.read()
-        assert response.status == 200 and b"100,000 kWh" in report and b"-1,250 m" in report
-        assert b"-10,00 SEK" in report
+        assert response.status == 200 and b"100 kWh" in report and b"-1 m" in report
+        assert b"-10 SEK" in report
     with request("/reports/?date_from=2024-02-15&date_to=2024-02-15") as response:
         report = response.read()
-        assert (
-            response.status == 200 and b"No approved costs" in report and b"100,000 kWh" in report
-        )
+        assert response.status == 200 and b"No approved costs" in report and b"100 kWh" in report
     for path in (
         "/reports/",
         "/invoices/",

@@ -10,7 +10,7 @@ Open **Documents** and select an upload to see its **Extracted proposal**: vendo
 reference, dates, amounts, property/service allocations, signed billed usage and
 review issues. This read-only summary also shows existing attempts. Usage periods
 show their final billed day; stored periods remain end-exclusive.
-Choose **Review and approve invoice** to correct missing or uncertain fields, assign
+Choose **Review invoice** on document detail to correct missing or uncertain fields, assign
 properties and approve validated records. Unsupported sources have the same manual
 entry path. The form requires acknowledgement of extraction warnings and validates
 the replacement values before approval.
@@ -112,9 +112,10 @@ also offers **Re-parse document**. Repeated submissions of that same re-parsing 
 cannot append another attempt after its observed extraction revision changes.
 
 For an approved invoice, **Proposed differences** compares headers, identifiers,
-properties, services, allocation totals/periods and consumption with the latest extraction. **Correct
-approved values** starts with the retained approval; **Review extracted changes**
-starts with the separate proposal. Only saving a valid correction accepts its values.
+properties, services, allocation totals/periods and consumption with a newer extraction.
+**Review invoice** starts with the retained approval; **Load latest extraction** inside
+review starts with the separate proposal when it has changes awaiting review.
+Only saving a valid correction accepts its values.
 Both review and extraction revisions are checked when saving, so an older form cannot
 replace newer work. Re-parsing a changed invoice identity preserves one current invoice
 for the original and leaves approved values intact.

@@ -24,11 +24,13 @@ then vendors with their identification numbers, invoice formats and property
 mappings. **Administration** and **Sign out** are in the header's **User** menu.
 See [configuration and the data model](data-model.md). The domain app is
 `bills`. Sign-in opens **Invoices**, with property, service and invoice-date filters.
-Use **Upload invoice** on **Documents** to store a PDF privately. Documents can be
-filtered by processing and storage state. Filters apply when changed; without
-JavaScript, use **Apply filters**. Choose **Review and approve invoice** to check a proposal
-or enter an unsupported invoice manually. **Invoices** lists approved records and
-provides correction forms. See [review and correction](review.md),
+Use **Upload invoice** on **Documents** to choose and upload a PDF directly. Documents
+defaults to **Needs attention**; use the status filter to select **All** or **Done**.
+Storage problems remain visible in the attention queue. Filters apply when changed;
+without JavaScript, use **Apply filters** and the visible PDF upload field.
+Choose **Review invoice** on document detail to check a proposal or enter an unsupported
+invoice manually. **Invoices** lists approved records; **Open document** leads to review
+and correction. See [review and correction](review.md),
 [deterministic parsing](parsing.md) and
 [uploads and private originals](ingestion.md).
 **Reports** shows approved service costs and billed consumption, with property/date

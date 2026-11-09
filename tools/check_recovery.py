@@ -33,7 +33,7 @@ def main():
         Request("http://127.0.0.1:8000/reports/", headers=headers), timeout=5
     ) as response:
         page = response.read()
-        assert response.status == 200 and b"100,000 kWh" in page and b"-1,250 m" in page
+        assert response.status == 200 and b"100 kWh" in page and b"-1 m" in page
     for document in Document.objects.all():
         payload = private_path(document.original_path).read_bytes()
         assert hashlib.sha256(payload).hexdigest() == document.sha256

@@ -26,7 +26,8 @@ async function main() {
     // The same trusted repository scenario remains usable with playwright-cli run-code.
     const filename = path.join(__dirname, "review.js");
     const scenario = vm.runInThisContext(`(${fs.readFileSync(filename, "utf8")})`, { filename });
-    console.log(await scenario(page, artifacts));
+    const readFixture = filename => Array.from(fs.readFileSync(path.join(artifacts, "fixtures", filename)));
+    console.log(await scenario(page, artifacts, readFixture));
     if (outbound.length) throw new Error(`Unexpected outbound requests: ${outbound.join(", ")}`);
   } catch (error) {
     await page.screenshot({ path: path.join(artifacts, "failure.png"), fullPage: true });

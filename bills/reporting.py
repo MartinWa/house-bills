@@ -114,14 +114,14 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         )
         # Costs use invoice dates; usage and its issues use billed periods.
         # Identify sources from every displayed part of the same report snapshot.
-        manual_rows = _rows(
+        invoice_sources = _rows(
             reader,
             SELECTED_USAGE
             + f"""
-            SELECT DISTINCT i.id AS invoice_id, i.document_id
+            SELECT DISTINCT i.id AS invoice_id, i.document_id, d.source
             FROM bills_invoice AS i
             JOIN bills_document AS d ON d.id = i.document_id
-            WHERE d.source = 'manual' AND i.id IN (
+            WHERE i.id IN (
                 SELECT invoice_id FROM reporting_costs WHERE {cost_where}
                 UNION
                 SELECT invoice_id FROM selected_usage WHERE {usage_where}
@@ -133,6 +133,8 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             """,
             [*cost_params, *usage_params, *usage_params],
         )
+        manual_rows = [row for row in invoice_sources if row["source"] == "manual"]
+        total_invoices = len(invoice_sources)
         manual_invoices = len(manual_rows)
         manual_document_ids = sorted({row["document_id"] for row in manual_rows})
     for row in costs:
@@ -160,6 +162,8 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         "consumption": consumption,
         "breakdown": breakdown,
         "issues": issues,
+        "total_invoices": total_invoices,
+        "pdf_invoices": total_invoices - manual_invoices,
         "manual_invoices": manual_invoices,
         "manual_document_ids": manual_document_ids,
     }

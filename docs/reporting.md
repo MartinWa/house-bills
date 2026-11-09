@@ -4,10 +4,14 @@
 and date filters. Approval and correction appear on the next request. Proposals,
 failed extraction attempts and earlier approval revisions do not contribute to totals.
 Reports require login and are never cached. Invoices transcribed without an original
-PDF contribute normally and carry a **Manual entry** badge; the page also states how
-many currently filtered invoices are manual entries.
-The count covers invoices represented in the filtered costs, selected consumption
-or consumption issues.
+PDF contribute normally. A compact summary counts distinct approved invoices and
+splits them into PDF and manual sources. Counts cover invoices represented in the
+filtered costs, selected consumption or consumption issues; shared allocations do
+not count an invoice more than once.
+
+Report amounts and consumption display whole numbers, rounded after summing exact
+stored units, with halves rounded away from zero. Invoice and review pages retain
+the original precision, and the SQL views remain exact.
 
 Costs use invoice dates. Consumption filters include the complete billed intervals
 that overlap the chosen dates; selecting one day inside a monthly interval includes
@@ -125,7 +129,7 @@ Normal IMMEDIATE approval writes can proceed in WAL mode while the report keeps 
 previous complete snapshot. The next request sees the committed revision. The
 application creates no separate reporting database and needs no refresh status.
 
-Manual invoices without originals are included in costs and in the manual count/badge;
+Manual invoices without originals are included in costs and in the source counts;
 the application determines them from `bills_document.source` while rendering, not from
 a reporting-view column. Synthetic checks cover exact totals, multiple readings, shared
 invoices, source fallbacks, gaps/overlaps, signed reversals and replacements, duplicate

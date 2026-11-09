@@ -6,20 +6,26 @@ original bytes with SHA-256 and preserves them without preprocessing. A repeated
 upload opens the existing document, even if its filename or source house folder
 differs. Filenames never assign a property.
 
-**Documents** shows processing and storage states, with filters that apply when
-changed. The upload form opens on this page; validation errors keep it open.
+**Documents** defaults to **Needs attention**, showing unfinished reviews and storage
+problems. Select **All** or **Done** to include completed PDFs and manual entries.
+The status filter applies when changed. **Upload invoice** opens the file picker and
+uploads the selected PDF; upload errors remain visible on Documents. Without JavaScript,
+the page shows a file field and an upload button.
 The document page provides
 status messages, identity conflicts when recognized, review/re-parsing actions and
-**Retry storage** for interrupted storage operations. **View original PDF** and
-**Download original PDF** require an active signed-in session and check the stored
+**Retry storage** for interrupted storage operations. Under **Original PDF**, **View** and
+**Download** require an active signed-in session and check the stored
 checksum. Viewing uses inline disposition; downloading uses attachment disposition.
 Both use private/no-store headers. No static or media URL serves the originals.
+An approved PDF left in the inbox stays in **Needs attention**, with **Retry storage**
+available until its original is published.
 
 The document page also shows the latest **Extracted proposal**, with invoice fields,
 property/service costs, signed usage and issues needing attention. Missing fields
-are marked unknown. Choose **Review and approve invoice** to fill in or correct the
-values. Approved invoices provide **Correct approved values** and **Review extracted
-changes**. See [review and correction](review.md).
+are marked unknown. Choose **Review invoice** to fill in or correct the values.
+For approved invoices, review starts from the saved values. A newer extraction with
+pending differences offers **Load latest extraction** inside review.
+See [review and correction](review.md).
 
 Invoices without a obtainable original start under **Invoices → Add manual invoice**
 instead of intake. They have no bytes, hash, staging receipt or publication path and

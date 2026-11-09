@@ -192,6 +192,7 @@ def test_manual_consumption_sources_follow_billed_dates(ledger, client, service,
     assert report["costs"] == []
     assert report["consumption"][0]["quantity_milli"] == 100_125
     assert report["manual_invoices"] == 1
+    assert report["total_invoices"] == 1 and report["pdf_invoices"] == 0
     assert report["manual_document_ids"] == [invoice.document_id]
     assert read_report()["manual_invoices"] == 1
     assert read_report(**{**filters, "property_id": ledger["houses"][1].pk})["manual_invoices"] == 0
@@ -203,7 +204,8 @@ def test_manual_consumption_sources_follow_billed_dates(ledger, client, service,
         {"property": house.pk, "date_from": "2024-02-01", "date_to": "2024-02-29"},
     )
     assert page.status_code == 200
-    assert b"1 manually entered invoice without an original PDF" in page.content
+    assert b"1 approved invoice" in page.content and b"0 from PDFs" in page.content
+    assert b"1 manual" in page.content
 
 
 def test_filtered_consumption_issues_hide_only_manual_pdf_links(ledger, client):
@@ -216,6 +218,7 @@ def test_filtered_consumption_issues_hide_only_manual_pdf_links(ledger, client):
     assert report["costs"] == report["consumption"] == []
     assert len(report["issues"]) == 3
     assert report["manual_invoices"] == 2
+    assert report["total_invoices"] == 3 and report["pdf_invoices"] == 1
     assert report["manual_document_ids"] == [invoice.document_id for invoice in manual_invoices]
 
     client.force_login(ledger["actor"])
@@ -270,6 +273,8 @@ def test_review_records_and_private_proposals_are_absent_from_all_reporting_view
         "consumption": [],
         "breakdown": [],
         "issues": [],
+        "total_invoices": 0,
+        "pdf_invoices": 0,
         "manual_invoices": 0,
         "manual_document_ids": [],
     }
@@ -576,6 +581,44 @@ def test_waste_subcategories_keep_separate_signed_totals_and_electricity_categor
     client.force_login(ledger["actor"])
     body = client.get(reverse("bills:reports")).content.decode()
     assert all(label in body for label in ("Restavfall", "Matavfall", "Elnät", "Elhandel"))
+
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_reports_round_sums_and_count_sources_without_changing_invoice_precision(
+    client, ledger, sign
+):
+    house = ledger["houses"][0]
+    specifications = [
+        allocation(
+            house,
+            service="water",
+            net=sign * 20,
+            usages=[usage(sign * 300, utility="water", basis="billed" if sign > 0 else "reversal")],
+        )
+    ]
+    invoice = ledger["make"](specifications, kind="invoice" if sign > 0 else "credit")
+    ledger["make"](
+        specifications,
+        source=Document.Source.MANUAL,
+        kind="invoice" if sign > 0 else "credit",
+    )
+    report = read_report()
+    assert report["costs"][0]["gross_minor"] == sign * 50
+    assert report["consumption"][0]["quantity_milli"] == sign * 600
+    assert (report["total_invoices"], report["pdf_invoices"], report["manual_invoices"]) == (
+        2,
+        1,
+        1,
+    )
+    client.force_login(ledger["actor"])
+    body = client.get(reverse("bills:reports")).content.decode()
+    assert f"{sign} SEK" in body and f"{sign} m³" in body
+    assert "2 approved invoices" in body and "1 from PDFs" in body and "1 manual" in body
+    detail = client.get(reverse("bills:invoice", args=[invoice.pk])).content.decode()
+    prefix = "-" if sign < 0 else ""
+    assert f"{prefix}0,25 SEK" in detail and f"{prefix}0,300 m³" in detail
+    invoice.refresh_from_db()
+    assert invoice.invoice_total_minor == sign * 25
 
 
 def test_approval_correction_and_failed_save_refresh_without_repeating_history(ledger):
