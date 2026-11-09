@@ -13,7 +13,16 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from filelock import Timeout
 
-from .forms import DocumentFilterForm, InvoiceFilterForm, ReparseForm, ReportFilterForm, UploadForm
+from .deleting import StaleDeletionError, deletion_token
+from .deleting import delete_document as remove_document
+from .forms import (
+    DeleteDocumentForm,
+    DocumentFilterForm,
+    InvoiceFilterForm,
+    ReparseForm,
+    ReportFilterForm,
+    UploadForm,
+)
 from .invoice_folders import invoice_folders
 from .models import BillingSection, Document, Invoice
 from .presentation import extraction_summary, proposal_differences, review_summary, warning_details
@@ -25,6 +34,7 @@ from .reviewing import ReviewContext, current_review_context
 from .services import (
     StaleReviewError,
     approve_document_review,
+    discard_manual_entry,
     invoice_for_review,
     invoice_identity_conflicts,
 )
@@ -77,6 +87,73 @@ def manual_invoice(request):
     )
     messages.info(request, "Enter the invoice values from the paper or ledger.")
     return redirect("bills:review", pk=document.pk)
+
+
+@never_cache
+@require_POST
+def cancel_manual_entry(request, pk):
+    try:
+        discard_manual_entry(pk)
+    except Document.DoesNotExist:
+        raise Http404("Manual entry not found.") from None
+    except ValidationError as exc:
+        messages.error(request, exc.messages[0])
+        return redirect("bills:document", pk=pk)
+    except OSError, DatabaseError, Timeout:
+        messages.error(request, "Deletion is unavailable. The entry was retained; try again.")
+        return redirect("bills:document", pk=pk)
+    messages.success(request, "Unfinished manual entry deleted.")
+    return redirect("bills:documents")
+
+
+@never_cache
+@require_http_methods(["GET", "POST"])
+def delete_document(request, pk):
+    source = get_object_or_404(Document, pk=pk)
+    form = DeleteDocumentForm(
+        request.POST if request.method == "POST" else None,
+        initial={"token": deletion_token(source)},
+    )
+    status = 200
+    if request.method == "POST":
+        if form.is_valid():
+            try:
+                cleaned_up = remove_document(pk, token=form.cleaned_data["token"])
+            except Document.DoesNotExist:
+                raise Http404("Document not found.") from None
+            except StaleDeletionError as exc:
+                form.add_error(None, exc)
+                status = 409
+            except ValidationError as exc:
+                form.add_error(None, exc)
+                status = 400
+            except OSError, DatabaseError, Timeout:
+                form.add_error(
+                    None, "Deletion is unavailable. The document was retained; try again."
+                )
+                status = 503
+            else:
+                if cleaned_up:
+                    messages.success(request, "Document deleted.")
+                else:
+                    messages.warning(
+                        request,
+                        "Document deleted. PDF cleanup is pending; uploading again will retry it.",
+                    )
+                return redirect("bills:documents")
+        else:
+            status = 400
+    return render(
+        request,
+        "bills/delete_document.html",
+        {
+            "document": source,
+            "form": form,
+            "invoices": source.invoices.select_related("vendor").order_by("pk"),
+            "stale": status == 409,
+        },
+        status=status,
+    )
 
 
 @never_cache
@@ -164,6 +241,7 @@ def document(request, pk):
         "bills/document.html",
         {
             "document": source,
+            "can_discard_manual_entry": source.can_discard_manual_entry,
             "approved": review_summary(review),
             "proposal": extraction_summary(attempt),
             "proposal_reviewed": bool(
@@ -371,6 +449,8 @@ def review(request, pk):
                     "Invoice approved." if context.review_revision == 0 else "Correction saved.",
                 )
                 return redirect("bills:invoice", pk=approved.pk)
+            except Document.DoesNotExist:
+                raise Http404("Document not found.") from None
             except StaleReviewError as exc:
                 _add_form_error(forms.header, exc)
                 status = 409
@@ -394,6 +474,7 @@ def review(request, pk):
         "bills/review.html",
         {
             "document": source,
+            "can_discard_manual_entry": source.can_discard_manual_entry,
             "invoice": current_invoice,
             "review": forms,
             "warnings": origin["warnings"],
@@ -448,6 +529,8 @@ def retry_storage(request, pk):
     get_object_or_404(Document, pk=pk)
     try:
         retry_document(pk)
+    except Document.DoesNotExist:
+        raise Http404("Document not found.") from None
     except OSError, DatabaseError, Timeout, ValidationError:
         messages.error(request, "Storage is unavailable. Check private storage and retry.")
     return redirect("bills:document", pk=pk)
@@ -461,7 +544,7 @@ def source(request, pk, download=True):
         raise Http404("This document has no original PDF.")
     try:
         handle, filename = open_original(pk)
-    except OSError, ValidationError:
+    except OSError, ValidationError, Document.DoesNotExist:
         raise Http404("Original unavailable; retry document storage.") from None
     except Timeout:
         return render(request, "bills/storage_busy.html", status=503)

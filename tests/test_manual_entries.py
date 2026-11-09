@@ -6,12 +6,15 @@ from io import StringIO
 import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import DatabaseError
+from django.test import Client
 
 from bills import backups, storage
 from bills.management.commands import import_ledger_invoices
 from bills.models import (
     BillingSection,
     Document,
+    ExtractionAttempt,
     Invoice,
     Property,
     PropertyIdentifier,
@@ -28,7 +31,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
-def configured(tmp_path, client, django_user_model):
+def configured(tmp_path, settings, client, django_user_model):
+    settings.MEDIA_ROOT = tmp_path / "originals"
     actor = django_user_model.objects.create_user("synthetic-manual-reviewer")
     client.force_login(actor)
     houses = [Property.objects.create(name=f"House {i}", slug=f"house-{i}") for i in (1, 2)]
@@ -62,6 +66,125 @@ def test_manual_entry_creates_document_without_original(configured, client):
     assert "Manual entry" in page and "no original PDF" in page
     assert client.get(f"/documents/{document.pk}/source/").status_code == 404
     assert client.get(f"/documents/{document.pk}/view/").status_code == 404
+
+
+def test_cancelling_unfinished_manual_entry_deletes_the_placeholder(configured, client):
+    document = create_manual(client)
+    other = create_manual(client)
+    detail = client.get(f"/documents/{document.pk}/").content.decode()
+    assert "Delete document" in detail and "No invoice has been saved" in detail
+    path, data = review_data(client, document)
+    review_page = client.get(path).content.decode()
+    delete_path = f"/documents/{document.pk}/cancel/"
+    assert f'formaction="{delete_path}" formnovalidate>Cancel</button>' in review_page
+    # Cancellation submits an incomplete form, including any unsaved edits.
+    response = client.post(delete_path, {**data, "reference": "SYNTHETIC-UNSAVED"})
+    assert response.status_code == 302 and response.url == "/documents/"
+    assert not Document.objects.filter(pk=document.pk).exists()
+    assert Document.objects.filter(pk=other.pk).exists()
+    assert not Invoice.objects.exists() and not ReviewRevision.objects.exists()
+    listing = client.get(response.url).content.decode()
+    assert "Unfinished manual entry deleted." in listing
+    assert f'href="/documents/{document.pk}/"' not in listing
+    assert f'href="/documents/{other.pk}/"' in listing
+    assert client.get(f"/documents/{document.pk}/").status_code == 404
+    assert client.post(delete_path).status_code == 404
+    # A review opened before deletion must not recreate the removed entry.
+    _, vendor, houses = configured
+    assert client.post(path, manual_fields(data, vendor, houses[0])).status_code == 404
+    assert not Invoice.objects.exists()
+
+
+def test_manual_cancellation_requires_login_csrf_and_post(configured, client):
+    document = create_manual(client)
+    delete_path = f"/documents/{document.pk}/cancel/"
+    anonymous = Client()
+    for method in (anonymous.get, anonymous.post):
+        response = method(delete_path)
+        assert response.status_code == 302 and response.url.startswith("/login/")
+    secured = Client(enforce_csrf_checks=True)
+    secured.force_login(configured[0])
+    assert secured.get(delete_path).status_code == 405
+    assert secured.post(delete_path).status_code == 403
+    assert Document.objects.filter(pk=document.pk).exists()
+    secured.get(f"/documents/{document.pk}/")
+    response = secured.post(
+        delete_path, {"csrfmiddlewaretoken": secured.cookies["csrftoken"].value}
+    )
+    assert response.status_code == 302 and response.url == "/documents/"
+    assert not Document.objects.filter(pk=document.pk).exists()
+
+
+@pytest.mark.parametrize("state", [Document.State.READY, Document.State.REVIEW])
+def test_stale_cancel_action_retains_approved_manual_invoice(configured, client, state):
+    _, vendor, houses = configured
+    document = create_manual(client)
+    delete_path = f"/documents/{document.pk}/cancel/"
+    assert "Delete document" in client.get(f"/documents/{document.pk}/").content.decode()
+    path, data = review_data(client, document)
+    assert client.post(path, manual_fields(data, vendor, houses[0])).status_code == 302
+    invoice = document.invoices.get()
+    snapshot = invoice.reviews.get().snapshot
+    report = read_report()
+    # A document can need attention again while retaining its saved approval.
+    Document.objects.filter(pk=document.pk).update(state=state)
+    response = client.post(delete_path, follow=True)
+    assert response.status_code == 200
+    page = response.content.decode()
+    assert "Only unfinished manual entries can be cancelled." in page
+    assert "Delete document" in page
+    assert Document.objects.filter(pk=document.pk).exists()
+    invoice.refresh_from_db()
+    assert invoice.status == Invoice.Status.APPROVED and invoice.review_revision == 1
+    assert invoice.reviews.get().snapshot == snapshot
+    assert read_report() == report
+    assert client.get(path).content.decode().count("formaction=") == 0
+
+
+@pytest.mark.parametrize("kind", ["upload", "invoice", "extraction"])
+def test_manual_cancellation_retains_uploaded_and_saved_records(configured, client, kind):
+    if kind == "upload":
+        document = Document.objects.create(
+            sha256="a" * 64, original_filename="synthetic.pdf", state=Document.State.REVIEW
+        )
+    else:
+        document = create_manual(client)
+        if kind == "invoice":
+            Invoice.objects.create(
+                document=document, vendor=configured[1], reference="SYNTHETIC-DRAFT-001"
+            )
+        else:
+            ExtractionAttempt.objects.create(
+                document=document, revision=1, state=ExtractionAttempt.State.FAILED
+            )
+    counts = (Document.objects.count(), Invoice.objects.count(), ExtractionAttempt.objects.count())
+    detail = client.get(f"/documents/{document.pk}/").content.decode()
+    assert "Delete document" in detail
+    response = client.post(f"/documents/{document.pk}/cancel/", follow=True)
+    assert response.status_code == 200
+    assert "Only unfinished manual entries can be cancelled." in response.content.decode()
+    assert Document.objects.filter(pk=document.pk).exists()
+    assert counts == (
+        Document.objects.count(),
+        Invoice.objects.count(),
+        ExtractionAttempt.objects.count(),
+    )
+
+
+def test_failed_cancellation_rolls_back_and_keeps_the_entry(configured, client, monkeypatch):
+    document = create_manual(client)
+    original_delete = Document.delete
+
+    def fail_after_delete(instance, *args, **kwargs):
+        original_delete(instance, *args, **kwargs)
+        raise DatabaseError("Synthetic failure after deleting the row")
+
+    monkeypatch.setattr(Document, "delete", fail_after_delete)
+    response = client.post(f"/documents/{document.pk}/cancel/", follow=True)
+    assert response.status_code == 200
+    assert "The entry was retained; try again." in response.content.decode()
+    assert Document.objects.filter(pk=document.pk).exists()
+    assert "Delete document" in response.content.decode()
 
 
 def test_manual_entry_is_approved_through_the_normal_review(configured, client):

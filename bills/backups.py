@@ -217,6 +217,9 @@ def create_backup(destination, configuration_files):
         # Coordinate with the server's startup migration lock as well as billing/storage writes.
         with FileLock(str(database.parent / ".migrate.lock"), timeout=10, mode=0o600):
             with originals_lock():
+                from .deleting import recover_document_deletions
+
+                recover_document_deletions()
                 connection.ensure_connection()
                 if connection.connection.in_transaction:
                     raise BackupError("Create a backup outside database transactions.")

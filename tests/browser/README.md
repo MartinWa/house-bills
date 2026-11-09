@@ -26,7 +26,11 @@ property/service/date filters, the default attention queue and All/Done status f
 and desktop/mobile layout. Review starts from approved values and offers a newer
 extraction only inside review. Reports show rounded totals and distinct PDF/manual
 invoice counts. Manual entries have one source explanation and leave the queue after
-approval. Invalid date ranges are checked both in the browser and through direct URLs.
+approval. Every document offers a delete page. Checks cover deletion of approved PDFs,
+parsed entries and approved manual invoices, updated reporting counts, and fresh uploads
+of the same PDF. Cancelling an unfinished manual form removes its placeholder, while
+cancelling a correction keeps the saved invoice. Cancellation and deletion also work
+without JavaScript. Invalid date ranges are checked in the browser and through direct URLs.
 Desktop and mobile previews are saved with the synthetic browser artifacts.
 Invoice folder checks cover shared-original counts, manual entries, stored filenames,
 PDF downloads, retained filters, keyboard controls without JavaScript and an expanded

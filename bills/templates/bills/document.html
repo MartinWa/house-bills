@@ -11,6 +11,10 @@
   {% endif %}
   {% if document.original_path %}<p>Original PDF: <a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View</a> · <a href="{% url 'bills:source' document.pk %}">Download</a></p>{% elif document.source == 'manual' %}<p>Manual entry — no original PDF.</p>{% endif %}
   <p>{% if invoice.review_revision %}<a href="{% url 'bills:invoice' invoice.pk %}">Open approved invoice</a> · {% endif %}<a href="{% url 'bills:review' document.pk %}">Review invoice</a></p>
+  {% if can_discard_manual_entry %}
+    <p>No invoice has been saved. Complete this entry or delete it.</p>
+  {% endif %}
+  <p><a href="{% url 'bills:delete_document' document.pk %}" class="button">Delete document</a></p>
   {% if invoice.review_revision %}
     <p>Approved revision {{ invoice.review_revision }} is included in cost and usage reports.</p>
   {% elif document.source != 'manual' %}
