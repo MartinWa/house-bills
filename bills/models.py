@@ -127,6 +127,7 @@ class PropertyIdentifier(ValidatedModel):
     class Kind(models.TextChoices):
         INSTALLATION = "installation", "Installation"
         CONTRACT = "contract", "Contract"
+        PRODUCT = "product", "Product number"
         DELIVERY_ADDRESS = "delivery_address", "Delivery address fallback"
 
     vendor = models.ForeignKey(
@@ -144,7 +145,7 @@ class PropertyIdentifier(ValidatedModel):
                 fields=["vendor", "kind", "value"], name="property_identifier_unique"
             ),
             models.CheckConstraint(
-                condition=Q(kind__in=["installation", "contract", "delivery_address"])
+                condition=Q(kind__in=["installation", "contract", "product", "delivery_address"])
                 & ~Q(value=""),
                 name="property_identifier_specific",
             ),

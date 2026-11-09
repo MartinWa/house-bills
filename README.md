@@ -36,12 +36,17 @@ a compatible invoice format.
 
 | Format | Supported structure |
 | --- | --- |
-| `layout_01/v1` | Contract-based network, water and waste; section continuations, waste weights and water reversals. |
+| `layout_01/v1` | Contract-based network, water, waste and supply; section continuations, waste weights and dated water reversals. |
+| `layout_01/v2` | Historical product-number network, water and supply specifications. |
 | `layout_02/v1` | Electricity supply with installation details above each specification, including shared invoices. |
-| `layout_03/v1` | Quarterly waste charges with a VAT basis and payment summary; collections and container sizes remain source detail. |
+| `layout_03/v1` | Quarterly waste or dated tank emptying with a VAT basis and payment summary; container sizes remain source detail. |
 | `layout_04/v1` | Electricity supply with cover totals and a separate single-installation specification. |
 | `layout_05/v1` | Electricity supply with a consumption table beside a historical chart. |
+| `layout_05/v2` | Electricity supply with printed billed consumption in a meter-reading table beside a chart. |
 | `layout_06/v1` | Monthly network and energy-tax totals with billed electricity quantities. |
+| `layout_06/v2` | Network and energy-tax totals with exclusive VAT prices or dated price changes. |
+| `layout_07/v1` | Electricity supply with area-labelled consumption and inclusive VAT totals. |
+| `layout_08/v1` | Compact electricity supply with printed consumption, VAT, total and rounding. |
 
 These families have representative source validation and synthetic regressions.
 `layout_02/v2` additionally demonstrates a replacement using synthetic examples.

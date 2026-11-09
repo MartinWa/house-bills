@@ -37,8 +37,8 @@ against the printed energy quantities.
    For waste, check **Waste subcategory**: Restavfall or Matavfall. Leave it unspecified
    when the source does not identify the type. Electricity uses the allocation's
    network (Elnät) or supply (Elhandel) service as its subcategory.
-5. Keep customer accounts with the invoice and installation/contract identifiers with
-   their allocation. Source page fields identify the relevant page. A reviewed property
+5. Keep customer accounts with the invoice and installation, contract or product-number
+   identifiers with their allocation. Source page fields identify the relevant page. A reviewed property
    assignment or identifier edit applies to this invoice; maintain future mappings in
    **Administration**.
 6. Resolve and acknowledge extraction warnings, add an optional review note and choose

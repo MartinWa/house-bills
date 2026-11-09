@@ -15,12 +15,27 @@ from .layout_helpers import (
 from .normalization import DATE, NUMBER, money, normalized_text, source_date
 from .types import Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_06", "v1", "1"
+FAMILY, VERSION, REVISION = "layout_06", "v1", "3"
 CID = {196: "Ä", 197: "Å", 214: "Ö", 228: "ä", 229: "å", 246: "ö"}
 COST_PERIOD = re.compile(
-    rf"^(?:Kostnad|Statlig energiskatt)\s+({DATE})\s+t\s*o\s*m\s+({DATE})$", re.I
+    rf"^(?:Kostnad|(?:Statlig )?energiskatt)\s+({DATE})\s+t\s*o\s*m\s+({DATE})$", re.I
 )
-ITEM = re.compile(r"^(Överföringsavgift|Energiskatt)\b", re.I)
+ITEM = re.compile(r"^(Överföringsavgift|Rörlig elnätsavgift|Energiskatt)\b", re.I)
+PRICE_TABLE = re.compile(
+    r"(?:Pris (?:fr o m|from) )?Antal Pris "
+    r"(?:exkl\. moms Summa|inkl\. moms Summa inkl\. moms)",
+    re.I,
+)
+RATE_START = re.compile(
+    r"^(?:Energiskatt|Rörlig elnätsavgift|Överföringsavgift)\s+(\d{1,2})\s+([a-zåäö]+)-(\d{2})\s+",
+    re.I,
+)
+
+
+def invoice_heading(line):
+    return bool(
+        re.fullmatch(r"Faktura elnät(?:\s+Sid\s+\d+\s+av\s+\d+)?", network_text(line), re.I)
+    )
 
 
 def network_text(line):
@@ -30,15 +45,42 @@ def network_text(line):
     return normalized_text(value)
 
 
+def billing_lines(lines):
+    in_table = False
+    for line in lines:
+        value = network_text(line)
+        if COST_PERIOD.fullmatch(value):
+            in_table = True
+            continue
+        elif re.match(r"^Summa\b", value, re.I):
+            in_table = False
+        if in_table:
+            yield line
+
+
+def historical_prices(lines):
+    for line in billing_lines(lines):
+        value = network_text(line)
+        if RATE_START.match(value) or (
+            PRICE_TABLE.fullmatch(value)
+            and ("exkl." in value.casefold() or value.casefold().startswith("pris "))
+        ):
+            return True
+    return False
+
+
 def matches(pages):
     lines = [line for page in pages for line in page]
     return (
-        any(network_text(line).casefold() == "faktura elnät" for line in lines)
-        and any(re.match(r"^Statlig energiskatt\s", network_text(line), re.I) for line in lines)
+        any(invoice_heading(line) for line in lines)
+        and any(
+            re.match(r"^(?:Statlig )?energiskatt\s", network_text(line), re.I) for line in lines
+        )
         and any(
             re.match(r"^Antal Pris inkl\. moms Summa inkl\. moms$", network_text(line), re.I)
             for line in lines
         )
+        and not historical_prices(lines)
     )
 
 
@@ -55,7 +97,7 @@ def read_header(pages):
     )
     dates = []
     for index, line in enumerate(lines):
-        if network_text(line).casefold() == "faktura elnät":
+        if invoice_heading(line):
             dates = lines[index + 1 : index + 2]
             break
     capture(candidate, "invoice_date", dates, rf"^({DATE})$", source_date, decode=network_text)
@@ -110,6 +152,10 @@ def read_header(pages):
 
 
 def parse(pages, *, candidate=None):
+    return parse_totals(pages, candidate=candidate)
+
+
+def parse_totals(pages, *, candidate=None, price_reader=price_quantities):
     candidate = candidate or read_header(pages)
     lines = [line for page in pages for line in page]
     section = Section("section_01", "electricity_network", [])
@@ -141,7 +187,7 @@ def parse(pages, *, candidate=None):
     else:
         candidate.issues.append("Missing or ambiguous network and energy-tax totals in section_01")
     cost_period(section, periods)
-    prices = price_quantities(candidate, section, lines, ITEM, decode=network_text)
+    prices = price_reader(candidate, section, lines, ITEM, decode=network_text)
     if len(periods) == 1 and len(prices) == 1:
         billed, line = next(iter(prices.items()))
         section.usages.append(

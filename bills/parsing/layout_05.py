@@ -16,10 +16,14 @@ from .layout_helpers import (
 from .normalization import DATE, NUMBER, PERIOD, anchor, money, quantity, source_period, text
 from .types import Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_05", "v1", "1"
+FAMILY, VERSION, REVISION = "layout_05", "v1", "2"
 TAX = rf"^Moms\s+25\s*%\s+av\s+({NUMBER})\s*kr\s+({NUMBER})\s*kr$"
 TOTAL = rf"^Summa\s+[^\d]+\s+({NUMBER})\s*kr$"
-ITEM = re.compile(r"^(Medelspotpris|Rörliga kostnader|Fast påslag|Årsavgift)\b", re.I)
+ITEM = re.compile(
+    r"^(Medelspotpris|Rörliga kostnader|Fast påslag|Årsavgift|El|Spotpåslag|"
+    r"Elcertifikatskostnad)\b",
+    re.I,
+)
 
 
 def matches(pages):
@@ -38,7 +42,7 @@ def read_header(pages):
         candidate,
         pages,
         r"Fakturanummer\s*:\s*(\d+)\b",
-        due=rf"(?:Förfallodatum|Oss tillhanda senast)\s*:\s*({DATE})",
+        due=rf"(?:Förfallodatum|Oss tillhanda senast|Betala senast)\s*:\s*({DATE})",
     )
     tax_basis(candidate, lines, TAX)
     capture(
@@ -59,6 +63,10 @@ def read_header(pages):
 
 
 def parse(pages, *, candidate=None):
+    return parse_specifications(pages, candidate=candidate)
+
+
+def parse_specifications(pages, *, candidate=None, meter_table=False):
     candidate = candidate or read_header(pages)
     for page in pages:
         if not any(anchor(line, "Det här betalar du för:") for line in page):
@@ -70,13 +78,30 @@ def parse(pages, *, candidate=None):
         in_consumption, in_cost = False, False
         price_values = {}
         periods = {}
+        meter_quantities = []
         for line in page:
             value = text(line)
-            if anchor(line, "Period Förbrukning"):
+            if anchor(line, "Datum Mätarställning") and meter_table:
+                in_consumption = True
+            elif anchor(line, "Period Förbrukning") and not meter_table:
                 in_consumption = True
             elif anchor(line, "Det här betalar du för:"):
                 in_consumption, in_cost = False, True
-            if in_consumption and (period_match := PERIOD.search(value)):
+            if (
+                in_consumption
+                and meter_table
+                and re.match(rf"^(?:{NUMBER}\s+)?Förbrukning\b", value, re.I)
+            ):
+                match = QUANTITY.search(value)
+                try:
+                    if not match or match[2].casefold() != "kwh":
+                        raise ValueError("Invalid meter-table consumption")
+                    meter_quantities.append((quantity(match[1]), line))
+                except ValueError:
+                    candidate.issues.append(
+                        f"Invalid billed electricity consumption in {section.section_id}"
+                    )
+            if in_consumption and not meter_table and (period_match := PERIOD.search(value)):
                 match = QUANTITY.search(value[period_match.end() :])
                 try:
                     if not match or match[2].casefold() != "kwh":
@@ -112,12 +137,35 @@ def parse(pages, *, candidate=None):
             except ValueError:
                 candidate.issues.append(f"Invalid cost totals in {section.section_id}")
         cost_period(section, periods)
+        if meter_table:
+            if len(meter_quantities) == 1 and price_values:
+                billed, line = meter_quantities[0]
+                start = min(period[0] for period in price_values)
+                end = max(period[1] for period in price_values)
+                summary[(start, end)] = billed, line
+                ordered_periods = sorted(price_values)
+                if (
+                    any(len(rows) != 1 for rows in price_values.values())
+                    or any(
+                        previous[1] != following[0]
+                        for previous, following in zip(
+                            ordered_periods, ordered_periods[1:], strict=False
+                        )
+                    )
+                    or sum(next(iter(rows)) for rows in price_values.values()) != billed
+                ):
+                    candidate.issues.append(f"Inconsistent billed kWh in {section.section_id}")
+            else:
+                candidate.issues.append(
+                    f"Missing or ambiguous meter-table consumption in {section.section_id}"
+                )
         for period, (billed, line) in summary.items():
             section.usages.append(Usage("electricity", "kWh", billed, *period, "billed", line))
         if not summary:
             candidate.issues.append(f"Missing billed consumption table in {section.section_id}")
-        if set(summary) != set(price_values) or any(
-            price_values.get(period) != {row[0]} for period, row in summary.items()
+        if not meter_table and (
+            set(summary) != set(price_values)
+            or any(price_values.get(period) != {row[0]} for period, row in summary.items())
         ):
             candidate.issues.append(f"Inconsistent billed kWh in {section.section_id}")
     if len(candidate.sections) != 1:

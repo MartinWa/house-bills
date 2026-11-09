@@ -56,10 +56,11 @@ def recognize_vendor(pages):
         footer_anchors = [
             line
             for line in page
-            if line.bbox[1] >= 700 and re.search(r"\bF[- ]skatt(?:sedel)?\b", text(line), re.I)
+            if line.bbox[1] >= (500 if line.page == 1 else 700)
+            and re.search(r"(?:\bF|Godkänd\s*för\s*F)[- ]skatt(?:sedel)?\b", text(line), re.I)
         ]
         for line in page:
-            if not any(abs(line.bbox[1] - marker.bbox[1]) <= 25 for marker in footer_anchors):
+            if not any(abs(line.bbox[1] - marker.bbox[1]) <= 40 for marker in footer_anchors):
                 continue
             for kind, pattern in (("organization", ORGANIZATION_TOKEN), ("vat", VAT_TOKEN)):
                 for match in pattern.finditer(text(line)):

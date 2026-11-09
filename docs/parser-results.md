@@ -3,7 +3,8 @@
 The framework-independent types in `bills/parsing/types.py` describe extraction
 candidates. These prototypes were validated locally against a multi-service invoice,
 a shared electricity invoice and a water correction. That establishes the representative
-results; full current-format coverage remains later work. Production routing and
+results; private corpus replay additionally checks current and historical formats
+against retained originals and approved reference values. Production routing and
 proposal persistence are described in [deterministic parsing](parsing.md).
 
 `reader.read_pdf()` returns text lines with one-based page numbers and PDF-point
@@ -19,22 +20,24 @@ candidate = layout_01.parse(read_pdf("private/example.pdf"))
 private_result = candidate.to_dict()
 ```
 
-`layout_01/v1` extracts contract-based water, waste and network specifications, including
+`layout_01/v1` extracts contract-based water, waste, network and supply specifications, including
 sections continuing onto another page and dated water reversals. It accepts the two
 validated header arrangements. `layout_02/v1` extracts electricity supply specifications
 with a separate installation on each billing page. Neither module contains vendor names
-or private identifiers. Layout 01 records implementation revision `4`; layout 02 v1
+or private identifiers. Layout 01 v1 records implementation revision `7`; layout 02 v1
 records revision `3`.
 `layout_02/v2`, revision `2`, retains a separate replacement signature with synthetic
 coverage. The registry selects by structure and keeps v1 available for older invoices.
+`layout_01/v2` additionally handles historical product-number sections. The
+[parser guide](parsing.md) lists the other installed structures and revisions.
 
 ## Structure and precision
 
 | Candidate value | Convention |
 | --- | --- |
 | Header | Invoice reference, invoice/due dates, SEK, net, VAT, rounding, invoice total and amount due, with field evidence. |
-| Identifiers | Customer account is supporting evidence only. Each section retains its contract or installation keys; network sections retain both. Proposed property mapping is separate routing metadata. |
-| Section | One service and contract/installation allocation, with explicit signed net, VAT and gross totals, an overall billing period and period/tax/total evidence. Shared invoices retain multiple sections in one candidate. |
+| Identifiers | Customer account is supporting evidence only. Each section retains its contract, product-number or installation keys; network sections also retain installation keys. Proposed property mapping is separate routing metadata. |
+| Section | One service and contract/product/installation allocation, with explicit signed net, VAT and gross totals, an overall billing period and period/tax/total evidence. Shared invoices retain multiple sections in one candidate. |
 | Usage | Signed integer thousandths, unit, utility, period and basis: `measured`, `estimated`, `reversal`, `billed` or `billed_weight`. |
 | Evidence | Original extracted text, page and bounding box. Treat the complete serialized result as private. |
 | Review | `requires_review=True` for every result, including financially reconciled results. `issues` contains consistency failures. |
