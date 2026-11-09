@@ -12,7 +12,7 @@
   {% if document.original_path %}<p>Original PDF: <a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View</a> · <a href="{% url 'bills:source' document.pk %}">Download</a></p>{% elif document.source == 'manual' %}<p>Manual entry — no original PDF.</p>{% endif %}
   <p>{% if invoice.review_revision %}<a href="{% url 'bills:invoice' invoice.pk %}">Open approved invoice</a> · {% endif %}<a href="{% url 'bills:review' document.pk %}">Review invoice</a></p>
   {% if invoice.review_revision %}
-    <p>Approved revision {{ invoice.review_revision }} is retained until you save a correction.</p>
+    <p>Approved revision {{ invoice.review_revision }} is included in cost and usage reports.</p>
   {% elif document.source != 'manual' %}
     <p>You can fill in missing values or enter an unsupported invoice manually.</p>
   {% endif %}
@@ -26,43 +26,26 @@
       {% csrf_token %}<button type="submit">Retry storage</button>
     </form>
   {% endif %}
+  {% if approved %}
+    <section aria-labelledby="approved-heading">
+      <h3 id="approved-heading">Approved invoice</h3>
+      {% include "bills/_invoice_summary.html" with summary=approved only %}
+    </section>
+  {% endif %}
   {% if differences %}{% include "bills/_differences.html" %}{% endif %}
   {% if proposal %}
+    {% if proposal_reviewed %}<details class="extraction-history"><summary>Extraction history</summary>{% endif %}
     <section aria-labelledby="proposal-heading">
-      <h3 id="proposal-heading">Extracted proposal</h3>
-      <p>These are the latest extracted values. Review is required before costs and usage are approved.</p>
-      <dl>
-        <dt>Vendor</dt><dd>{{ proposal.vendor }}</dd>
-        <dt>Invoice reference</dt><dd>{{ proposal.reference }}</dd>
-        <dt>Invoice date</dt><dd>{{ proposal.invoice_date }}</dd>
-        <dt>Due date</dt><dd>{{ proposal.due_date }}</dd>
-        <dt>Invoice total</dt><dd>{{ proposal.total }} {{ proposal.currency }}</dd>
-        <dt>Amount due</dt><dd>{{ proposal.amount_due }} {{ proposal.currency }}</dd>
-        <dt>Rounding</dt><dd>{{ proposal.rounding }} {{ proposal.currency }}</dd>
-      </dl>
-      {% if proposal.issues %}
-        <h4>Needs attention</h4>
-        {% include "bills/_warning_list.html" with warning_details=proposal.warning_details link_to_review=True %}
+      {% if proposal_reviewed %}
+        <h3 id="proposal-heading">Recorded extraction</h3>
+        <p>These extracted values were recorded before the latest approval. The approved invoice above includes the reviewed corrections.</p>
+      {% else %}
+        <h3 id="proposal-heading">Extracted proposal</h3>
+        <p>These are the latest extracted values. Review is required before costs and usage are approved.</p>
       {% endif %}
-      {% if proposal.sections %}
-        <h4>Property and service allocations</h4>
-        <table>
-          <thead><tr><th scope="col">Property</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Billed period</th><th scope="col">Cost including VAT</th></tr></thead>
-          <tbody>{% for section in proposal.sections %}
-            <tr><td>{{ section.property }}</td><td>{{ section.category }}</td><td>{{ section.subcategory|default:"—" }}</td><td>{{ section.start }} to {{ section.final_day }}</td><td>{{ section.gross }} {{ proposal.currency }}</td></tr>
-          {% endfor %}</tbody>
-        </table>
-      {% else %}<p>No billing sections could be extracted.</p>{% endif %}
-      {% if proposal.usages %}
-        <h4>Billed usage</h4>
-        <table>
-          <thead><tr><th scope="col">Property</th><th scope="col">Source service</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Period</th><th scope="col">Quantity</th><th scope="col">Basis</th></tr></thead>
-          <tbody>{% for usage in proposal.usages %}
-            <tr><td>{{ usage.property }}</td><td>{{ usage.service }}</td><td>{{ usage.utility }}</td><td>{{ usage.subcategory|default:"—" }}</td><td>{{ usage.start }} to {{ usage.final_day }}</td><td>{{ usage.quantity }} {{ usage.unit }}</td><td>{{ usage.basis }}</td></tr>
-          {% endfor %}</tbody>
-        </table>
-      {% endif %}
+      {% include "bills/_invoice_summary.html" with summary=proposal document=document link_to_review=True historical=proposal_reviewed only %}
     </section>
+    {% if proposal_reviewed %}</details>{% endif %}
   {% elif document.source != 'manual' %}
     <p>No extraction has been recorded yet.</p>
   {% endif %}
