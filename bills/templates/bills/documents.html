@@ -2,30 +2,27 @@
 {% block title %}Documents · House Bills{% endblock %}
 {% block content %}
   <h2>Documents</h2>
-  <p>Upload invoices and review their extracted details, processing and storage.</p>
-  <details id="upload" class="upload-panel"{% if upload_open %} open{% endif %}>
-    <summary class="button">{% include "bills/_icon.html" with name="upload" %} Upload invoice</summary>
-    <div class="upload-content">
-      <p>Choose one PDF, up to {{ limit|filesizeformat }}. Uploading the same file again opens the existing document.</p>
-      <form method="post" action="{% url 'bills:upload' %}{% if filter_query %}?{{ filter_query }}{% endif %}" enctype="multipart/form-data">
-        {% csrf_token %}
-        {{ upload_form.as_p }}
-        <button type="submit">Upload PDF</button>
-      </form>
-    </div>
-  </details>
+  <p>Upload invoices and review documents needing attention.</p>
+  <form id="upload" class="upload-form" data-direct-upload method="post" action="{% url 'bills:upload' %}{% if filter_query %}?{{ filter_query }}{% endif %}" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if upload_form.errors %}<div role="alert">{{ upload_form.non_field_errors }}{{ upload_form.pdf.errors }}</div>{% endif %}
+    <div class="upload-field" data-upload-field hidden>{{ upload_form.pdf.label_tag }}{{ upload_form.pdf }}</div>
+    <noscript><style>.upload-field[hidden] { display: block; }</style></noscript>
+    <button type="submit" data-upload-button>{% include "bills/_icon.html" with name="upload" %} Upload invoice</button>
+    <p id="upload-hint" class="upload-hint">One PDF, up to {{ limit|filesizeformat }}. Duplicate uploads open the existing document.</p>
+    <p role="status" data-upload-status></p>
+  </form>
   {% include "bills/_filters.html" with clear_url="bills:documents" %}
   <div class="table-scroll"><table>
-    <thead><tr><th scope="col">Document</th><th scope="col">Uploaded</th><th scope="col">Processing</th><th scope="col">Storage</th></tr></thead>
+    <thead><tr><th scope="col">Document</th><th scope="col">Uploaded</th><th scope="col">Status</th></tr></thead>
     <tbody>
       {% for document in page %}
         <tr>
           <td class="document-name"><a href="{% url 'bills:document' document.pk %}">{{ document.display_name }}</a>{% if document.source == 'manual' %} <span class="status status-manual">Manual entry</span>{% endif %}</td>
           <td>{{ document.created_at|date:"Y-m-d H:i" }}</td>
-          <td><span class="status status-{{ document.state }}">{{ document.get_state_display }}</span></td>
-          <td><span class="status status-{{ document.storage_state }}">{{ document.get_storage_state_display }}</span></td>
+          <td><span class="status status-{{ document.state }}">{{ document.get_state_display }}</span>{% if document.storage_needs_attention %}<small><span class="status status-failed">{% if document.storage_state == 'failed' %}Storage failed{% else %}Storage needs attention{% endif %}</span></small>{% endif %}</td>
         </tr>
-      {% empty %}<tr><td colspan="4">No documents match these filters. Upload an invoice to get started.</td></tr>{% endfor %}
+      {% empty %}<tr><td colspan="3">{% if attention_only %}No documents need attention. <a href="{% url 'bills:documents' %}?processing=">View all documents</a>.{% else %}No documents match these filters.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table></div>
   {% include "bills/_pagination.html" %}

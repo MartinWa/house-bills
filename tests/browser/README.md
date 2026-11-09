@@ -21,10 +21,13 @@ show Elhandel and Elnät under Electricity while consumption keeps the existing 
 selection.
 
 Design checks cover the Invoices landing page, User menu and sign out, upload within
-Documents, automatic property/service/date filters, combined document processing and
-storage filters, and desktop/mobile layout. Invalid date ranges are checked both in
-the browser and through direct URLs. Desktop previews are saved as
-`.playwright-cli/design-reports-desktop.png` and `design-documents-desktop.png`.
+Documents with a direct file picker and a fallback without JavaScript, automatic
+property/service/date filters, the default attention queue and All/Done status filters,
+and desktop/mobile layout. Review starts from approved values and offers a newer
+extraction only inside review. Reports show rounded totals and distinct PDF/manual
+invoice counts. Manual entries have one source explanation and leave the queue after
+approval. Invalid date ranges are checked both in the browser and through direct URLs.
+Desktop and mobile previews are saved with the synthetic browser artifacts.
 
 From the repository root with Docker running, including on PowerShell:
 

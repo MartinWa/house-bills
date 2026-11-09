@@ -177,7 +177,7 @@ class Document(ValidatedModel):
         PROCESSING = "processing", "Processing"
         REVIEW = "review", "Needs review"
         FAILED = "failed", "Failed"
-        READY = "ready", "Original stored"
+        READY = "ready", "Done"
 
     source = models.CharField(max_length=20, choices=Source, default=Source.UPLOAD)
     sha256 = models.CharField(max_length=64, blank=True, validators=[sha256_validator])
@@ -281,6 +281,18 @@ class Document(ValidatedModel):
     @computed_property
     def display_name(self):
         return self.original_filename or f"Manual entry #{self.pk}"
+
+    @computed_property
+    def storage_needs_attention(self):
+        return bool(
+            self.storage_error
+            or self.staging_path
+            or self.publication_path
+            or self.storage_state
+            in (self.StorageState.PENDING, self.StorageState.PUBLISHING, self.StorageState.FAILED)
+            # Approval can commit before its publication callback starts.
+            or (self.state == self.State.READY and self.storage_state == self.StorageState.INBOX)
+        )
 
     def __str__(self):
         return self.display_name

@@ -8,7 +8,7 @@
   {% if unavailable %}
     <p role="alert">Reports are unavailable. Try again shortly.</p>
   {% elif not form.errors %}
-    {% if manual_invoices %}<p><span class="status status-manual">Manual entries</span> This report includes {{ manual_invoices }} manually entered invoice{{ manual_invoices|pluralize }} without an original PDF.</p>{% endif %}
+    <p class="report-summary"><strong>{{ total_invoices }} approved invoice{{ total_invoices|pluralize }}</strong> · {{ pdf_invoices }} from PDFs · {{ manual_invoices }} manual</p>
     {% if issues %}
       <div class="notice" role="alert">
         <p>Some electricity consumption needs review and is excluded from the totals. Network readings are used where available; supply is a fallback for periods without network readings.</p>
@@ -20,7 +20,7 @@
               <td>{{ row.property_name }}</td>
               <td><a href="{% url 'bills:invoice' row.invoice_id %}">{{ row.reference }}</a><small>{{ row.source_label }}</small><a href="{% url 'bills:review' row.document_id %}">Review invoice</a>{% if row.document_id not in manual_document_ids %} · <a href="{% url 'bills:source_view' row.document_id %}{% if row.source_page %}#page={{ row.source_page }}{% endif %}">View source</a>{% endif %}</td>
               <td>{{ row.period_start|date:"Y-m-d" }} – {{ row.period_end|final_day }}</td>
-              <td>{{ row.quantity_milli|quantity }} kWh</td>
+              <td>{{ row.quantity_milli|quantity_whole }} kWh</td>
               <td>{{ row.reason }}</td>
             </tr>{% endfor %}</tbody>
           </table>
@@ -33,7 +33,7 @@
       <table id="report-costs">
         <thead><tr><th>Property</th><th>Category</th><th>Subcategory</th><th>Excluding VAT</th><th>VAT</th><th>Including VAT</th></tr></thead>
         <tbody>{% for row in costs %}<tr>
-          <td>{{ row.property_name }}</td><td><span class="category">{% include "bills/_icon.html" with name=row.category %}{{ row.category_label }}</span></td><td>{{ row.subcategory_label|default:"—" }}</td><td class="amount">{{ row.net_minor|money }} {{ row.currency }}</td><td class="amount">{{ row.vat_minor|money }} {{ row.currency }}</td><td class="amount">{{ row.gross_minor|money }} {{ row.currency }}</td>
+          <td>{{ row.property_name }}</td><td><span class="category">{% include "bills/_icon.html" with name=row.category %}{{ row.category_label }}</span></td><td>{{ row.subcategory_label|default:"—" }}</td><td class="amount">{{ row.net_minor|money_whole }} {{ row.currency }}</td><td class="amount">{{ row.vat_minor|money_whole }} {{ row.currency }}</td><td class="amount">{{ row.gross_minor|money_whole }} {{ row.currency }}</td>
         </tr>{% empty %}<tr><td colspan="6">No approved costs match these filters.</td></tr>{% endfor %}</tbody>
       </table>
     </div>
@@ -43,7 +43,7 @@
       <table id="report-consumption">
         <thead><tr><th>Property</th><th>Category</th><th>Subcategory</th><th>Consumption</th></tr></thead>
         <tbody>{% for row in consumption %}<tr>
-          <td>{{ row.property_name }}</td><td><span class="category">{% include "bills/_icon.html" with name=row.utility %}{{ row.utility_label }}</span></td><td>{{ row.subcategory_label|default:"—" }}</td><td class="amount">{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
+          <td>{{ row.property_name }}</td><td><span class="category">{% include "bills/_icon.html" with name=row.utility %}{{ row.utility_label }}</span></td><td>{{ row.subcategory_label|default:"—" }}</td><td class="amount">{{ row.quantity_milli|quantity_whole }} {{ row.unit_label }}</td>
         </tr>{% empty %}<tr><td colspan="4">No selected consumption matches these filters.</td></tr>{% endfor %}</tbody>
       </table>
     </div>
@@ -53,7 +53,7 @@
         <table id="report-basis">
           <thead><tr><th>Property</th><th>Category</th><th>Subcategory</th><th>Source</th><th>Basis</th><th>Consumption</th></tr></thead>
           <tbody>{% for row in breakdown %}<tr>
-            <td>{{ row.property_name }}</td><td><span class="category">{% include "bills/_icon.html" with name=row.utility %}{{ row.utility_label }}</span></td><td>{{ row.subcategory_label|default:"—" }}</td><td>{{ row.source_label }}{% if row.source_selection == 'supply_fallback' %} (fallback){% endif %}</td><td>{{ row.basis_label }}</td><td class="amount">{{ row.quantity_milli|quantity }} {{ row.unit_label }}</td>
+            <td>{{ row.property_name }}</td><td><span class="category">{% include "bills/_icon.html" with name=row.utility %}{{ row.utility_label }}</span></td><td>{{ row.subcategory_label|default:"—" }}</td><td>{{ row.source_label }}{% if row.source_selection == 'supply_fallback' %} (fallback){% endif %}</td><td>{{ row.basis_label }}</td><td class="amount">{{ row.quantity_milli|quantity_whole }} {{ row.unit_label }}</td>
           </tr>{% endfor %}</tbody>
         </table>
       </div>

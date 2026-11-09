@@ -4,8 +4,8 @@
 {% block content %}
   <h2>{{ invoice.vendor.name }} · {{ invoice.reference }}</h2>
   <p>{{ invoice.get_kind_display }} · Approved revision {{ invoice.review_revision }} by {{ invoice.approved_by.get_username }} on {{ invoice.approved_at }}.</p>
-  <p><a href="{% url 'bills:review' invoice.document_id %}">Correct invoice</a> · <a href="{% url 'bills:document' invoice.document_id %}">Document and extraction</a></p>
-  {% if invoice.document.source == 'manual' %}<p><span class="status status-manual">Manual entry</span> This invoice was entered without an original PDF; approved values and review history are the source record.</p>{% else %}<p><a href="{% url 'bills:source_view' invoice.document_id %}" target="_blank" rel="noopener">View original PDF</a> · <a href="{% url 'bills:source' invoice.document_id %}">Download original PDF</a></p>{% endif %}
+  <p><a href="{% url 'bills:document' invoice.document_id %}">Open document</a></p>
+  {% if invoice.document.source == 'manual' %}<p><span class="status status-manual">Manual entry</span></p>{% endif %}
   <dl>
     <dt>Invoice date</dt><dd>{{ invoice.invoice_date|date:"Y-m-d" }}</dd>
     <dt>Due date</dt><dd>{{ invoice.due_date|date:"Y-m-d"|default:"Unknown" }}</dd>

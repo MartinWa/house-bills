@@ -5,7 +5,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import DatabaseError
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -38,7 +38,7 @@ def home(request):
 @require_http_methods(["GET", "POST"])
 def upload(request):
     if request.method == "GET":
-        return redirect(f"{reverse('bills:documents')}?upload=1#upload")
+        return redirect(f"{reverse('bills:documents')}#upload")
     form = UploadForm(request.POST, request.FILES)
     status = 400
     if form.is_valid():
@@ -55,7 +55,7 @@ def upload(request):
                 None, "Storage is unavailable. Try again; completed uploads can be recovered."
             )
             status = 503
-    return _documents_response(request, upload_form=form, upload_open=True, status=status)
+    return _documents_response(request, upload_form=form, status=status)
 
 
 @never_cache
@@ -77,20 +77,35 @@ def documents(request):
     return _documents_response(request)
 
 
-def _documents_response(request, *, upload_form=None, upload_open=False, status=200):
-    form = DocumentFilterForm(request.GET)
+def _documents_response(request, *, upload_form=None, status=200):
+    query = request.GET.copy()
+    query.setdefault("processing", DocumentFilterForm.ATTENTION)
+    form = DocumentFilterForm(query)
     records = Document.objects.order_by("-created_at", "-pk")
     if form.is_valid():
-        if form.cleaned_data["processing"]:
-            records = records.filter(state=form.cleaned_data["processing"])
-        if form.cleaned_data["storage"]:
-            records = records.filter(storage_state=form.cleaned_data["storage"])
+        processing = form.cleaned_data["processing"]
+        if processing == DocumentFilterForm.ATTENTION:
+            records = records.filter(
+                ~Q(state=Document.State.READY)
+                | Q(state=Document.State.READY, storage_state=Document.StorageState.INBOX)
+                | Q(
+                    storage_state__in=[
+                        Document.StorageState.PENDING,
+                        Document.StorageState.PUBLISHING,
+                        Document.StorageState.FAILED,
+                    ]
+                )
+                | ~Q(storage_error="")
+                | ~Q(staging_path="")
+                | ~Q(publication_path="")
+            )
+        elif processing:
+            records = records.filter(state=processing)
     else:
         records = records.none()
         status = max(status, 400)
     page = Paginator(records, 50).get_page(request.GET.get("page"))
-    query = request.GET.copy()
-    for key in ("page", "upload"):
+    for key in ("page", "upload", "storage"):
         query.pop(key, None)
     return render(
         request,
@@ -98,9 +113,10 @@ def _documents_response(request, *, upload_form=None, upload_open=False, status=
         {
             "page": page,
             "form": form,
+            "attention_only": form.is_valid()
+            and form.cleaned_data["processing"] == DocumentFilterForm.ATTENTION,
             "filter_query": query.urlencode(),
             "upload_form": upload_form if upload_form is not None else UploadForm(),
-            "upload_open": upload_open or request.GET.get("upload") == "1",
             "limit": settings.MAX_PDF_UPLOAD_BYTES,
         },
         status=status,
@@ -137,7 +153,7 @@ def document(request, pk):
             "document": source,
             "proposal": extraction_summary(attempt),
             "invoice": invoice,
-            "differences": proposal_differences(invoice, attempt),
+            "differences": proposal_differences(invoice, attempt, pending_only=True),
             "reparse_form": ReparseForm(
                 initial={"extraction_revision": source.extraction_revision}
             ),
@@ -197,6 +213,8 @@ def reports(request):
         "consumption": [],
         "breakdown": [],
         "issues": [],
+        "total_invoices": 0,
+        "pdf_invoices": 0,
         "manual_invoices": 0,
         "manual_document_ids": [],
     }
@@ -335,6 +353,8 @@ def review(request, pk):
             status = 400
     current_invoice = invoice_for_review(pk)
     attempt = origin["extraction"] if context.review_id is None else None
+    latest_attempt = source.extractions.order_by("-revision").first()
+    pending_differences = proposal_differences(current_invoice, latest_attempt, pending_only=True)
     return render(
         request,
         "bills/review.html",
@@ -347,7 +367,12 @@ def review(request, pk):
                 origin["warnings"], origin["values"].get("sections", []), origin["properties"]
             ),
             "from_proposal": context.review_id is None,
-            "differences": proposal_differences(current_invoice, attempt),
+            "differences": (
+                proposal_differences(current_invoice, attempt)
+                if context.review_id is None
+                else pending_differences
+            ),
+            "has_latest_changes": bool(pending_differences),
             "show_errors": request.method == "POST" and (status != 200 or not data.get("add_row")),
             "stale": status == 409,
         },

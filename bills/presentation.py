@@ -16,6 +16,15 @@ def scaled_value(value, scale, precision):
     return f"{sign}{whole:,}".replace(",", " ") + f",{fraction:0{precision}d}"
 
 
+def rounded_value(value, scale):
+    """Round exact aggregated units to whole numbers, with halves away from zero."""
+    if type(value) is not int:
+        return "Unknown"
+    whole = (abs(value) + scale // 2) // scale
+    sign = "-" if value < 0 and whole else ""
+    return f"{sign}{whole:,}".replace(",", " ")
+
+
 def extraction_summary(attempt):
     if attempt is None:
         return None
@@ -170,10 +179,16 @@ def _comparison_values(values, *, vendor_id, properties, kind):
     vendor = Vendor.objects.filter(pk=vendor_id).first() if vendor_id else None
     houses = Property.objects.in_bulk({pk for pk in properties.values() if type(pk) is int})
 
-    def put(key, label, value):
-        result[key] = (label, "Unknown" if value is None or value == "" else str(value))
+    def put(key, label, value, *, display=None):
+        comparison = "Unknown" if value is None or value == "" else str(value)
+        result[key] = (label, comparison, comparison if display is None else display)
 
-    put("vendor", "Vendor", vendor.name if vendor else None)
+    put(
+        "vendor",
+        "Vendor",
+        vendor_id,
+        display=f"{vendor.name} ({vendor.slug})" if vendor else "Unknown",
+    )
     put("kind", "Invoice type", "Credit invoice" if kind == "credit" else "Invoice")
     for field, label in (
         ("reference", "Invoice reference"),
@@ -204,7 +219,12 @@ def _comparison_values(values, *, vendor_id, properties, kind):
         key = section["section_id"]
         prefix, label = f"section.{key}", f"Allocation {index + 1}"
         house = houses.get(properties.get(key))
-        put(f"{prefix}.property", f"{label} property", house.name if house else None)
+        put(
+            f"{prefix}.property",
+            f"{label} property",
+            properties.get(key),
+            display=f"{house.name} ({house.slug})" if house else "Unknown",
+        )
         put(
             f"{prefix}.service",
             f"{label} service",
@@ -251,10 +271,13 @@ def _comparison_values(values, *, vendor_id, properties, kind):
     return result
 
 
-def proposal_differences(invoice, attempt):
+def proposal_differences(invoice, attempt, *, pending_only=False):
     if invoice is None or not invoice.review_revision or attempt is None:
         return []
-    snapshot = invoice.reviews.get(revision=invoice.review_revision).snapshot
+    review = invoice.reviews.get(revision=invoice.review_revision)
+    if pending_only and attempt.created_at <= review.created_at:
+        return []
+    snapshot = review.snapshot
     approved = _comparison_values(
         snapshot["values"],
         vendor_id=snapshot["vendor_id"],
@@ -275,8 +298,8 @@ def proposal_differences(invoice, attempt):
             differences.append(
                 {
                     "field": (after or before)[0],
-                    "approved": before[1] if before else "Not present",
-                    "proposed": after[1] if after else "Not present",
+                    "approved": before[2] if before else "Not present",
+                    "proposed": after[2] if after else "Not present",
                 }
             )
     return differences

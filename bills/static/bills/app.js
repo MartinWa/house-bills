@@ -1,6 +1,40 @@
 "use strict";
 
 (() => {
+  for (const form of document.querySelectorAll("[data-direct-upload]")) {
+    const input = form.querySelector('input[type="file"]');
+    const button = form.querySelector("[data-upload-button]");
+    const status = form.querySelector("[data-upload-status]");
+    const buttonContents = button.innerHTML;
+    form.querySelector("[data-upload-field]").hidden = true;
+    input.required = false;
+    window.addEventListener("pageshow", () => {
+      input.value = "";
+      button.disabled = false;
+      button.innerHTML = buttonContents;
+      status.textContent = "";
+      form.removeAttribute("aria-busy");
+    });
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      input.click();
+    });
+    input.addEventListener("change", () => {
+      if (input.files.length) form.requestSubmit();
+    });
+    form.addEventListener("submit", event => {
+      if (!input.files.length) {
+        event.preventDefault();
+        input.click();
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "Uploading…";
+      status.textContent = `Uploading ${input.files[0].name}…`;
+      form.setAttribute("aria-busy", "true");
+    });
+  }
+
   for (const form of document.querySelectorAll("[data-auto-filter]")) {
     let timer;
     const start = form.elements.namedItem("date_from");

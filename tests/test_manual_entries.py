@@ -92,7 +92,7 @@ def test_manual_entry_is_approved_through_the_normal_review(configured, client):
     assert read_report(date_from=date(2025, 1, 1))["manual_invoices"] == 0
     assert read_report(date_to=date(2023, 12, 31))["manual_document_ids"] == []
     page = client.get("/reports/").content.decode()
-    assert "manually entered invoice" in page
+    assert "1 approved invoice" in page and "0 from PDFs" in page and "1 manual" in page
 
 
 def test_manual_entry_cannot_be_reparsed_or_touched_by_storage_recovery(configured, client):

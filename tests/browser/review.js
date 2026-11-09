@@ -1,4 +1,4 @@
-async (page, artifacts = ".playwright-cli") => {
+async (page, artifacts = ".playwright-cli", readFixture = null) => {
   const base = new URL(page.url()).origin;
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -25,6 +25,10 @@ async (page, artifacts = ".playwright-cli") => {
     assert((await response).status() === status, `Unexpected save status for ${name}`);
     await target.waitForLoadState("domcontentloaded");
   };
+  const openReview = async () => {
+    await page.getByRole("link", { name: "Open document", exact: true }).click();
+    await page.getByRole("link", { name: "Review invoice", exact: true }).click();
+  };
 
   await page.goto(`${base}/login/`);
   await page.getByLabel("Username").fill("synthetic-browser-reviewer");
@@ -32,6 +36,7 @@ async (page, artifacts = ".playwright-cli") => {
   await submit("Sign in");
   assert(new URL(page.url()).pathname === "/invoices/", "Sign-in did not open Invoices");
   assert(await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").count() === 3, "Main navigation still contains Home or Upload");
+  assert((await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").allTextContents()).join(",") === "Invoices,Documents,Reports", "Main navigation order is incorrect");
   await page.locator(".user-menu summary").click();
   assert(await page.getByRole("link", { name: "Administration", exact: true }).isVisible(), "Administration is missing from the User menu");
   await page.keyboard.press("Escape");
@@ -74,19 +79,28 @@ async (page, artifacts = ".playwright-cli") => {
   assert(await page.getByRole("heading", { name: "Invoice formats", exact: true }).count() === 1, "Invoice formats are not visible");
 
   const upload = async filename => {
+    const bytes = readFixture
+      ? await readFixture(filename)
+      : Array.from(await (await import("node:fs/promises")).readFile(`${artifacts}/fixtures/${filename}`));
     await page.goto(`${base}/documents/`);
-    await page.locator("#upload > summary").click();
-    const input = page.locator('input[type="file"]');
-    await input.setInputFiles(`${artifacts}/fixtures/${filename}`);
-    const bytes = await input.evaluate(async input => Array.from(new Uint8Array(await input.files[0].arrayBuffer())));
-    await submit("Upload PDF");
+    await page.waitForLoadState("load");
+    assert(!await page.locator('input[type="file"]').isVisible(), "Direct upload still shows a file subsection");
+    const chooserPromise = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Upload invoice", exact: true }).click();
+    const chooser = await chooserPromise;
+    assert(!chooser.isMultiple(), "Upload allows more than one PDF");
+    const responsePromise = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/upload/");
+    await chooser.setFiles(`${artifacts}/fixtures/${filename}`);
+    assert((await responsePromise).status() === 302, "Direct upload failed");
+    await page.waitForURL(url => /^\/documents\/\d+\/$/.test(url.pathname));
+    await page.waitForLoadState("load");
     return { url: page.url(), bytes };
   };
   const supported = await upload("shared.pdf");
   await text("Browser House One");
   await text("Browser House Two");
   await text("140,250 kWh");
-  await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+  await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   assert(await page.locator('[name^="charges-"]').count() === 0, "Review still requires itemized fee fields");
   const allocationGross = page.locator('[name="sections-0-gross_minor"]');
   const originalAllocationGross = await allocationGross.inputValue();
@@ -114,13 +128,13 @@ async (page, artifacts = ".playwright-cli") => {
   await text("Approved revision 1");
 
   await page.getByRole("link", { name: "Reports", exact: true }).click();
-  assert((await page.locator("#report-costs").innerText()).includes("138,19 SEK"), "Report multiplied or changed supply costs");
-  assert((await page.locator("#report-consumption").innerText()).includes("140,250 kWh"), "Duplicate upload multiplied consumption");
+  assert((await page.locator("#report-costs").innerText()).includes("138 SEK"), "Report multiplied or changed rounded supply costs");
+  assert((await page.locator("#report-consumption").innerText()).includes("140 kWh"), "Duplicate upload multiplied consumption");
   assert((await page.locator("#report-basis").innerText()).includes("Electricity supply (fallback)"), "Supply fallback was not explicit");
   assert((await page.locator("#report-costs").innerText()).includes("Elhandel"), "Supply cost is missing its electricity subcategory");
   await page.goto(supportedInvoice);
 
-  await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
+  await openReview();
   const stale = await page.context().newPage();
   await stale.goto(page.url());
   await fill("usages-0-quantity_milli", "141,125");
@@ -130,8 +144,8 @@ async (page, artifacts = ".playwright-cli") => {
   await text("141,125 kWh");
   const reportPage = await page.context().newPage();
   await reportPage.goto(`${base}/reports/`);
-  assert((await reportPage.locator("#report-consumption").innerText()).includes("141,125 kWh"), "Report did not refresh the approved correction");
-  assert(!(await reportPage.locator("#report-consumption").innerText()).includes("140,250 kWh"), "Report retained the previous approved quantity");
+  assert((await reportPage.locator("#report-consumption").innerText()).includes("141 kWh"), "Report did not refresh the approved correction");
+  assert(!(await reportPage.locator("#report-consumption").innerText()).includes("140 kWh"), "Report retained the previous approved quantity");
   await reportPage.close();
   await fill("usages-0-quantity_milli", "143,000", stale);
   await submit("Save correction", 409, stale);
@@ -140,23 +154,30 @@ async (page, artifacts = ".playwright-cli") => {
   await stale.close();
   await page.reload();
   await text("141,125 kWh");
-  await page.getByRole("link", { name: "Document and extraction" }).click();
+  await page.getByRole("link", { name: "Open document", exact: true }).click();
+  assert(await page.getByRole("link", { name: "Review invoice", exact: true }).count() === 1, "Document has duplicate review entry points");
+  await page.getByRole("link", { name: "Review invoice", exact: true }).click();
+  assert(await page.getByRole("link", { name: "Load latest extraction", exact: true }).count() === 0, "Already reviewed extraction is offered again");
+  await page.getByRole("link", { name: "Cancel", exact: true }).click();
   await submit("Re-parse document");
   await text("Proposed differences");
   await text("141,125 kWh");
   await text("140,250 kWh");
-  await page.getByRole("link", { name: "Correct approved values" }).click();
+  assert(await page.getByRole("link", { name: "Load latest extraction", exact: true }).count() === 0, "Extraction loading belongs inside review");
+  await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   assert(await page.locator('[name="usages-0-quantity_milli"]').inputValue() === "141,125", "Re-parsing replaced the correction form");
-  await page.getByRole("link", { name: "Cancel", exact: true }).click();
-  await page.getByRole("link", { name: "Review extracted changes" }).click();
+  await page.getByRole("link", { name: "Load latest extraction", exact: true }).click();
   assert(await page.locator('[name="usages-0-quantity_milli"]').inputValue() === "140,250", "Extraction proposal was not loaded separately");
   await submit("Save correction");
   await text("Approved revision 3");
   await text("140,250 kWh");
   assert(page.url() === supportedInvoice, "Accepting the proposal created another invoice");
+  await openReview();
+  assert(await page.getByRole("link", { name: "Load latest extraction", exact: true }).count() === 0, "Accepted extraction is still pending");
+  await page.getByRole("link", { name: "Cancel", exact: true }).click();
 
   const manual = await upload("unsupported.pdf");
-  await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+  await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   assert(await page.locator('[name^="charges-"]').count() === 0, "Manual entry still requires itemized fees");
   await text("Extraction warnings");
   await select("vendor", { label: "Browser Utilities" });
@@ -207,13 +228,14 @@ async (page, artifacts = ".playwright-cli") => {
   const source = await page.context().request.get(`${manual.url}view/`);
   assert(source.status() === 200 && source.headers()["content-disposition"].startsWith("inline"), "Private viewer failed");
   assert((await source.body()).equals(Buffer.from(manual.bytes)), "Manual source bytes changed after publication");
+  await page.screenshot({ path: `${artifacts}/invoice.png`, fullPage: true });
+  await page.getByRole("link", { name: "Open document", exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Download original PDF", exact: true }).click();
+  await page.getByRole("link", { name: "Download", exact: true }).click();
   const download = await downloadPromise;
   assert(download.suggestedFilename() === "unsupported.pdf", "Download filename changed");
   await download.saveAs(`${artifacts}/original.pdf`);
-  await page.screenshot({ path: `${artifacts}/invoice.png`, fullPage: true });
-  await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
+  await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Review form overflows on mobile");
   await page.screenshot({ path: `${artifacts}/review-mobile.png` });
@@ -229,11 +251,13 @@ async (page, artifacts = ".playwright-cli") => {
   await text("BROWSER-MANUAL-CREDIT-001");
   const warningSource = await upload("section-warning.pdf");
   await page.goto(`${base}/documents/`);
+  assert(await page.locator('[name="processing"]').inputValue() === "attention", "Documents does not default to Needs attention");
+  assert(await page.locator('[name="storage"]').count() === 0, "Documents still has a storage filter");
+  assert(!(await page.locator("tbody").innerText()).includes("shared.pdf"), "Completed documents remain in the default queue");
   await select("processing", "review");
-  await select("storage", "inbox");
   const documents = await page.locator("tbody").innerText();
   assert(documents.includes("section-warning.pdf"), "Document filters lost a document needing review");
-  assert(!documents.includes("shared.pdf") && !documents.includes("unsupported.pdf"), "Document processing and storage filters did not combine");
+  assert(!documents.includes("shared.pdf") && !documents.includes("unsupported.pdf"), "Document status filter included completed invoices");
   await page.screenshot({ path: `${artifacts}/documents-desktop.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Documents overflow on mobile");
@@ -256,7 +280,7 @@ async (page, artifacts = ".playwright-cli") => {
 
   await upload("multiple-readings.pdf");
   assert(await page.locator(".extraction-warnings").count() === 0, "Valid multiple network readings produced an extraction warning");
-  await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+  await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   assert(await page.locator('[name="usages-1-subcategory"]').inputValue() === "matavfall", "Food waste subcategory was lost during review");
   assert(await page.locator('[name="usages-2-subcategory"]').inputValue() === "restavfall", "Residual waste subcategory was lost during review");
   const networkReadings = page.locator('[data-formset="usages"] [data-review-row]').filter({ has: page.locator('select[name$="-section"] option[value="section_04"]:checked') });
@@ -276,18 +300,18 @@ async (page, artifacts = ".playwright-cli") => {
   const consumption = await page.locator("#report-consumption").innerText();
   const foodWaste = page.locator("#report-consumption tbody tr").filter({ hasText: "Matavfall" });
   const residualWaste = page.locator("#report-consumption tbody tr").filter({ hasText: "Restavfall" });
-  assert(await foodWaste.count() === 1 && (await foodWaste.innerText()).includes("12,000 kg"), "Food waste report total was mixed with residual waste");
-  assert(await residualWaste.count() === 1 && (await residualWaste.innerText()).includes("7,500 kg"), "Residual waste report total was mixed with food waste");
+  assert(await foodWaste.count() === 1 && (await foodWaste.innerText()).includes("12 kg"), "Food waste report total was mixed with residual waste");
+  assert(await residualWaste.count() === 1 && (await residualWaste.innerText()).includes("8 kg"), "Residual waste report total was mixed with food waste");
   assert((await page.locator("#report-costs").innerText()).includes("Elnät"), "Network cost is missing its electricity subcategory");
-  assert(consumption.includes("321,125 kWh") && consumption.includes("510,000 kWh") && consumption.includes("-1,250 m³"), "Report lost network intervals, a property or signed corrections");
-  assert(!consumption.includes("140,250 kWh"), "Report summed supply with network consumption");
-  assert((await page.locator("#report-costs").innerText()).includes("473,08 SEK"), "Network cost was multiplied by its readings");
+  assert(consumption.includes("321 kWh") && consumption.includes("510 kWh") && consumption.includes("-1 m³"), "Report lost network intervals, a property or signed corrections");
+  assert(!consumption.includes("140 kWh"), "Report summed supply with network consumption");
+  assert((await page.locator("#report-costs").innerText()).includes("473 SEK"), "Network cost was multiplied by its readings");
   await select("property", houseTwo);
   assert(!(await page.locator("#report-consumption").innerText()).includes("Browser House One"), "Report property filter failed");
   await page.getByRole("link", { name: "Clear filters", exact: true }).click();
   await filterDates("2024-02-15", "2024-02-15");
   assert((await page.locator("#report-costs").innerText()).includes("No approved costs"), "Report filtered costs by billing period instead of invoice date");
-  assert((await page.locator("#report-consumption").innerText()).includes("200,000 kWh"), "Report prorated a complete billed interval");
+  assert((await page.locator("#report-consumption").innerText()).includes("200 kWh"), "Report prorated a complete billed interval");
   await fill("date_from", "2024-03-05");
   await fill("date_to", "2024-02-01");
   await page.locator('[name="date_to"]').blur();
@@ -303,7 +327,7 @@ async (page, artifacts = ".playwright-cli") => {
   await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.goto(supportedInvoice);
-  await page.getByRole("link", { name: "Correct invoice", exact: true }).click();
+  await openReview();
   await fill("usages-0-start", "2024-01-01");
   await fill("note", "Synthetic partial network coverage check.");
   await submit("Save correction");
@@ -327,10 +351,59 @@ async (page, artifacts = ".playwright-cli") => {
   ]) {
     await upload(filename);
     await text("Browser House One");
-    await page.getByRole("link", { name: "Review and approve invoice", exact: true }).click();
+    await page.getByRole("link", { name: "Review invoice", exact: true }).click();
     assert(await page.locator('[name="reference"]').inputValue() === reference, `Current format header failed: ${filename}`);
     await submit("Approve invoice");
     await text(total);
+  }
+
+  await page.goto(`${base}/invoices/`);
+  await submit("Add manual invoice");
+  await select("vendor", { label: "Browser Utilities" });
+  await fill("reference", "BROWSER-LEDGER-001");
+  await fill("invoice_date", "2024-03-05");
+  for (const [name, value] of [["net_minor", "10,00"], ["vat_minor", "2,50"], ["rounding_minor", "0,00"], ["invoice_total_minor", "12,50"], ["amount_due_minor", "12,50"]]) await fill(name, value);
+  await select("sections-0-property", houseOne);
+  await select("sections-0-service", "other");
+  for (const [suffix, value] of [["net_minor", "10,00"], ["vat_minor", "2,50"], ["gross_minor", "12,50"], ["start", "2024-02-01"], ["end", "2024-02-29"]]) await fill(`sections-0-${suffix}`, value);
+  await submit("Approve invoice");
+  await text("Manual entry");
+  await page.getByRole("link", { name: "Open document", exact: true }).click();
+  const ledgerDocument = new URL(page.url()).pathname;
+  const ledgerName = await page.getByRole("heading", { level: 2 }).innerText();
+  assert((await page.locator("body").innerText()).match(/no original PDF/gi).length === 1, "Manual document repeats its source explanation");
+  assert(await page.getByRole("link", { name: "Review invoice", exact: true }).getAttribute("class") !== "button", "Manual review uses inconsistent action styling");
+  await page.goto(`${base}/documents/`);
+  assert(await page.getByRole("link", { name: ledgerName, exact: true }).count() === 0, "Completed manual entry remains in the attention queue");
+  await select("processing", "");
+  assert(await page.getByRole("link", { name: ledgerName, exact: true }).getAttribute("href") === ledgerDocument, "All documents excludes completed manual entries");
+  await select("processing", "ready");
+  await text("Done");
+  await page.goto(`${base}/reports/`);
+  const summary = await page.locator(".report-summary").innerText();
+  assert(summary.includes("8 approved invoices") && summary.includes("7 from PDFs") && summary.includes("1 manual"), "Report source counts repeat allocations or omit manual entries");
+
+  await page.goto(`${base}/documents/`);
+  await page.waitForLoadState("load");
+  const invalidChooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Upload invoice", exact: true }).click();
+  const invalidResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/upload/");
+  await (await invalidChooserPromise).setFiles({ name: "invalid.pdf", mimeType: "application/pdf", buffer: Buffer.from("Wholly synthetic invalid PDF") });
+  assert((await invalidResponse).status() === 400, "Invalid direct upload was accepted");
+  await page.waitForLoadState("load");
+  await text("PDF header");
+  assert(await page.getByRole("button", { name: "Upload invoice", exact: true }).isEnabled(), "Upload errors do not allow retrying");
+
+  const fallbackContext = await page.context().browser().newContext({ javaScriptEnabled: false, storageState: await page.context().storageState() });
+  try {
+    const fallback = await fallbackContext.newPage();
+    await fallback.goto(`${base}/documents/`);
+    assert(await fallback.locator('input[type="file"]').isVisible(), "Upload has no fallback without JavaScript");
+    await fallback.locator('input[type="file"]').setInputFiles(`${artifacts}/fixtures/shared.pdf`);
+    await submit("Upload invoice", 302, fallback);
+    await text("This PDF is already stored.", fallback);
+  } finally {
+    await fallbackContext.close();
   }
 
   const anonymous = await page.context().browser().newContext();
