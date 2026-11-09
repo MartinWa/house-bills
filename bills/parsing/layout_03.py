@@ -14,9 +14,11 @@ from .layout_helpers import (
 from .normalization import DATE, NUMBER, PERIOD, money, source_period, text
 from .types import Section
 
-FAMILY, VERSION, REVISION = "layout_03", "v1", "1"
+FAMILY, VERSION, REVISION = "layout_03", "v1", "2"
 TAX = rf"^Moms\s+25\s*%\s+beräknat på\s+({NUMBER})\s+({NUMBER})$"
-ITEM = re.compile(r"^(Grundavgift permanentbostad|Tömn(?:ing)?\s+(?:Restavfall|Matavfall))\b", re.I)
+ITEM = re.compile(
+    r"^(Grundavgift permanentbostad|Tömn(?:ing)?\s+(?:Restavfall|Matavfall)|Slamavskiljare)\b", re.I
+)
 
 
 def matches(pages):

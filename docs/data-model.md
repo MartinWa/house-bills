@@ -23,17 +23,17 @@ POST and CSRF protection.
    registry supplies coexisting versions and implementation revisions; see
    [deterministic parsing](parsing.md). Configuration enables installed extraction
    rules; an unfamiliar structure requires review and a parser update.
-4. Map installation or contract identifiers to each house. These keys are scoped by
-   vendor and identifier kind. Installation and vendor identification numbers ignore
-   spaces and hyphens; vendor numbers also normalize case. Contract keys preserve
-   punctuation and case while normalizing whitespace. Delivery addresses normalize
-   whitespace and case.
+4. Map installation, contract or product-number identifiers to each house. These keys
+   are scoped by vendor and identifier kind. Installation and vendor identification
+   numbers ignore spaces and hyphens; vendor numbers also normalize case. Contract
+   and product keys preserve punctuation and case while normalizing whitespace.
+   Delivery addresses normalize whitespace and case.
 
 **Property mappings** also provides a separate mapping editor. One customer account
 may cover both houses. Customer accounts remain source hints and cannot be configured
-as property keys. A delivery-address mapping is used only when no mapped installation
-or contract key exists. Conflicting specific keys require review. An explicitly reviewed
-section assignment may correct a house for one invoice without changing saved mappings.
+as property keys. A delivery-address mapping is used only when no mapped installation,
+contract or product key exists. Conflicting specific keys require review. An explicitly
+reviewed section assignment may correct a house for one invoice without changing saved mappings.
 
 To remove a specific mapping on the vendor form, tick that row's **Delete?** checkbox
 and save. This removes the mapping and preserves the property. Property selectors
@@ -42,8 +42,8 @@ are plain dropdowns; add, edit, view or delete properties from **Properties**.
 When a vendor always bills one property, select its optional **Default property** in
 the vendor form's **Property mappings** section, above **Specific mappings**.
 Sections with no matching property mapping use this default, so you
-can leave property mappings empty for that vendor. Installation/contract mappings take
-precedence, followed by delivery-address mappings, then the vendor default. Conflicting
+can leave property mappings empty for that vendor. Installation, contract and product
+mappings take precedence, followed by delivery-address mappings, then the vendor default. Conflicting
 mappings still require review. Leave the default blank when each section needs a
 specific assignment. Changing this setting does not alter previously approved invoices.
 
@@ -53,7 +53,7 @@ specific assignment. Changing this setting does not alter previously approved in
 | --- | --- |
 | Property / Vendor | Display names and safe unique storage slugs; vendors also have an optional default property. |
 | VendorIssuerIdentifier / VendorLayoutFamily | Private vendor identification numbers and compatible installed invoice formats. |
-| PropertyIdentifier | A vendor-scoped installation, contract or delivery-address key mapped to one property. |
+| PropertyIdentifier | A vendor-scoped installation, contract, product-number or delivery-address key mapped to one property. |
 | Document | Source (`upload` or `manual`), unique SHA-256 for uploads, original filename, relative private path, separate processing/storage state and messages, staging/publication journal paths, extraction counter and a private legacy fee archive. |
 | ExtractionAttempt | Append-only candidate JSON, page evidence, layout family/version, parser revision, error/state and attempt number. Invalid and failed results remain private proposals. |
 | Invoice | Document, vendor, reference/kind, dates, SEK, net/VAT/rounding/total/amount due, header evidence, supporting identifiers, source pages and approval metadata. |

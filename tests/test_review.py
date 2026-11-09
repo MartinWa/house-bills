@@ -102,6 +102,35 @@ def approved(client, document):
     return document.invoices.get()
 
 
+def test_product_numbers_map_independently_and_survive_approval(client, configured, tmp_path):
+    _, vendor, houses = configured
+    PropertyIdentifier.objects.create(
+        vendor=vendor, property=houses[1], kind="product", value="9901"
+    )
+    pages = multi_service()
+    pages[2] = [
+        line.replace("Vatten avtal 9901", "Vatten & Avlopp prodnr 9901")
+        if isinstance(line, str)
+        else line
+        for line in pages[2]
+    ]
+    document, _ = upload(client, tmp_path, pages)
+    candidate = document.extractions.get().candidate
+    assert not candidate["issues"]
+    assert candidate["routing"]["section_properties"]["section_01"] == houses[1].pk
+    path = f"/documents/{document.pk}/review/"
+    response = client.get(path)
+    product_form = next(
+        form for form in response.context["review"].identifiers if form["kind"].value() == "product"
+    )
+    assert 'value="product" selected' in str(product_form["kind"])
+    invoice = approved(client, document)
+    water = invoice.sections.get(service="water")
+    assert water.property == houses[1]
+    assert water.identifiers[0] == candidate["sections"][0]["identifiers"][0]
+    assert water.identifiers[0]["kind"] == "product"
+
+
 def test_document_shows_manual_approval_and_archives_failed_extraction(
     client, configured, tmp_path
 ):

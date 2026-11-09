@@ -27,6 +27,7 @@ IDENTIFIER_KINDS = [
     ("customer_account", "Customer account"),
     ("installation", "Installation"),
     ("contract", "Contract"),
+    ("product", "Product number"),
     ("delivery_address", "Delivery address"),
     ("organization", "Organization number"),
     ("vat", "VAT identifier"),

@@ -29,7 +29,7 @@
     {% for group_name, label, formset in review.groups %}
       <section data-formset="{{ group_name }}" data-limit="{{ formset.absolute_max }}">
         <h3>{{ label }}</h3>
-        {% if group_name == 'sections' %}<p>Check each property/service total and billing period. Allocations plus rounding must match the invoice total.</p>{% elif group_name == 'usages' %}<p>Add billed consumption once for each period and source service. Preserve negative corrections.</p>{% else %}<p>Keep installation and contract identifiers with their allocation. Customer accounts are supporting invoice information. These edits apply to this invoice.</p>{% endif %}
+        {% if group_name == 'sections' %}<p>Check each property/service total and billing period. Allocations plus rounding must match the invoice total.</p>{% elif group_name == 'usages' %}<p>Add billed consumption once for each period and source service. Preserve negative corrections.</p>{% else %}<p>Keep installation, contract and product-number identifiers with their allocation. Customer accounts are supporting invoice information. These edits apply to this invoice.</p>{% endif %}
         {{ formset.management_form }}{% if show_errors %}{{ formset.non_form_errors }}{% endif %}
         <div data-formset-rows>{% for row in formset %}{% include "bills/_review_row.html" with number=forloop.counter %}{% endfor %}</div>
         <template data-empty-form>{% include "bills/_review_row.html" with row=formset.empty_form number="New" show_errors=False %}</template>
