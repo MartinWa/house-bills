@@ -14,6 +14,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from filelock import Timeout
 
 from .forms import DocumentFilterForm, InvoiceFilterForm, ReparseForm, ReportFilterForm, UploadForm
+from .invoice_folders import invoice_folders
 from .models import BillingSection, Document, Invoice
 from .presentation import extraction_summary, proposal_differences, review_summary, warning_details
 from .processing import parse_document
@@ -181,6 +182,7 @@ def document(request, pk):
 @never_cache
 @require_GET
 def invoices(request):
+    invoice_view = "folders" if request.GET.get("view") == "folders" else "list"
     form = InvoiceFilterForm(request.GET)
     records = (
         Invoice.objects.filter(status=Invoice.Status.APPROVED)
@@ -209,13 +211,29 @@ def invoices(request):
             records = records.filter(invoice_date__lte=form.cleaned_data["date_to"])
     else:
         records = records.none()
-    page = Paginator(records, 50).get_page(request.GET.get("page"))
     query = request.GET.copy()
     query.pop("page", None)
+    query["view"] = "list"
+    list_query = query.urlencode()
+    query["view"] = "folders"
+    folders_query = query.urlencode()
+    query["view"] = invoice_view
+    context = {
+        "form": form,
+        "invoice_view": invoice_view,
+        "list_query": list_query,
+        "folders_query": folders_query,
+        "filter_query": query.urlencode(),
+        "clear_view_url": f"{reverse('bills:invoices')}?view={invoice_view}",
+    }
+    if invoice_view == "folders":
+        context.update(invoice_folders(records))
+    else:
+        context["page"] = Paginator(records, 50).get_page(request.GET.get("page"))
     return render(
         request,
         "bills/invoices.html",
-        {"page": page, "form": form, "filter_query": query.urlencode()},
+        context,
         status=400 if form.errors else 200,
     )
 

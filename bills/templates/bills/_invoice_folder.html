@@ -1,0 +1,33 @@
+<details class="invoice-folder">
+  <summary>
+    {% include "bills/_icon.html" with name="folder" %}
+    <span class="folder-name">{{ folder.name }}</span>
+    <span class="folder-count">{{ folder.count }} {% if folder.manual %}entr{{ folder.count|pluralize:"y,ies" }}{% else %}PDF{{ folder.count|pluralize }}{% endif %}</span>
+  </summary>
+  <div class="folder-contents">
+    {% for child in folder.children %}
+      {% include "bills/_invoice_folder.html" with folder=child only %}
+    {% endfor %}
+    {% if folder.documents %}
+      <div class="folder-rows">
+        {% for entry in folder.documents %}
+          <div class="folder-document">
+          {% for invoice in entry.invoices %}
+            <div class="folder-invoice-row">
+              <span class="folder-invoice-date">{{ invoice.invoice_date|date:"Y-m-d" }}</span>
+              <a class="folder-reference" href="{% url 'bills:invoice' invoice.pk %}">{{ invoice.reference }}</a>
+              {% if entry.document.source == 'manual' %}
+                <span class="status status-manual">Manual entry</span>
+              {% elif entry.document.original_path %}
+                <a class="folder-filename" href="{% url 'bills:source' entry.document.pk %}">{{ entry.filename }}</a>
+              {% else %}
+                <a href="{% url 'bills:document' entry.document.pk %}">Check storage</a>
+              {% endif %}
+            </div>
+          {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</details>

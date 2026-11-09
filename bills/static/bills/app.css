@@ -86,6 +86,27 @@ button:disabled { cursor: wait; opacity: .7; }
 .amount { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .invoice-total { font-weight: 650; }
 .allocations { min-width: 19rem; }
+.invoice-view-switch { display: inline-flex; gap: .25rem; margin-top: .5rem; padding: .25rem; border: 1px solid #e1d8c3; border-radius: .6rem; background: #fffaf0; }
+.invoice-view-switch a { padding: .45rem 1rem; border-radius: .4rem; font-weight: 600; text-decoration: none; }
+.invoice-view-switch a[aria-current="page"] { color: #322c22; background: #f7df91; }
+.folder-overview { margin-bottom: .25rem; font-weight: 600; }
+.invoice-folders { border: 1px solid #e1d8c3; border-radius: .65rem; background: #fffefb; overflow: hidden; }
+.invoice-folder + .invoice-folder { border-top: 1px solid #e9e1d0; }
+.invoice-folder > summary { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; cursor: pointer; list-style: none; }
+.invoice-folder > summary::-webkit-details-marker { display: none; }
+.invoice-folder > summary::before { content: "›"; font-size: 1.25rem; line-height: 1; width: .65rem; flex: 0 0 auto; transition: transform .15s; }
+.invoice-folder[open] > summary::before { transform: rotate(90deg); }
+.invoice-folder > summary:hover { background: #fffaf0; }
+.invoice-folder > summary .icon { color: #8d650d; }
+.folder-name { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.folder-count { margin-left: auto; flex: 0 0 auto; font-size: .8rem; color: #60543d; font-variant-numeric: tabular-nums; }
+.folder-contents { margin: 0 .75rem .75rem 1.5rem; padding-left: .5rem; border-left: 1px solid #e1d8c3; }
+.folder-rows { overflow-x: auto; }
+.folder-document { border-top: 1px solid #e9e1d0; }
+.folder-invoice-row { display: flex; align-items: baseline; gap: 1rem; padding: .6rem .75rem; width: max-content; min-width: 100%; white-space: nowrap; font-size: .85rem; }
+.folder-invoice-date { flex: 0 0 6rem; color: #60543d; }
+.folder-reference { min-width: 7rem; }
+.folder-filename { font-family: ui-monospace, monospace; font-size: .8rem; }
 .allocation-group + .allocation-group { margin-top: .85rem; }
 .allocation-group > strong { display: block; font-size: .9rem; margin-bottom: .35rem; }
 .allocation-group ul { padding: 0; list-style: none; }
@@ -108,6 +129,9 @@ button:disabled { cursor: wait; opacity: .7; }
   .main-nav { order: 3; flex-basis: 100%; }
   .main-nav a { flex: 1; text-align: center; }
   .filters { gap: .75rem; }
+  .invoice-folder > summary { padding: .7rem .6rem; gap: .4rem; }
+  .folder-contents { margin-left: .65rem; margin-right: .25rem; padding-left: .25rem; }
+  .folder-invoice-row { padding: .6rem .4rem; gap: .65rem; }
   .filter-field { flex-basis: calc(50% - .75rem); min-width: 0; }
   dl { grid-template-columns: 1fr; }
   dd { margin-bottom: .5rem; overflow-wrap: anywhere; }
