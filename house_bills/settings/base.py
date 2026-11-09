@@ -54,6 +54,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "bills.context_processors.app_release",
             ],
         },
     }
@@ -116,6 +117,8 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
 MIGRATE_ON_START = env_bool("HOUSE_BILLS_MIGRATE_ON_START", True)
 MIGRATION_LOCK_TIMEOUT = 300
+APP_VERSION = os.environ.get("HOUSE_BILLS_VERSION", "development").strip() or "development"
+UPDATE_CHECK_ENABLED = env_bool("HOUSE_BILLS_UPDATE_CHECK", True)
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

@@ -29,6 +29,11 @@ invoice counts. Manual entries have one source explanation and leave the queue a
 approval. Invalid date ranges are checked both in the browser and through direct URLs.
 Desktop and mobile previews are saved with the synthetic browser artifacts.
 
+Footer checks cover release/GitHub links, no anonymous status requests, and a visible
+update indicator only for a newer release. The container runner supplies a synthetic
+stable version and intercepts release status to cover current and unavailable responses
+without contacting GitHub.
+
 From the repository root with Docker running, including on PowerShell:
 
 ```sh

@@ -45,6 +45,9 @@ RUN python /usr/local/bin/house-bills-check-runtime.py
 WORKDIR /app
 
 FROM runtime-base AS development
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && git config --system --add safe.directory /app \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=dependency-exports /build/requirements-dev.txt /opt/requirements-dev.txt
 RUN python -m venv --system-site-packages /state/venv \
     && /state/venv/bin/python -m pip install --no-cache-dir --require-hashes --no-deps \

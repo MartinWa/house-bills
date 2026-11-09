@@ -3,8 +3,13 @@
 import os
 import secrets
 
+from house_bills.version import checkout_version
+
 from .base import *  # noqa: F403
-from .base import DATA_DIR
+from .base import BASE_DIR, DATA_DIR
+
+if not os.environ.get("HOUSE_BILLS_VERSION", "").strip():
+    APP_VERSION = checkout_version(BASE_DIR)
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 secret_file = DATA_DIR / ".development-secret"
