@@ -6,7 +6,7 @@ from contextlib import nullcontext
 
 from django.core import signing
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models import Q
 from filelock import FileLock
 
@@ -188,6 +188,6 @@ def delete_document(document_id, *, token):
             raise
         try:
             _finish_deletion(receipt_path)
-        except OSError, ValidationError, ValueError, KeyError, TypeError:
+        except OSError, DatabaseError, ValidationError, ValueError, KeyError, TypeError:
             return False
         return True

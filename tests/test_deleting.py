@@ -6,7 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import DatabaseError, connection
 from django.test import Client
 
-from bills import backups, deleting, storage
+from bills import backups, deleting, storage, views
 from bills.models import (
     Document,
     ExtractionAttempt,
@@ -18,6 +18,7 @@ from bills.models import (
 )
 from bills.processing import parse_document
 from bills.reporting import read_report
+from bills.services import discard_manual_entry
 
 from .synthetic import shared_supply
 from .test_review import approved, manual_fields, review_data, upload
@@ -236,7 +237,8 @@ def test_failed_database_deletion_restores_history_and_keeps_original(
     assert list(storage.private_path(".deletions").glob("*.json")) == []
 
 
-def test_failed_file_cleanup_is_recoverable(configured, client, tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure", [OSError, DatabaseError])
+def test_failed_cleanup_is_recoverable(configured, client, tmp_path, monkeypatch, failure):
     document, _ = upload(client, tmp_path)
     original = storage.private_path(document.original_path)
     path, data = delete_form(client, document)
@@ -244,7 +246,7 @@ def test_failed_file_cleanup_is_recoverable(configured, client, tmp_path, monkey
         interrupted.setattr(
             deleting,
             "_finish_deletion",
-            lambda *_: (_ for _ in ()).throw(OSError("Synthetic cleanup failure")),
+            lambda *_: (_ for _ in ()).throw(failure("Synthetic cleanup failure")),
         )
         response = client.post(path, data, follow=True)
     assert response.status_code == 200 and b"PDF cleanup is pending" in response.content
@@ -252,6 +254,40 @@ def test_failed_file_cleanup_is_recoverable(configured, client, tmp_path, monkey
     assert storage.recover_originals() == []
     assert not original.exists()
     assert list(storage.private_path(".deletions").glob("*.json")) == []
+
+
+@pytest.mark.parametrize("kind", ["manual", "parsed", "approved"])
+def test_review_save_returns_404_when_document_is_deleted_before_write(
+    configured, client, tmp_path, monkeypatch, kind
+):
+    if kind == "manual":
+        response = client.post("/invoices/manual/")
+        document = Document.objects.get(pk=int(response.url.split("/")[2]))
+    else:
+        document, _ = upload(client, tmp_path)
+        if kind == "approved":
+            approved(client, document)
+    path, data = review_data(client, document)
+    if kind == "manual":
+        data = manual_fields(data, configured[1], configured[2][0])
+    approve = views.approve_document_review
+
+    def delete_before_write(document_id, **review):
+        # The request has already loaded its source and validated its form.
+        if kind == "manual":
+            discard_manual_entry(document_id)
+        else:
+            current = Document.objects.get(pk=document_id)
+            deleting.delete_document(document_id, token=deleting.deletion_token(current))
+        return approve(document_id, **review)
+
+    monkeypatch.setattr(views, "approve_document_review", delete_before_write)
+    response = client.post(path, data)
+    assert response.status_code == 404
+    assert not Document.objects.exists() and not Invoice.objects.exists()
+    assert not ReviewRevision.objects.exists() and not ExtractionAttempt.objects.exists()
+    assert not Usage.objects.exists()
+    assert read_report()["total_invoices"] == 0
 
 
 @pytest.mark.parametrize("committed", [False, True])

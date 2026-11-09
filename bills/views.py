@@ -449,6 +449,8 @@ def review(request, pk):
                     "Invoice approved." if context.review_revision == 0 else "Correction saved.",
                 )
                 return redirect("bills:invoice", pk=approved.pk)
+            except Document.DoesNotExist:
+                raise Http404("Document not found.") from None
             except StaleReviewError as exc:
                 _add_form_error(forms.header, exc)
                 status = 409
