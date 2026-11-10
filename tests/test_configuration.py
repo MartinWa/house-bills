@@ -357,6 +357,35 @@ def test_vendor_transition_and_as_needed_tank_emptying_can_be_configured(client,
     assert PropertyService.objects.count() == 2 and ServiceVendorAssignment.objects.count() == 3
 
 
+def test_service_and_vendor_invoice_months_are_labelled_separately(client, admin_user):
+    house = Property.objects.create(name="Synthetic House", slug="house")
+    vendor = Vendor.objects.create(name="Synthetic Current Vendor", slug="current")
+    client.force_login(admin_user)
+    data = property_service_data(house, [vendor])
+    data.update(
+        {
+            "start_month": "2018-01",
+            "end_month": "",
+            "vendor_assignments-0-start_month": "2024-02",
+            "vendor_assignments-0-end_month": "",
+        }
+    )
+    assert client.post("/admin/bills/propertyservice/add/", data).status_code == 302
+    configured = PropertyService.objects.get()
+
+    page = client.get(f"/admin/bills/propertyservice/{configured.pk}/change/")
+    assert b"First expected invoice month" in page.content
+    assert b"Vendor&#x27;s first invoice month" in page.content
+
+    listing = client.get("/admin/bills/propertyservice/").content
+    assert b"Vendor since" in listing and b"Service starts" in listing
+    assert b"2018" in listing and b"2024-02" in listing
+
+    vendor_page = client.get(f"/admin/bills/vendor/{vendor.pk}/change/")
+    assert b"Vendor starts" in vendor_page.content
+    assert b"2024-02" in vendor_page.content
+
+
 def test_enabled_service_requires_a_vendor(client, admin_user):
     house = Property.objects.create(name="Synthetic House", slug="house")
     client.force_login(admin_user)
@@ -418,7 +447,7 @@ def test_vendor_assignment_must_fit_the_service_months(client, admin_user):
     data["vendor_assignments-0-start_month"] = "2024-01"
     response = client.post("/admin/bills/propertyservice/add/", data)
     assert response.status_code == 200
-    assert "within the service's months" in str(
+    assert "within the service's expected invoice months" in str(
         response.context["inline_admin_formsets"][0].formset.non_form_errors()[0]
     )
     assert not PropertyService.objects.exists()

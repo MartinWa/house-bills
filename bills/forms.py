@@ -108,8 +108,8 @@ class InvoiceMonthField(forms.DateField):
 
 
 class PropertyServiceForm(forms.ModelForm):
-    start_month = InvoiceMonthField(label="First invoice month")
-    end_month = InvoiceMonthField(label="Last invoice month", required=False)
+    start_month = InvoiceMonthField(label="First expected invoice month")
+    end_month = InvoiceMonthField(label="Last expected invoice month", required=False)
     service = forms.ChoiceField(
         label="Category / service",
         choices=[
@@ -136,8 +136,6 @@ class PropertyServiceForm(forms.ModelForm):
             "grace_days",
         ]
         help_texts = {
-            "start_month": "First expected invoice month; recurring bills repeat from this month.",
-            "end_month": "Inclusive. Leave blank while the property needs this service.",
             "subcategory": "Waste collection or tank emptying. Blank matches any waste cost.",
             "frequency_months": (
                 "As needed records vendor activity without expecting regular invoices."
@@ -184,14 +182,13 @@ class ServiceInvoiceExceptionForm(forms.ModelForm):
 
 
 class ServiceVendorAssignmentForm(forms.ModelForm):
-    start_month = InvoiceMonthField(label="First invoice month")
-    end_month = InvoiceMonthField(label="Last invoice month", required=False)
+    start_month = InvoiceMonthField(label="Vendor's first invoice month")
+    end_month = InvoiceMonthField(label="Vendor's last invoice month", required=False)
 
     class Meta:
         model = ServiceVendorAssignment
         fields = ["vendor", "is_active", "start_month", "end_month"]
         help_texts = {
-            "start_month": "First month in which this vendor should send an invoice.",
             "end_month": (
                 "Inclusive. End the former vendor and add its replacement to retain history. "
                 "Both vendors may bill in the transition month."
@@ -214,9 +211,13 @@ class ServiceVendorAssignmentFormSet(forms.BaseInlineFormSet):
             start, end = values["start_month"], values.get("end_month")
             service = self.instance
             if service.start_month and start < service.start_month:
-                raise ValidationError("Vendor assignments must start within the service's months.")
+                raise ValidationError(
+                    "Vendor assignments must start within the service's expected invoice months."
+                )
             if service.end_month and (end is None or end > service.end_month):
-                raise ValidationError("Vendor assignments must end within the service's months.")
+                raise ValidationError(
+                    "Vendor assignments must end within the service's expected invoice months."
+                )
             for other_start, other_end in assignments.get(key, []):
                 if (end is None or other_start <= end) and (
                     other_end is None or start <= other_end

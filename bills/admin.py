@@ -134,8 +134,9 @@ class PropertyServiceAdmin(PropertySelectorMixin, admin.ModelAdmin):
         "subcategory_label",
         "vendors",
         "frequency_months",
-        "start_month",
-        "end_month",
+        "service_starts",
+        "service_ends",
+        "vendor_since",
         "is_active",
     ]
     list_select_related = ["property"]
@@ -153,18 +154,36 @@ class PropertyServiceAdmin(PropertySelectorMixin, admin.ModelAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related("vendor_assignments__vendor")
 
+    def _current_assignments(self, obj):
+        month = timezone.now().date().replace(day=1)
+        return [
+            row
+            for row in obj.vendor_assignments.all()
+            if row.is_active
+            and row.start_month <= month
+            and (row.end_month is None or row.end_month >= month)
+        ]
+
     @admin.display(description="Current vendor")
     def vendors(self, obj):
-        month = timezone.now().date().replace(day=1)
         return (
-            ", ".join(
-                row.vendor.name
-                for row in obj.vendor_assignments.all()
-                if row.is_active
-                and row.start_month <= month
-                and (row.end_month is None or row.end_month >= month)
-            )
+            ", ".join(row.vendor.name for row in self._current_assignments(obj))
             or "No current vendor"
+        )
+
+    @admin.display(description="Service starts", ordering="start_month")
+    def service_starts(self, obj):
+        return obj.start_month
+
+    @admin.display(description="Service ends", ordering="end_month")
+    def service_ends(self, obj):
+        return obj.end_month
+
+    @admin.display(description="Vendor since")
+    def vendor_since(self, obj):
+        return (
+            ", ".join(row.start_month.strftime("%Y-%m") for row in self._current_assignments(obj))
+            or "—"
         )
 
 

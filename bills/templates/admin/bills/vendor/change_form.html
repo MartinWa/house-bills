@@ -16,7 +16,7 @@
       <h2 id="vendor-services-heading">Property services</h2>
       <p><a href="{% url 'admin:bills_propertyservice_changelist' %}">Configure services and vendor assignments</a></p>
       <table>
-        <thead><tr><th scope="col">Property service</th><th scope="col">Frequency</th><th scope="col">First invoice month</th><th scope="col">Last invoice month</th><th scope="col">Enabled</th></tr></thead>
+        <thead><tr><th scope="col">Property service</th><th scope="col">Frequency</th><th scope="col">Vendor starts</th><th scope="col">Vendor ends</th><th scope="col">Enabled</th></tr></thead>
         <tbody>{% for assignment in service_assignments %}<tr>
           <td><a href="{% url 'admin:bills_propertyservice_change' assignment.property_service_id %}">{{ assignment.property_service }}</a></td>
           <td>{{ assignment.property_service.get_frequency_months_display }}</td><td>{{ assignment.start_month|date:"Y-m" }}</td><td>{{ assignment.end_month|date:"Y-m"|default:"Ongoing" }}</td><td>{{ assignment.is_active|yesno:"Yes,No" }}</td>
