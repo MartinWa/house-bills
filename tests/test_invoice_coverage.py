@@ -9,9 +9,10 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.urls import reverse
 
-from bills.invoice_coverage import read_invoice_coverage
+from bills.invoice_coverage import mark_invoice_not_sent, read_invoice_coverage
 from bills.models import (
     Document,
+    ExtractionAttempt,
     Invoice,
     Property,
     PropertyService,
@@ -192,6 +193,138 @@ def test_unapproved_import_is_received_needing_review_and_has_no_reported_costs(
     assert received[0]["review_document_count"] == 1
     assert report["review_count"] == 1 and report["missing_count"] == 2
     assert read_report()["costs"] == []
+
+
+def legacy_waste_extraction(coverage, section_values):
+    """Save invented pre-subcategory JSON without adapting or rewriting its evidence."""
+    house = coverage["houses"][0]
+    proposed, properties = coverage["candidate"]([(house, "waste", "") for _ in section_values])
+    values = proposed.to_dict()
+    for section, changes in zip(values["sections"], section_values, strict=True):
+        section.pop("subcategory")
+        section.update(changes)
+    values["routing"] = {
+        "vendor_id": coverage["vendor"].pk,
+        "kind": "invoice",
+        "section_properties": {key: property.pk for key, property in properties.items()},
+    }
+    source = coverage["document"](proposed.reference)
+    extraction = ExtractionAttempt.objects.create(
+        document=source,
+        revision=1,
+        layout_family="synthetic",
+        layout_version="v1",
+        parser_revision="legacy",
+        candidate=values,
+        page_evidence=[{"page": 1, "text": "Invented legacy source", "bbox": [0, 0, 1, 1]}],
+        state=ExtractionAttempt.State.REVIEW,
+    )
+    Document.objects.filter(pk=source.pk).update(extraction_revision=1, state=Document.State.REVIEW)
+    return source, extraction
+
+
+def legacy_evidence(text):
+    return {"page": 1, "text": text, "bbox": [0, 0, 100, 20]}
+
+
+@pytest.mark.parametrize(
+    "location,text,subcategory",
+    [
+        ("period_evidence", "Grundavgift permanentbostad 2024-01-01", "waste_collection"),
+        ("charges", "Tank emptying: synthetic billed item", "tank_emptying"),
+        ("usages", "Restavfall synthetic billed weight", "waste_collection"),
+        ("usages", "Matavfall synthetic billed weight", "waste_collection"),
+        ("period_evidence", "\tSLAMTÖMNING\u00a0synthetic billed item", "tank_emptying"),
+        ("charges", "\u00a0TÖMNING\tMatavfall synthetic billed item", "waste_collection"),
+        ("charges", "Tömn \u00a0Restavfall synthetic billed item", "waste_collection"),
+        ("period_evidence", "Slamavskiljare", "tank_emptying"),
+    ],
+)
+def test_legacy_pending_waste_receipts_match_retained_evidence(
+    coverage, location, text, subcategory
+):
+    configured = {
+        category: coverage["schedule"](service="waste", subcategory=category)
+        for category in ("waste_collection", "tank_emptying")
+    }
+    evidence = legacy_evidence(text)
+    changes = (
+        {"period_evidence": evidence}
+        if location == "period_evidence"
+        else {location: [{"evidence": evidence}]}
+    )
+    source, extraction = legacy_waste_extraction(coverage, [changes])
+    before = ExtractionAttempt.objects.values().get(pk=extraction.pk)
+    result = coverage["read"](date_from=date(2024, 3, 1), date_to=date(2024, 3, 31))
+    pending = [row for row in result["coverage_rows"] if row["status"] == "needs_review"]
+    assert len(pending) == result["review_count"] == 1
+    assert pending[0]["subcategory"] == subcategory
+    assert pending[0]["review_document_id"] == source.pk
+    assert result["missing_count"] == 1 and result["received_count"] == 0
+    with pytest.raises(ValidationError, match="no longer missing"):
+        mark_invoice_not_sent(
+            configured[subcategory].pk,
+            coverage["vendor"].pk,
+            date(2024, 3, 1),
+            reason="Synthetic stale not-sent request.",
+        )
+    assert not ServiceInvoiceException.objects.exists()
+    assert read_report()["costs"] == []
+    assert ExtractionAttempt.objects.values().get(pk=extraction.pk) == before
+
+
+@pytest.mark.parametrize(
+    "texts",
+    [
+        ["Grundavgift permanentbostad synthetic fee", "Slamavskiljare synthetic fee"],
+        ["Synthetic unspecified waste"],
+        ["Restavfall_extra", "Slamavskiljare2", "Tank emptyingly"],
+        ["SlamavskiljareΩ", "Tömnings Restavfall", "Grundavgift permanentbostaden"],
+    ],
+)
+def test_legacy_mixed_or_unidentified_waste_receipts_remain_missing(coverage, texts):
+    for subcategory in ("waste_collection", "tank_emptying"):
+        coverage["schedule"](service="waste", subcategory=subcategory)
+    legacy_waste_extraction(
+        coverage, [{"charges": [{"evidence": legacy_evidence(text)} for text in texts]}]
+    )
+    result = coverage["read"](date_from=date(2024, 3, 1), date_to=date(2024, 3, 31))
+    assert result["missing_count"] == 2
+    assert result["review_count"] == result["received_count"] == 0
+
+
+@pytest.mark.parametrize("subcategory", ["", "waste_collection", "tank_emptying", None])
+def test_explicit_subcategories_override_legacy_waste_evidence(coverage, subcategory):
+    for category in ("waste_collection", "tank_emptying"):
+        coverage["schedule"](service="waste", subcategory=category)
+    legacy_waste_extraction(
+        coverage,
+        [
+            {
+                "subcategory": subcategory,
+                "period_evidence": legacy_evidence("Grundavgift permanentbostad synthetic fee"),
+            }
+        ],
+    )
+    result = coverage["read"](date_from=date(2024, 3, 1), date_to=date(2024, 3, 31))
+    pending = [row for row in result["coverage_rows"] if row["status"] == "needs_review"]
+    assert [row["subcategory"] for row in pending] == ([subcategory] if subcategory else [])
+
+
+def test_legacy_waste_classification_is_scoped_to_each_allocation(coverage):
+    for subcategory in ("waste_collection", "tank_emptying"):
+        coverage["schedule"](service="waste", subcategory=subcategory)
+    source, _ = legacy_waste_extraction(
+        coverage,
+        [
+            {"charges": [{"evidence": legacy_evidence("Restavfall synthetic billed item")}]},
+            {"period_evidence": legacy_evidence("Slamavskiljare synthetic billed item")},
+        ],
+    )
+    result = coverage["read"](date_from=date(2024, 3, 1), date_to=date(2024, 3, 31))
+    assert result["review_count"] == 2 and result["missing_count"] == 0
+    assert {row["review_document_id"] for row in result["coverage_rows"]} == {source.pk}
+    assert {row["review_document_count"] for row in result["coverage_rows"]} == {1}
 
 
 def test_multi_service_pdf_matches_waste_collection_before_and_after_approval(coverage, tmp_path):

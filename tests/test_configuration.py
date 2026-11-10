@@ -272,6 +272,55 @@ def test_property_services_attach_a_vendor_to_both_properties(client, admin_user
     assert b'id="add_id_property"' not in page.content
 
 
+def test_service_editor_can_save_with_view_only_vendor_assignments(client, django_user_model):
+    from datetime import date
+
+    house = Property.objects.create(name="Synthetic House", slug="house")
+    vendor = Vendor.objects.create(name="Synthetic Vendor", slug="vendor")
+    configured = PropertyService.objects.create(
+        property=house,
+        service="waste",
+        subcategory="waste_collection",
+        start_month=date(2024, 2, 1),
+        end_month=date(2024, 11, 1),
+        frequency_months=3,
+    )
+    assignment = ServiceVendorAssignment.objects.create(
+        property_service=configured,
+        vendor=vendor,
+        start_month=configured.start_month,
+        end_month=configured.end_month,
+    )
+    before = ServiceVendorAssignment.objects.values().get(pk=assignment.pk)
+    staff = django_user_model.objects.create_user("synthetic-service-editor", is_staff=True)
+    staff.user_permissions.add(
+        *Permission.objects.filter(
+            content_type__app_label="bills",
+            codename__in=["change_propertyservice", "view_servicevendorassignment"],
+        )
+    )
+    client.force_login(staff)
+    path = f"/admin/bills/propertyservice/{configured.pk}/change/"
+    page = client.get(path)
+    assert page.status_code == 200
+    assert not page.context["inline_admin_formsets"][0].has_change_permission
+    data = property_service_data(house, [])
+    data.update(
+        {
+            "grace_days": 2,
+            "vendor_assignments-TOTAL_FORMS": 1,
+            "vendor_assignments-INITIAL_FORMS": 1,
+            "vendor_assignments-0-id": assignment.pk,
+        }
+    )
+    response = client.post(path, data)
+    assert response.status_code == 302
+    configured.refresh_from_db()
+    assert configured.grace_days == 2
+    assert ServiceVendorAssignment.objects.count() == 1
+    assert ServiceVendorAssignment.objects.values().get(pk=assignment.pk) == before
+
+
 def test_overlapping_vendor_assignments_show_errors_and_write_nothing(client, admin_user):
     house = Property.objects.create(name="Synthetic House", slug="house")
     vendor = Vendor.objects.create(name="Synthetic Vendor", slug="vendor")

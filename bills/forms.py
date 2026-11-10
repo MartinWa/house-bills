@@ -209,7 +209,8 @@ class ServiceVendorAssignmentFormSet(forms.BaseInlineFormSet):
             values = form.cleaned_data
             if not values or values.get("DELETE") or not values.get("is_active"):
                 continue
-            key = values["vendor"].pk
+            # Django uses initial ForeignKey IDs for view-only inline forms.
+            key = getattr(values["vendor"], "pk", values["vendor"])
             start, end = values["start_month"], values.get("end_month")
             service = self.instance
             if service.start_month and start < service.start_month:

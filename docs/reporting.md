@@ -103,6 +103,11 @@ Migration `0016_service_invoice_exceptions` adds `exception_id` and the configur
 `exception_reason`; a confirmed no-invoice month uses status `not_expected` (shown as
 **Not sent**). Approved or pending receipts take precedence over this status.
 Current status uses the UTC date. It is live and requires no export or refresh job.
+Migration `0017_legacy_invoice_coverage` classifies pending waste receipts from older
+snapshots using explicit retained period, fee or usage evidence. Mixed or unidentified
+costs remain unclassified; an existing subcategory, including an explicit empty value,
+takes precedence. The native view derives these labels without rewriting extraction
+attempts, approval snapshots or approved allocations.
 The [SQL examples](reporting-examples.sql) include a missing-invoice table suitable
 for Grafana and a count of missing property/service expectations.
 
