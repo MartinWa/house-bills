@@ -4,12 +4,18 @@ from builtins import property as computed_property
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator
 from django.db import models
 from django.db.models import F, Q
-from django.db.models.functions import Length
+from django.db.models.functions import Length, Substr
 from django.db.models.lookups import Exact
 
-from .categories import CATEGORY_LABELS, WASTE_SUBCATEGORIES, subcategory_label
+from .categories import (
+    CATEGORY_LABELS,
+    WASTE_COST_SUBCATEGORIES,
+    WASTE_SUBCATEGORIES,
+    subcategory_label,
+)
 from .fields import ScaledIntegerField, integer_constraint
 from .parsing.registry import layout_family_choices
 from .validators import (
@@ -363,6 +369,201 @@ class Service(models.TextChoices):
     OTHER = "other", "Other charges"
 
 
+class PropertyService(ValidatedModel):
+    class Frequency(models.IntegerChoices):
+        AS_NEEDED = 0, "As needed"
+        MONTHLY = 1, "Monthly"
+        EVERY_TWO_MONTHS = 2, "Every two months"
+        QUARTERLY = 3, "Quarterly"
+        HALF_YEARLY = 6, "Every six months"
+        YEARLY = 12, "Yearly"
+
+    property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name="services")
+    service = models.CharField(max_length=24, choices=Service)
+    subcategory = models.CharField(
+        max_length=20, choices=WASTE_COST_SUBCATEGORIES, blank=True, default=""
+    )
+    is_active = models.BooleanField("enabled", default=True)
+    start_month = models.DateField("first invoice month")
+    end_month = models.DateField("last invoice month", null=True, blank=True)
+    frequency_months = models.PositiveSmallIntegerField(
+        "frequency", choices=Frequency, default=Frequency.MONTHLY
+    )
+    grace_days = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MaxValueValidator(60)],
+        help_text="Days after the invoice month ends before marking an invoice missing.",
+    )
+
+    class Meta:
+        ordering = ["property__name", "service", "subcategory", "start_month", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(service__in=Service.values), name="property_service_type_valid"
+            ),
+            models.CheckConstraint(
+                condition=Q(subcategory="")
+                | Q(service="waste", subcategory__in=["waste_collection", "tank_emptying"]),
+                name="property_service_subcategory_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(frequency_months__in=[0, 1, 2, 3, 6, 12]) & Q(grace_days__lte=60),
+                name="property_service_frequency_valid",
+            ),
+            models.CheckConstraint(
+                condition=Exact(Substr("start_month", 9, 2), models.Value("01"))
+                & (
+                    Q(end_month__isnull=True)
+                    | Exact(Substr("end_month", 9, 2), models.Value("01"))
+                    & Q(end_month__gte=F("start_month"))
+                ),
+                name="property_service_months_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["property", "service", "subcategory", "start_month"],
+                name="property_service_start_unique",
+            ),
+        ]
+
+    def clean(self):
+        if self.subcategory and self.service != Service.WASTE:
+            raise ValidationError({"subcategory": "Choose a cost subcategory only for waste."})
+        errors = {}
+        for field in ("start_month", "end_month"):
+            value = getattr(self, field)
+            if value and value.day != 1:
+                errors[field] = "Use the first day of the invoice month."
+        if self.start_month and self.end_month and self.end_month < self.start_month:
+            errors["end_month"] = "The last invoice month must not precede the first."
+        if errors:
+            raise ValidationError(errors)
+
+    @computed_property
+    def category_label(self):
+        return CATEGORY_LABELS[self.service]
+
+    @computed_property
+    def subcategory_label(self):
+        return (
+            subcategory_label(self.service, self.subcategory)
+            if self.service != "waste" or self.subcategory
+            else ""
+        )
+
+    def __str__(self):
+        label = self.subcategory_label or self.get_service_display()
+        return f"{self.property}: {label}"
+
+
+class ServiceVendorAssignment(ValidatedModel):
+    property_service = models.ForeignKey(
+        PropertyService, on_delete=models.CASCADE, related_name="vendor_assignments"
+    )
+    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name="service_assignments")
+    is_active = models.BooleanField("enabled", default=True)
+    start_month = models.DateField("first invoice month")
+    end_month = models.DateField("last invoice month", null=True, blank=True)
+
+    class Meta:
+        ordering = ["property_service__property__name", "start_month", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Exact(Substr("start_month", 9, 2), models.Value("01"))
+                & (
+                    Q(end_month__isnull=True)
+                    | Exact(Substr("end_month", 9, 2), models.Value("01"))
+                    & Q(end_month__gte=F("start_month"))
+                ),
+                name="service_vendor_months_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["property_service", "vendor", "start_month"],
+                name="service_vendor_start_unique",
+            ),
+        ]
+
+    def clean(self):
+        errors = {}
+        for field in ("start_month", "end_month"):
+            value = getattr(self, field)
+            if value and value.day != 1:
+                errors[field] = "Use the first day of the invoice month."
+        if self.start_month and self.end_month and self.end_month < self.start_month:
+            errors["end_month"] = "The last invoice month must not precede the first."
+        if self.property_service_id:
+            service = self.property_service
+            if self.start_month and self.start_month < service.start_month:
+                errors["start_month"] = "The vendor must start within the service's invoice months."
+            if service.end_month and (self.end_month is None or self.end_month > service.end_month):
+                errors["end_month"] = (
+                    "End the vendor assignment within the service's invoice months."
+                )
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"{self.property_service} → {self.vendor}"
+
+
+class ServiceInvoiceException(ValidatedModel):
+    property_service = models.ForeignKey(
+        PropertyService, on_delete=models.CASCADE, related_name="invoice_exceptions"
+    )
+    vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name="invoice_exceptions")
+    month = models.DateField("invoice month")
+    reason = models.CharField(
+        max_length=300,
+        help_text="Explain why this vendor issued no invoice in this month.",
+    )
+
+    class Meta:
+        ordering = ["month", "vendor__name", "pk"]
+        verbose_name = "month with no invoice"
+        verbose_name_plural = "months with no invoice"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property_service", "vendor", "month"],
+                name="service_invoice_exception_unique",
+            ),
+            models.CheckConstraint(
+                condition=Exact(Substr("month", 9, 2), models.Value("01")) & ~Q(reason=""),
+                name="service_invoice_exception_valid",
+            ),
+        ]
+
+    def clean(self):
+        self.reason = self.reason.strip()
+        errors = {}
+        if not self.reason:
+            errors["reason"] = "Explain why no invoice was issued."
+        if self.month and self.month.day != 1:
+            errors["month"] = "Use the first day of the invoice month."
+        try:
+            service = self.property_service
+        except PropertyService.DoesNotExist:
+            service = None
+        if service is not None and self.month:
+            if not service.frequency_months:
+                errors["month"] = "As-needed services do not create invoice expectations."
+            elif service.start_month:
+                offset = (
+                    (self.month.year - service.start_month.year) * 12
+                    + self.month.month
+                    - service.start_month.month
+                )
+                if (
+                    offset < 0
+                    or (service.end_month and self.month > service.end_month)
+                    or offset % service.frequency_months
+                ):
+                    errors["month"] = "Choose a recurring invoice month within this service."
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"{self.property_service}: {self.vendor}, {self.month:%Y-%m}"
+
+
 def total_constraint(name):
     return models.CheckConstraint(
         name=name,
@@ -520,6 +721,9 @@ class BillingSection(AllocationModel):
         Property, on_delete=models.PROTECT, related_name="billing_sections", null=True, blank=True
     )
     service = models.CharField(max_length=24, choices=Service)
+    subcategory = models.CharField(
+        max_length=20, choices=WASTE_COST_SUBCATEGORIES, blank=True, default=""
+    )
     identifiers = models.JSONField(
         default=list, blank=True, validators=[validate_source_identifiers]
     )
@@ -542,6 +746,11 @@ class BillingSection(AllocationModel):
                 condition=Q(service__in=Service.values) & ~Q(section_id=""),
                 name="section_service_valid",
             ),
+            models.CheckConstraint(
+                condition=Q(subcategory="")
+                | Q(service="waste", subcategory__in=["waste_collection", "tank_emptying"]),
+                name="section_subcategory_valid",
+            ),
             total_constraint("section_total_reconciles"),
             models.CheckConstraint(
                 condition=Q(start__isnull=True, end__isnull=True)
@@ -557,13 +766,21 @@ class BillingSection(AllocationModel):
     def _invoice(self):
         return Invoice.objects.get(pk=self.invoice_id)
 
+    def clean(self):
+        if self.subcategory and self.service != Service.WASTE:
+            raise ValidationError({"subcategory": "Choose a cost subcategory only for waste."})
+
     @computed_property
     def category_label(self):
         return CATEGORY_LABELS[self.service]
 
     @computed_property
     def subcategory_label(self):
-        return subcategory_label(self.service) if self.service != Service.WASTE else ""
+        return (
+            subcategory_label(self.service, self.subcategory)
+            if self.service != Service.WASTE or self.subcategory
+            else ""
+        )
 
     def __str__(self):
         return f"{self.invoice}: {self.section_id}"

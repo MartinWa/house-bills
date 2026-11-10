@@ -25,6 +25,7 @@ def parse_synthetic(tmp_path, pages, parser=layout_01):
 def test_multi_service_pdf_preserves_contracts_costs_and_billed_usage(tmp_path):
     candidate = parse_synthetic(tmp_path, multi_service())
     assert candidate.issues == []
+    assert candidate.sections[0].usages[0].basis == "measured"
     assert (candidate.reference, candidate.invoice_date, candidate.due_date) == (
         "880001",
         date(2024, 3, 5),
@@ -84,7 +85,7 @@ def test_network_readings_keep_billed_intervals_without_repeating_price_quantiti
     assert all(row.evidence.page == 4 for row in network.usages)
     assert all(row.evidence.text.startswith("Avläsning") for row in network.usages)
     assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
-    assert candidate.parser_revision == "7" and candidate.requires_review
+    assert candidate.parser_revision == "8" and candidate.requires_review
 
 
 @pytest.mark.parametrize("correction", [False, True])
@@ -101,6 +102,7 @@ def test_waste_subcategories_follow_billed_rows_across_container_headers_and_pag
     candidate = parse_synthetic(tmp_path, pages)
     assert candidate.issues == []
     waste = next(section for section in candidate.sections if section.service == "waste")
+    assert waste.subcategory == "waste_collection"
     assert [(row.subcategory, row.quantity_milli) for row in waste.usages] == [
         ("matavfall", 12000),
         ("restavfall", 7500),

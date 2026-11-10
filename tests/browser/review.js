@@ -66,8 +66,8 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
     assert(await releaseLink.isVisible(), "Failed release check hid the version link");
     releaseStatusCode = 200;
   }
-  assert(await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").count() === 3, "Main navigation still contains Home or Upload");
-  assert((await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").allTextContents()).join(",") === "Invoices,Documents,Reports", "Main navigation order is incorrect");
+  assert(await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").count() === 4, "Main navigation links are incorrect");
+  assert((await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").allTextContents()).join(",") === "Invoices,Documents,Reports,Missing invoices", "Main navigation order is incorrect");
   await page.locator(".user-menu summary").click();
   assert(await page.getByRole("link", { name: "Administration", exact: true }).isVisible(), "Administration is missing from the User menu");
   await page.keyboard.press("Escape");
@@ -105,9 +105,37 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   await fill("property_identifiers-1-value", "000 000 000 000 000 002");
   await submit("Save");
   await page.locator("#result_list").getByRole("link", { name: "Browser Utilities", exact: true }).click();
+  const billingVendor = new URL(page.url()).pathname.match(/\/vendor\/(\d+)\/change\/$/)[1];
   assert(await page.locator('[name="default_property"]').inputValue() === houseOne, "Default property did not persist");
   assert(await page.locator('[name="property_identifiers-1-value"]').inputValue() === "000000000000000002", "Identifier normalization did not persist");
   assert(await page.getByRole("heading", { name: "Invoice formats", exact: true }).count() === 1, "Invoice formats are not visible");
+  const propertyServices = [];
+  for (const [property, service, subcategory, frequency, end] of [
+    [houseOne, "electricity_supply", "", "1", "2024-04"],
+    [houseTwo, "electricity_supply", "", "1", "2024-04"],
+    [houseTwo, "waste", "waste_collection", "3", "2024-11"],
+    [houseTwo, "waste", "tank_emptying", "0", ""],
+  ]) {
+    await page.goto(`${base}/admin/bills/propertyservice/add/?property=${property}`);
+    assert(await page.locator('[name="property"]').inputValue() === property, "Property service did not select its property");
+    await select("service", service);
+    await select("subcategory", subcategory);
+    await fill("start_month", "2024-02");
+    await fill("end_month", end);
+    await select("frequency_months", frequency);
+    await select("vendor_assignments-0-vendor", billingVendor);
+    await fill("vendor_assignments-0-start_month", "2024-02");
+    await fill("vendor_assignments-0-end_month", end);
+    await submit("Save and continue editing");
+    propertyServices.push(page.url());
+    assert(await page.locator('[name="frequency_months"]').inputValue() === frequency, "Property billing frequency did not persist");
+    assert(await page.locator('[name="vendor_assignments-0-vendor"]').inputValue() === billingVendor, "Service vendor did not persist");
+  }
+  await page.goto(`${base}/admin/bills/property/${houseTwo}/change/`);
+  await text("Property services");
+  await text("Waste collection");
+  await text("Tank emptying");
+  await page.screenshot({ path: `${artifacts}/property-services-configuration.png`, fullPage: true });
 
   const upload = async filename => {
     const bytes = readFixture
@@ -128,6 +156,11 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
     return { url: page.url(), bytes };
   };
   const supported = await upload("shared.pdf");
+  const pendingCoverage = await page.context().newPage();
+  await pendingCoverage.goto(`${base}/invoices/coverage/?date_from=2024-02-01&date_to=2024-04-30&status=needs_review`);
+  assert(await pendingCoverage.locator("#invoice-coverage tbody tr").count() === 2, "Shared pending invoice was not received for both properties");
+  assert(await pendingCoverage.getByRole("link", { name: "Review invoice", exact: true }).count() === 2, "Pending coverage has no review links");
+  await pendingCoverage.close();
   await text("Browser House One");
   await text("Browser House Two");
   await text("140,250 kWh");
@@ -150,6 +183,59 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   await fill("usages-0-quantity_milli", "140,250");
   await submit("Approve invoice");
   const supportedInvoice = page.url();
+  const approvedCoverage = await page.context().newPage();
+  await approvedCoverage.goto(`${base}/invoices/coverage/?date_from=2024-02-01&date_to=2024-04-30&status=received`);
+  assert(await approvedCoverage.locator("#invoice-coverage .status-received").count() === 2, "Approved shared invoice did not update coverage");
+  await approvedCoverage.getByRole("link", { name: "Open invoice", exact: true }).first().click();
+  assert(new URL(approvedCoverage.url()).pathname.startsWith("/invoices/"), "Coverage invoice link is broken");
+  const serviceConfig = await page.context().newPage();
+  await serviceConfig.goto(`${base}/admin/bills/vendor/add/`);
+  await fill("name", "Browser Replacement Vendor", serviceConfig);
+  await serviceConfig.locator('[name="name"]').press("Tab");
+  await fill("slug", "browser-replacement-vendor", serviceConfig);
+  await submit("Save", 302, serviceConfig);
+  await serviceConfig.locator("#result_list").getByRole("link", { name: "Browser Replacement Vendor", exact: true }).click();
+  const replacementVendor = new URL(serviceConfig.url()).pathname.match(/\/vendor\/(\d+)\/change\/$/)[1];
+  await serviceConfig.goto(propertyServices[0]);
+  await fill("vendor_assignments-0-end_month", "2024-03", serviceConfig);
+  await submit("Save and continue editing", 302, serviceConfig);
+  await approvedCoverage.goto(`${base}/invoices/coverage/?date_from=2024-04-01&date_to=2024-04-30&status=unassigned`);
+  assert(await approvedCoverage.locator("#invoice-coverage .status-unassigned").count() === 1, "Ending a vendor hid the property's service expectation");
+  await approvedCoverage.getByRole("link", { name: "Assign vendor", exact: true }).click();
+  assert(new URL(approvedCoverage.url()).pathname === new URL(propertyServices[0]).pathname, "Assign vendor did not open the property service");
+  await select("vendor_assignments-1-vendor", replacementVendor, serviceConfig);
+  await fill("vendor_assignments-1-start_month", "2024-04", serviceConfig);
+  await fill("vendor_assignments-1-end_month", "2024-04", serviceConfig);
+  await submit("Save and continue editing", 302, serviceConfig);
+  assert(await serviceConfig.locator('[name="frequency_months"]').inputValue() === "1", "Changing vendor changed the service's frequency");
+  assert(await serviceConfig.locator('[name="vendor_assignments-0-vendor"]').inputValue() === billingVendor, "Changing vendor replaced its historical assignment");
+  await approvedCoverage.goto(`${base}/invoices/coverage/?property=${houseOne}&date_from=2024-04-01&date_to=2024-04-30&status=missing`);
+  await approvedCoverage.getByRole("link", { name: "Not sent this month", exact: true }).click();
+  await fill("reason", "Browser vendor confirmed no invoice was sent this month.", approvedCoverage);
+  const notSentViewport = approvedCoverage.viewportSize() || { width: 1280, height: 900 };
+  await approvedCoverage.setViewportSize({ width: 320, height: 900 });
+  assert(await approvedCoverage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Not-sent form overflows the mobile viewport");
+  await approvedCoverage.screenshot({ path: `${artifacts}/invoice-not-sent-mobile.png`, fullPage: true });
+  await approvedCoverage.setViewportSize(notSentViewport);
+  await submit("Mark as not sent", 302, approvedCoverage);
+  assert(await approvedCoverage.locator("#invoice-coverage .status-not_expected").count() === 1, "Confirmed no-invoice month remains missing");
+  await text("Browser vendor confirmed no invoice was sent this month.", approvedCoverage);
+  await approvedCoverage.screenshot({ path: `${artifacts}/invoice-not-sent-result.png`, fullPage: true });
+  await serviceConfig.reload();
+  assert(await serviceConfig.locator('[name="invoice_exceptions-0-vendor"]').inputValue() === replacementVendor, "No-invoice month was assigned to the wrong vendor");
+  assert(await serviceConfig.locator('[name="invoice_exceptions-0-month"]').inputValue() === "2024-04", "No-invoice month was not retained in configuration");
+  await serviceConfig.close();
+  await approvedCoverage.goto(`${base}/invoices/coverage/?date_from=2024-03-01&date_to=2024-03-31&status=received`);
+  assert(await approvedCoverage.locator("#invoice-coverage .status-received").count() === 2, "Changing vendor changed previous invoice coverage");
+  await approvedCoverage.goto(`${base}/invoices/coverage/?date_from=2024-02-01&date_to=2024-11-30&status=missing`);
+  assert(!(await approvedCoverage.locator("#invoice-coverage").innerText()).includes("Tank emptying"), "As-needed tank emptying created missing invoices");
+  await approvedCoverage.locator(".schedule-details summary").click();
+  assert((await approvedCoverage.locator("#property-services").innerText()).includes("Tank emptying"), "Tank emptying activity is absent");
+  await approvedCoverage.screenshot({ path: `${artifacts}/invoice-coverage-desktop.png`, fullPage: true });
+  await approvedCoverage.setViewportSize({ width: 320, height: 844 });
+  assert(await approvedCoverage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Invoice coverage overflows on mobile");
+  await approvedCoverage.screenshot({ path: `${artifacts}/invoice-coverage-mobile.png`, fullPage: true });
+  await approvedCoverage.close();
   await text("Approved revision 1");
   await text("308,75 SEK");
   const duplicate = await upload("shared.pdf");

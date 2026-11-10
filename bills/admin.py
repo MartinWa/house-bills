@@ -2,9 +2,26 @@
 
 from django.contrib import admin
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
+from django.utils import timezone
 
-from .forms import PropertyIdentifierForm, VendorIssuerIdentifierForm
-from .models import Property, PropertyIdentifier, Vendor, VendorIssuerIdentifier, VendorLayoutFamily
+from .forms import (
+    PropertyIdentifierForm,
+    PropertyServiceForm,
+    ServiceInvoiceExceptionForm,
+    ServiceVendorAssignmentForm,
+    ServiceVendorAssignmentFormSet,
+    VendorIssuerIdentifierForm,
+)
+from .models import (
+    Property,
+    PropertyIdentifier,
+    PropertyService,
+    ServiceInvoiceException,
+    ServiceVendorAssignment,
+    Vendor,
+    VendorIssuerIdentifier,
+    VendorLayoutFamily,
+)
 
 
 class PropertySelectorMixin:
@@ -43,11 +60,42 @@ class PropertyIdentifierInline(PropertySelectorMixin, admin.TabularInline):
     extra = 1
 
 
+class ServiceVendorAssignmentInline(admin.StackedInline):
+    model = ServiceVendorAssignment
+    form = ServiceVendorAssignmentForm
+    formset = ServiceVendorAssignmentFormSet
+    verbose_name_plural = "Vendor assignments"
+    fields = [
+        ("vendor", "is_active"),
+        ("start_month", "end_month"),
+    ]
+    extra = 1
+
+
+class ServiceInvoiceExceptionInline(admin.StackedInline):
+    model = ServiceInvoiceException
+    form = ServiceInvoiceExceptionForm
+    fields = [("vendor", "month"), "reason"]
+    extra = 1
+
+
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
+    change_form_template = "admin/bills/property/change_form.html"
     list_display = ["name", "slug"]
     search_fields = ["name", "slug"]
     prepopulated_fields = {"slug": ["name"]}
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        context = {
+            **(extra_context or {}),
+            "property_services": PropertyService.objects.filter(
+                property=self.get_object(request, object_id)
+            )
+            .select_related("property")
+            .prefetch_related("vendor_assignments__vendor"),
+        }
+        return super().change_view(request, object_id, form_url, context)
 
 
 @admin.register(Vendor)
@@ -61,7 +109,63 @@ class VendorAdmin(PropertySelectorMixin, admin.ModelAdmin):
     list_select_related = ["default_property"]
     search_fields = ["name", "slug"]
     prepopulated_fields = {"slug": ["name"]}
-    inlines = [IssuerIdentifierInline, LayoutFamilyInline, PropertyIdentifierInline]
+    inlines = [
+        IssuerIdentifierInline,
+        LayoutFamilyInline,
+        PropertyIdentifierInline,
+    ]
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        context = {
+            **(extra_context or {}),
+            "service_assignments": ServiceVendorAssignment.objects.filter(
+                vendor=self.get_object(request, object_id)
+            ).select_related("property_service__property"),
+        }
+        return super().change_view(request, object_id, form_url, context)
+
+
+@admin.register(PropertyService)
+class PropertyServiceAdmin(PropertySelectorMixin, admin.ModelAdmin):
+    form = PropertyServiceForm
+    list_display = [
+        "property",
+        "category_label",
+        "subcategory_label",
+        "vendors",
+        "frequency_months",
+        "start_month",
+        "end_month",
+        "is_active",
+    ]
+    list_select_related = ["property"]
+    list_filter = ["property", "service", "subcategory", "is_active"]
+    search_fields = ["property__name", "vendor_assignments__vendor__name"]
+    fieldsets = [
+        (None, {"fields": [("property", "is_active"), ("service", "subcategory")]}),
+        (
+            "Expected invoices",
+            {"fields": [("start_month", "end_month"), ("frequency_months", "grace_days")]},
+        ),
+    ]
+    inlines = [ServiceVendorAssignmentInline, ServiceInvoiceExceptionInline]
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("vendor_assignments__vendor")
+
+    @admin.display(description="Current vendor")
+    def vendors(self, obj):
+        month = timezone.now().date().replace(day=1)
+        return (
+            ", ".join(
+                row.vendor.name
+                for row in obj.vendor_assignments.all()
+                if row.is_active
+                and row.start_month <= month
+                and (row.end_month is None or row.end_month >= month)
+            )
+            or "No current vendor"
+        )
 
 
 @admin.register(PropertyIdentifier)

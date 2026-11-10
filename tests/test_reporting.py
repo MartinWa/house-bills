@@ -17,6 +17,9 @@ from bills.models import (
     Document,
     Invoice,
     Property,
+    PropertyService,
+    ServiceInvoiceException,
+    ServiceVendorAssignment,
     Usage,
     Vendor,
     VendorIssuerIdentifier,
@@ -706,6 +709,22 @@ def test_documented_sql_examples_preserve_totals_and_periods_in_plain_sqlite(led
         ],
         rounding=42,
     )
+    configured = PropertyService.objects.create(
+        property=first, service="water", start_month=date(2024, 2, 1), end_month=date(2024, 2, 1)
+    )
+    ServiceVendorAssignment.objects.create(
+        property_service=configured,
+        vendor=ledger["vendor"],
+        start_month=date(2024, 2, 1),
+        end_month=date(2024, 2, 1),
+    )
+    reason = "Synthetic vendor confirmed no invoice was sent."
+    ServiceInvoiceException.objects.create(
+        property_service=configured,
+        vendor=ledger["vendor"],
+        month=date(2024, 2, 1),
+        reason=reason,
+    )
     sql = Path("docs/reporting-examples.sql").read_text(encoding="utf-8")
     results, statement = [], ""
     with reporting_reader() as reader:
@@ -714,7 +733,7 @@ def test_documented_sql_examples_preserve_totals_and_periods_in_plain_sqlite(led
             if sqlite3.complete_statement(statement):
                 results.append([dict(row) for row in reader.execute(statement)])
                 statement = ""
-    assert not statement.strip() and len(results) == 6
+    assert not statement.strip() and len(results) == 9
     assert sum(row["gross_minor"] for row in results[0]) == 23_750
     assert results[1][0]["gross_minor"] == 25_000
     assert results[2][0]["quantity_milli"] == -1250
@@ -722,6 +741,17 @@ def test_documented_sql_examples_preserve_totals_and_periods_in_plain_sqlite(led
     assert results[4] == []
     assert results[5][0]["allocated_gross_minor"] + results[5][0]["rounding_minor"] == 23_792
     assert results[5][0]["reconciles"] == 1
+    assert results[6] == results[7] == []
+    assert results[8] == [
+        {
+            "expected_month": "2024-02-01",
+            "property_name": first.name,
+            "vendor_name": ledger["vendor"].name,
+            "category": "water",
+            "subcategory": "",
+            "exception_reason": reason,
+        }
+    ]
 
 
 def test_reader_is_read_only_and_holds_one_snapshot_during_normal_approval_writes(ledger):

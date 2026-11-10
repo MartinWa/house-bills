@@ -35,6 +35,10 @@ and correction. See [review and correction](review.md),
 [uploads and private originals](ingestion.md).
 **Reports** shows approved service costs and billed consumption, with property/date
 filters and electricity source selection. See [approved reporting](reporting.md).
+**Missing invoices** checks configured property services against their billing frequency
+and dated vendor assignments. Configure these under **Property services**, also linked
+from each property form. See [property services](data-model.md#property-services-and-vendor-history).
+Use **Not sent this month** on a missing row to record a confirmed exception and its reason.
 For a vendor that always bills one house, set its optional **Default property**;
 specific property mappings take precedence.
 

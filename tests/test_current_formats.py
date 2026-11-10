@@ -13,7 +13,7 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing import layout_03, layout_04, layout_05, layout_06
+from bills.parsing import layout_03, layout_04, layout_05, layout_06, layout_06_v2
 from bills.parsing.reader import read_pdf
 from bills.parsing.registry import match_layouts
 from bills.processing import parse_document
@@ -198,6 +198,33 @@ def test_network_cid_repair_is_bounded_and_preserves_evidence(tmp_path):
     assert not candidate.issues
     assert candidate.sections[0].usages[0].quantity_milli == 100125
     assert "(cid:214)" in candidate.sections[0].usages[0].evidence.text
+
+
+@pytest.mark.parametrize("parser", [layout_06, layout_06_v2])
+@pytest.mark.parametrize("conflicting_date", [False, True])
+def test_network_due_date_accepts_encoded_label_and_retains_conflicting_dates_for_review(
+    tmp_path, parser, conflicting_date
+):
+    values = monthly_network()
+    due_line = (
+        "F(cid:246)rfallodatum: 29 mars 2024. "
+        "Betalningen ska vara oss tillhanda senast detta datum."
+    )
+    values[0] = [due_line if line.startswith("Betala senast:") else line for line in values[0]]
+    values[0].append(f"F(cid:246)rfallodatum: {'30' if conflicting_date else '29'} mars 2024")
+    if parser is layout_06_v2:
+        values[1] = [
+            line.replace("Antal Pris inkl. moms Summa inkl. moms", "Antal Pris exkl. moms Summa")
+            for line in values[1]
+        ]
+    pages = read_pdf(write_pdf(tmp_path / "synthetic.pdf", values))
+    assert match_layouts(pages, [parser.FAMILY]) == [parser]
+    candidate = parser.parse(pages)
+    assert candidate.due_date.isoformat() == "2024-03-29"
+    assert candidate.header_evidence["due_date"].text == due_line
+    assert candidate.issues == (["Ambiguous due_date"] if conflicting_date else [])
+    assert candidate.invoice_total_minor == 10015
+    assert candidate.sections[0].usages[0].quantity_milli == 100125
 
 
 @pytest.mark.parametrize("parser,fixture", [(row[0], row[1]) for row in FORMATS])

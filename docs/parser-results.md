@@ -24,11 +24,11 @@ private_result = candidate.to_dict()
 sections continuing onto another page and dated water reversals. It accepts the two
 validated header arrangements. `layout_02/v1` extracts electricity supply specifications
 with a separate installation on each billing page. Neither module contains vendor names
-or private identifiers. Layout 01 v1 records implementation revision `7`; layout 02 v1
+or private identifiers. Layout 01 v1 records implementation revision `8`; layout 02 v1
 records revision `3`.
 `layout_02/v2`, revision `2`, retains a separate replacement signature with synthetic
 coverage. The registry selects by structure and keeps v1 available for older invoices.
-`layout_01/v2` additionally handles historical product-number sections. The
+`layout_01/v2`, revision `3`, additionally handles historical product-number sections. The
 [parser guide](parsing.md) lists the other installed structures and revisions.
 
 ## Structure and precision
@@ -37,7 +37,7 @@ coverage. The registry selects by structure and keeps v1 available for older inv
 | --- | --- |
 | Header | Invoice reference, invoice/due dates, SEK, net, VAT, rounding, invoice total and amount due, with field evidence. |
 | Identifiers | Customer account is supporting evidence only. Each section retains its contract, product-number or installation keys; network sections also retain installation keys. Proposed property mapping is separate routing metadata. |
-| Section | One service and contract/product/installation allocation, with explicit signed net, VAT and gross totals, an overall billing period and period/tax/total evidence. Shared invoices retain multiple sections in one candidate. |
+| Section | One service and contract/product/installation allocation, with optional waste cost `subcategory`, explicit signed net, VAT and gross totals, an overall billing period and period/tax/total evidence. Shared invoices retain multiple sections in one candidate. |
 | Usage | Signed integer thousandths, unit, utility, period and basis: `measured`, `estimated`, `reversal`, `billed` or `billed_weight`. |
 | Evidence | Original extracted text, page and bounding box. Treat the complete serialized result as private. |
 | Review | `requires_review=True` for every result, including financially reconciled results. `issues` contains consistency failures. |
@@ -73,6 +73,13 @@ inferred from that row's explicit label. Container headers and individual weight
 events do not override the billed row's type or add to its quantity. Other utilities
 store an empty usage subcategory; electricity's Elnät/Elhandel distinction comes from
 its service. Shared waste fees remain in the printed contract total.
+
+Waste cost sections can use `waste_collection` or `tank_emptying`, separately from
+consumption subcategories. Layout 01 labels waste collection from explicit billed rows;
+Layout 03 identifies them from explicit billed collection
+or tank-emptying items. A mixed total retains its amounts and an unclassified cost
+subcategory, with a warning to split the allocations during review. Earlier candidate
+and approval JSON remains immutable and is adapted in memory from explicit evidence.
 
 ## Financial reconciliation
 

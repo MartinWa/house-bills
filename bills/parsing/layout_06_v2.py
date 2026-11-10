@@ -4,7 +4,7 @@ from . import layout_06
 from .layout_helpers import QUANTITY
 from .normalization import quantity, source_date
 
-FAMILY, VERSION, REVISION = "layout_06", "v2", "2"
+FAMILY, VERSION, REVISION = "layout_06", "v2", "3"
 
 
 def matches(pages):

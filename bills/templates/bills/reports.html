@@ -4,6 +4,7 @@
 {% block content %}
   <h2>Reports</h2>
   <p>Totals use the latest approved invoices and corrections. Costs use invoice dates. Consumption includes whole billed intervals that overlap the chosen dates.</p>
+  <p><a href="{% url 'bills:invoice_coverage' %}?{{ request.GET.urlencode }}">Check missing invoices</a></p>
   {% include "bills/_filters.html" with clear_url="bills:reports" %}
   {% if unavailable %}
     <p role="alert">Reports are unavailable. Try again shortly.</p>

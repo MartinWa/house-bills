@@ -1,7 +1,10 @@
 import sqlite3
+from datetime import UTC, date, datetime
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.auth.decorators import permission_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import DatabaseError
@@ -16,13 +19,16 @@ from filelock import Timeout
 from .deleting import StaleDeletionError, deletion_token
 from .deleting import delete_document as remove_document
 from .forms import (
+    CoverageFilterForm,
     DeleteDocumentForm,
     DocumentFilterForm,
     InvoiceFilterForm,
+    InvoiceNotSentForm,
     ReparseForm,
     ReportFilterForm,
     UploadForm,
 )
+from .invoice_coverage import mark_invoice_not_sent, read_invoice_coverage
 from .invoice_folders import invoice_folders
 from .models import BillingSection, Document, Invoice
 from .presentation import extraction_summary, proposal_differences, review_summary, warning_details
@@ -347,6 +353,107 @@ def reports(request):
         request,
         "bills/reports.html",
         {"form": form, "unavailable": unavailable, **report},
+        status=status,
+    )
+
+
+@never_cache
+@require_GET
+def invoice_coverage(request):
+    query = request.GET.copy()
+    query.setdefault("status", "attention")
+    today = datetime.now(UTC).date()
+    query.setdefault("date_from", today.replace(month=1, day=1).isoformat())
+    query.setdefault("date_to", today.isoformat())
+    form = CoverageFilterForm(query)
+    context, status = {}, 200
+    if form.is_valid():
+        property = form.cleaned_data["property"]
+        vendor = form.cleaned_data["vendor"]
+        try:
+            context = read_invoice_coverage(
+                property_id=property.pk if property else None,
+                vendor_id=vendor.pk if vendor else None,
+                service=form.cleaned_data["service"],
+                status=form.cleaned_data["status"],
+                date_from=form.cleaned_data["date_from"],
+                date_to=form.cleaned_data["date_to"],
+            )
+        except sqlite3.DatabaseError:
+            context["unavailable"], status = True, 503
+    else:
+        status = 400
+    context["page"] = Paginator(context.pop("coverage_rows", []), 50).get_page(query.get("page"))
+    query.pop("page", None)
+    return render(
+        request,
+        "bills/invoice_coverage.html",
+        {"form": form, "filter_query": query.urlencode(), **context},
+        status=status,
+    )
+
+
+@never_cache
+@permission_required("bills.add_serviceinvoiceexception", raise_exception=True)
+@require_http_methods(["GET", "POST"])
+def invoice_not_sent(request, property_service_id, vendor_id, month):
+    try:
+        invoice_month = date.fromisoformat(f"{month}-01")
+    except ValueError:
+        raise Http404("Invalid invoice month.") from None
+    try:
+        report = read_invoice_coverage(
+            vendor_id=vendor_id, date_from=invoice_month, date_to=invoice_month
+        )
+    except sqlite3.DatabaseError:
+        return render(request, "bills/storage_busy.html", status=503)
+    row = next(
+        (
+            item
+            for item in report["coverage_rows"]
+            if item["property_service_id"] == property_service_id
+        ),
+        None,
+    )
+    if row is None:
+        raise Http404("Invoice expectation not found.")
+    parameters = {
+        "property": row["property_id"],
+        "vendor": vendor_id,
+        "service": row["service"],
+        "date_from": invoice_month.isoformat(),
+        "date_to": invoice_month.isoformat(),
+        "status": row["status"],
+    }
+    back_url = f"{reverse('bills:invoice_coverage')}?{urlencode(parameters)}"
+    if request.method == "GET" and row["status"] != "missing":
+        return redirect(back_url)
+    form = InvoiceNotSentForm(request.POST if request.method == "POST" else None)
+    status = 200
+    if request.method == "POST":
+        status = 400
+        if form.is_valid():
+            try:
+                mark_invoice_not_sent(
+                    property_service_id,
+                    vendor_id,
+                    invoice_month,
+                    reason=form.cleaned_data["reason"],
+                )
+            except ValidationError as exc:
+                form.add_error(None, exc)
+                status = 409
+            except DatabaseError, sqlite3.DatabaseError:
+                form.add_error(None, "Invoice coverage is unavailable. Try again shortly.")
+                status = 503
+            else:
+                messages.success(request, f"Invoice marked as not sent for {month}.")
+                parameters["status"] = "not_expected"
+                return redirect(f"{reverse('bills:invoice_coverage')}?{urlencode(parameters)}")
+    return render(
+        request,
+        "bills/invoice_not_sent.html",
+        {"row": row, "form": form, "back_url": back_url},
         status=status,
     )
 

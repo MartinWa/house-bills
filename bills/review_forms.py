@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from django import forms
 from django.core.exceptions import ValidationError
 
-from .categories import WASTE_SUBCATEGORIES
+from .categories import WASTE_COST_SUBCATEGORIES, WASTE_SUBCATEGORIES
 from .models import Invoice, Property, Service, Usage, Vendor
 from .parsing.compatibility import cost_totals_candidate
 from .parsing.normalization import scaled_integer
@@ -151,10 +151,24 @@ class PeriodMixin:
 
 
 class SectionForm(PeriodMixin, TotalsForm):
-    field_order = ["section_id", "property", "service", *SECTION_MONEY, "start", "end", "page"]
+    field_order = [
+        "section_id",
+        "property",
+        "service",
+        "subcategory",
+        *SECTION_MONEY,
+        "start",
+        "end",
+        "page",
+    ]
     section_id = forms.CharField(max_length=120, widget=forms.HiddenInput)
     property = forms.ModelChoiceField(queryset=Property.objects.all())
     service = forms.ChoiceField(choices=Service.choices)
+    subcategory = forms.ChoiceField(
+        label="Waste cost subcategory",
+        choices=[("", "Unspecified"), *WASTE_COST_SUBCATEGORIES],
+        required=False,
+    )
     start = date_field("First billed day")
     end = date_field("Last billed day")
     page = forms.IntegerField(label="Source page", min_value=1, initial=1)
@@ -164,6 +178,12 @@ class SectionForm(PeriodMixin, TotalsForm):
         if value == INVOICE_SCOPE:
             raise ValidationError("Choose a distinct allocation.")
         return value
+
+    def clean(self):
+        data = super().clean()
+        if data.get("subcategory") and data.get("service") != Service.WASTE:
+            self.add_error("subcategory", "Choose a cost subcategory only for waste.")
+        return data
 
 
 class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
@@ -279,6 +299,7 @@ class ReviewForms:
                     "section_id": key,
                     "property": properties.get(key),
                     "service": section.get("service"),
+                    "subcategory": section.get("subcategory", ""),
                     "start": section.get("start"),
                     "end": last_billed_day(section.get("end")),
                     "page": evidence_page(section.get("total_evidence")),
@@ -434,6 +455,7 @@ class ReviewForms:
                 key,
                 data["service"],
                 [],
+                subcategory=data["subcategory"],
                 **{f: data[f] for f in SECTION_MONEY},
                 start=data["start"],
                 end=data["end"] + timedelta(days=1),

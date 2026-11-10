@@ -332,6 +332,7 @@ def approve_review(
             section_id=source.section_id,
             property=property,
             service=source.service,
+            subcategory=source.subcategory,
             identifiers=source_payload["identifiers"],
             net_minor=source.net_minor,
             vat_minor=source.vat_minor,

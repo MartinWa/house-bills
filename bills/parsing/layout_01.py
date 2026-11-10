@@ -2,7 +2,7 @@
 
 import re
 
-from bills.categories import waste_subcategory
+from bills.categories import waste_cost_subcategory, waste_subcategory
 
 from .common import AMOUNT, header, last_money, reconcile
 from .layout_helpers import capture, cost_period
@@ -20,7 +20,7 @@ from .normalization import (
 from .normalization import unit as normalize_unit
 from .types import Evidence, Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_01", "v1", "7"
+FAMILY, VERSION, REVISION = "layout_01", "v1", "8"
 SERVICE = {
     "vatten": "water",
     "hushållsavfall": "waste",
@@ -193,6 +193,8 @@ def _network_consumption(candidate, section, lines, period):
 
 
 def _extract_section(candidate, section, lines, all_lines, waste_totals, *, legacy=False):
+    if section.service == "waste":
+        section.subcategory = waste_cost_subcategory(text(line) for line in lines)
     for line in lines:
         if match := re.match(r"Leveransadress:\s*(.+)$", text(line), re.I):
             section.identifiers.append(Identifier("delivery_address", match[1], line))

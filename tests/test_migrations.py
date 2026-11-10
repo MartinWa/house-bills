@@ -5,6 +5,104 @@ import subprocess
 import sys
 
 
+def test_billing_schedule_migration_preserves_rows_and_supports_native_sqlite_and_reversal(
+    tmp_path,
+):
+    data = tmp_path / "schedule-migration-data"
+    data.mkdir()
+    script = r"""
+import sqlite3
+from datetime import date
+import django
+django.setup()
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
+
+auth = ('auth', '0012_alter_user_first_name_max_length')
+old = [('bills', '0012_property_product_identifier'), auth]
+new = [('bills', '0014_invoice_coverage_view'), auth]
+executor = MigrationExecutor(connection)
+executor.migrate(old)
+apps = executor.loader.project_state(old).apps
+actor = apps.get_model('auth', 'User').objects.create(username='synthetic-schedule-migration')
+house = apps.get_model('bills', 'Property').objects.create(name='Synthetic House', slug='house')
+vendor = apps.get_model('bills', 'Vendor').objects.create(name='Synthetic Vendor', slug='vendor')
+for index, source_text in enumerate([
+    'Slamavskiljare 1.1-2 m³ ordinarie tömning 2024-02-06 - 2024-02-06',
+    'Grundavgift permanentbostad 2024-01-01 - 2024-03-31',
+    'Manually reviewed unspecified waste',
+], 1):
+    evidence = {'page': 1, 'text': source_text, 'bbox': [0, 0, 1, 1]}
+    document = apps.get_model('bills', 'Document').objects.create(
+        sha256=f'{index:064x}', original_filename=f'synthetic-{index}.pdf')
+    invoice = apps.get_model('bills', 'Invoice').objects.create(
+        document=document, vendor=vendor, reference=f'SYNTHETIC-SCHEDULE-{index}',
+        invoice_date=date(2024, 3, 5), net_minor=1000, vat_minor=250, rounding_minor=0,
+        invoice_total_minor=1250, amount_due_minor=1250, status='approved',
+        approved_at=timezone.now(), approved_by=actor, review_revision=1)
+    apps.get_model('bills', 'BillingSection').objects.create(
+        invoice=invoice, property=house, section_id='section', service='waste',
+        net_minor=1000, vat_minor=250, gross_minor=1250,
+        start=date(2024, 2, 1), end=date(2024, 3, 1), period_evidence=evidence)
+    attempt = apps.get_model('bills', 'ExtractionAttempt').objects.create(
+        document=document, revision=1, state='review', layout_family='layout_03',
+        layout_version='v1', parser_revision='synthetic', candidate={'private': 'retained'},
+        page_evidence=[evidence])
+    apps.get_model('bills', 'ReviewRevision').objects.create(
+        invoice=invoice, revision=1, actor=actor, extraction=attempt,
+        snapshot={'private': 'approval retained byte for byte'})
+
+tables = ['auth_user', 'bills_property', 'bills_vendor', 'bills_document',
+          'bills_invoice', 'bills_billingsection', 'bills_usage',
+          'bills_extractionattempt', 'bills_reviewrevision']
+def snapshot():
+    with connection.cursor() as cursor:
+        result = {}
+        for table in tables:
+            columns = [row[1] for row in cursor.execute(f'PRAGMA table_info({table})').fetchall()
+                       if table != 'bills_billingsection' or row[1] != 'subcategory']
+            result[table] = cursor.execute(
+                f"SELECT {', '.join(columns)} FROM {table} ORDER BY id").fetchall()
+        return result
+before = snapshot()
+for targets in (new, old, new):
+    MigrationExecutor(connection).migrate(targets)
+    assert snapshot() == before
+    if targets == new:
+        with connection.cursor() as cursor:
+            classifications = cursor.execute(
+                'SELECT subcategory FROM bills_billingsection ORDER BY id').fetchall()
+            assert classifications == [('tank_emptying',), ('waste_collection',), ('',)]
+        apps = MigrationExecutor(connection).loader.project_state(new).apps
+        apps.get_model('bills', 'VendorBillingSchedule').objects.create(
+            vendor_id=vendor.pk, property_id=house.pk, service='waste',
+            subcategory='waste_collection', start_month=date(2024, 3, 1),
+            end_month=date(2024, 3, 1), frequency_months=1)
+        with sqlite3.connect(connection.settings_dict['NAME']) as native:
+            assert native.execute('PRAGMA integrity_check').fetchone() == ('ok',)
+            total = native.execute('SELECT sum(gross_minor) FROM reporting_costs').fetchone()
+            assert total == (3750,)
+            receipt = native.execute(
+                'SELECT approved_invoice_count, status FROM reporting_invoice_coverage').fetchone()
+            assert receipt == (1, 'received')
+print('Billing schedules, waste classification, native SQLite and reversal verified.')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
+            "HOUSE_BILLS_DATA_DIR": str(data),
+            "HOUSE_BILLS_STATE_DIR": str(tmp_path / "schedule-migration-state"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_cost_totals_migration_preserves_approvals_usage_and_legacy_fee_evidence(tmp_path):
     data = tmp_path / "migration-data"
     data.mkdir()

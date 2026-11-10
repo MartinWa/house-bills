@@ -15,7 +15,7 @@ from .layout_helpers import (
 from .normalization import DATE, NUMBER, money, normalized_text, source_date
 from .types import Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_06", "v1", "3"
+FAMILY, VERSION, REVISION = "layout_06", "v1", "4"
 CID = {196: "Ä", 197: "Å", 214: "Ö", 228: "ä", 229: "å", 246: "ö"}
 COST_PERIOD = re.compile(
     rf"^(?:Kostnad|(?:Statlig )?energiskatt)\s+({DATE})\s+t\s*o\s*m\s+({DATE})$", re.I
@@ -105,7 +105,7 @@ def read_header(pages):
         candidate,
         "due_date",
         lines,
-        rf"^Betala senast\s*:\s*({DATE})$",
+        rf"^(?:Betala senast|Förfallodatum)\s*:\s*({DATE})(?=$|[.\s])",
         source_date,
         decode=network_text,
     )

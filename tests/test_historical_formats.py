@@ -212,6 +212,7 @@ def test_waste_emptying_is_one_day_cost_without_container_volume_usage(tmp_path)
         date(2024, 10, 9),
     )
     assert not candidate.sections[0].usages
+    assert candidate.sections[0].subcategory == "tank_emptying"
 
 
 @pytest.mark.parametrize(

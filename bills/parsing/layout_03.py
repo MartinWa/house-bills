@@ -2,6 +2,8 @@
 
 import re
 
+from bills.categories import waste_cost_subcategory
+
 from .common import reconcile
 from .layout_helpers import (
     capture,
@@ -14,7 +16,7 @@ from .layout_helpers import (
 from .normalization import DATE, NUMBER, PERIOD, money, source_period, text
 from .types import Section
 
-FAMILY, VERSION, REVISION = "layout_03", "v1", "2"
+FAMILY, VERSION, REVISION = "layout_03", "v1", "3"
 TAX = rf"^Moms\s+25\s*%\s+beräknat på\s+({NUMBER})\s+({NUMBER})$"
 ITEM = re.compile(
     r"^(Grundavgift permanentbostad|Tömn(?:ing)?\s+(?:Restavfall|Matavfall)|Slamavskiljare)\b", re.I
@@ -74,5 +76,9 @@ def parse(pages, *, candidate=None):
             except ValueError:
                 candidate.issues.append("Invalid billing period in section_01")
     cost_period(section, periods)
+    items = [text(line) for line in lines if ITEM.match(text(line))]
+    section.subcategory = waste_cost_subcategory(items)
+    if not section.subcategory:
+        candidate.issues.append("Mixed waste cost subcategories require manual allocation")
     # Collections, container litres and annual price quantities are never weight consumption.
     return reconcile(candidate)

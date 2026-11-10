@@ -12,6 +12,9 @@ extraction service or runtime CDN dependencies.
 ## What it does
 
 - Configure properties, vendors, issuer identification and property mappings.
+- Configure each property's services, billing frequency and vendor history, and identify
+  missing invoices separately from received invoices awaiting review.
+- Mark confirmed months with no invoice as not sent, retaining a reason and later expectations.
 - Preserve original bytes and reuse exact duplicate uploads, including invoices
   copied into different property folders.
 - Extract invoice headers, dated property/service cost totals and signed billed

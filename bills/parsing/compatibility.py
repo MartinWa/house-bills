@@ -3,7 +3,7 @@
 from copy import deepcopy
 from datetime import date
 
-from bills.categories import waste_subcategory
+from bills.categories import waste_cost_subcategory, waste_subcategory
 
 
 def legacy_billing_period(section):
@@ -33,6 +33,15 @@ def cost_totals_candidate(values):
     """Adapt in memory; stored extraction and approval snapshots stay immutable."""
     result = deepcopy(values)
     for section in result.get("sections", []):
+        if "subcategory" not in section:
+            texts = [(section.get("period_evidence") or {}).get("text", "")]
+            texts.extend(
+                (row.get("evidence") or {}).get("text", "")
+                for row in [*section.get("charges", []), *section.get("usages", [])]
+            )
+            section["subcategory"] = (
+                waste_cost_subcategory(texts) if section.get("service") == "waste" else ""
+            )
         if "start" not in section and "end" not in section:
             section["start"], section["end"], section["period_evidence"] = legacy_billing_period(
                 section

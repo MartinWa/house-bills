@@ -31,16 +31,16 @@ remain review proposals. Dates and filenames never select the newest parser.
 
 | Family/version | Billing structure | Revision |
 | --- | --- | --- |
-| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations and dated water reversals. | `7` |
-| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units. | `2` |
+| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations, waste collection labels and dated water reversals. | `8` |
+| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units and waste collection labels. | `3` |
 | `layout_02/v1` | Electricity supply; installation details above each specification. | `3` |
 | `layout_02/v2` | Replacement supply structure; service-specific title and inline installation key. | `2` |
 | `layout_03/v1` | Quarterly waste or dated tank emptying; VAT basis and separate payment summary. | `2` |
 | `layout_04/v1` | Electricity supply; cover totals and one installation specification. | `1` |
 | `layout_05/v1` | Electricity supply; explicit consumption-period table beside a historical chart. | `2` |
 | `layout_05/v2` | Electricity supply; printed billed consumption in a meter-reading table beside a chart. | `1` |
-| `layout_06/v1` | Network and energy tax; repeated billed kWh quantities and inclusive VAT prices. | `3` |
-| `layout_06/v2` | Network and energy tax; exclusive VAT prices or dated price changes with separate tax rows. | `2` |
+| `layout_06/v1` | Network and energy tax; repeated billed kWh quantities and inclusive VAT prices. | `4` |
+| `layout_06/v2` | Network and energy tax; exclusive VAT prices or dated price changes with separate tax rows. | `3` |
 | `layout_07/v1` | Electricity supply; area-labelled consumption and inclusive VAT totals. | `1` |
 | `layout_08/v1` | Compact electricity supply summary with printed consumption, total, VAT and rounding. | `3` |
 

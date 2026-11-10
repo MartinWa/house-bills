@@ -9,6 +9,23 @@
   {% endfor %}
 {% endblock %}
 
+{% block after_field_sets %}
+  {{ block.super }}
+  {% if original and perms.bills.view_propertyservice %}
+    <section class="module" aria-labelledby="vendor-services-heading">
+      <h2 id="vendor-services-heading">Property services</h2>
+      <p><a href="{% url 'admin:bills_propertyservice_changelist' %}">Configure services and vendor assignments</a></p>
+      <table>
+        <thead><tr><th scope="col">Property service</th><th scope="col">Frequency</th><th scope="col">First invoice month</th><th scope="col">Last invoice month</th><th scope="col">Enabled</th></tr></thead>
+        <tbody>{% for assignment in service_assignments %}<tr>
+          <td><a href="{% url 'admin:bills_propertyservice_change' assignment.property_service_id %}">{{ assignment.property_service }}</a></td>
+          <td>{{ assignment.property_service.get_frequency_months_display }}</td><td>{{ assignment.start_month|date:"Y-m" }}</td><td>{{ assignment.end_month|date:"Y-m"|default:"Ongoing" }}</td><td>{{ assignment.is_active|yesno:"Yes,No" }}</td>
+        </tr>{% empty %}<tr><td colspan="5">No property services assigned to this vendor.</td></tr>{% endfor %}</tbody>
+      </table>
+    </section>
+  {% endif %}
+{% endblock %}
+
 {% block inline_field_sets %}
   {% for inline_admin_formset in inline_admin_formsets %}
     {% if inline_admin_formset.formset.prefix != "property_identifiers" %}
