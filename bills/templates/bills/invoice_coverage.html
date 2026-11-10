@@ -34,10 +34,10 @@
       {% include "bills/_pagination.html" %}
       <details class="schedule-details">
         <summary>Property services and vendors</summary>
-        <p>As-needed services record vendor activity without expecting recurring invoices. End months are inclusive.</p>
+        <p>Service months bound the checked expectations; each vendor has its own invoice months. As-needed services record vendor activity without expecting recurring invoices. End months are inclusive.</p>
         <div class="table-scroll">
           <table id="property-services">
-            <thead><tr><th scope="col">Property</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Frequency</th><th scope="col">First month</th><th scope="col">Last month</th><th scope="col">Activity</th><th scope="col">Vendor history</th></tr></thead>
+            <thead><tr><th scope="col">Property</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Frequency</th><th scope="col">Service starts</th><th scope="col">Service ends</th><th scope="col">Activity</th><th scope="col">Vendor history</th></tr></thead>
             <tbody>{% for configured in property_services %}<tr>
               <td>{{ configured.property_name }}</td><td>{{ configured.category_label }}</td><td>{{ configured.subcategory_label|default:"—" }}</td><td>{{ configured.frequency_label }}</td><td>{{ configured.start_month|date:"Y-m" }}</td><td>{{ configured.end_month|date:"Y-m"|default:"Ongoing" }}</td><td>{{ configured.activity_label }}</td>
               <td>{% for assignment in configured.vendor_assignments %}{{ assignment.vendor_name }} ({{ assignment.start_month|date:"Y-m" }}–{{ assignment.end_month|date:"Y-m"|default:"ongoing" }}{% if not assignment.is_active %}, disabled{% endif %}){% if not forloop.last %}<br>{% endif %}{% empty %}Needs vendor{% endfor %}{% if perms.bills.change_propertyservice %}<br><a href="{% url 'admin:bills_propertyservice_change' configured.id %}">Configure service</a>{% endif %}</td>

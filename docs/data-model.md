@@ -52,27 +52,31 @@ specific assignment. Changing this setting does not alter previously approved in
 On each property form, use **Property services** and **Add service** to configure the
 services the property needs. The separate **Property services** editor provides the
 same configuration with property and service filters. Each service has a category,
-optional waste cost subcategory, enabled flag, first and optional last invoice month,
-billing frequency and grace days. Electricity supply and network are separate services
-under Electricity. Waste collection and tank emptying are separate services under Waste.
-Food/Rest waste stay consumption details within one waste collection service.
+optional waste cost subcategory, enabled flag, first and optional last *expected*
+invoice month, billing frequency and grace days. Electricity supply and network are
+separate services under Electricity. Waste collection and tank emptying are separate
+services under Waste. Food/Rest waste stay consumption details within one waste
+collection service.
 
 Attach at least one enabled vendor under the service's **Vendor assignments**. Each
-assignment has a vendor, first invoice month and optional inclusive last month. The
-vendor form lists its assigned property services and links back to their configuration.
-One vendor can bill several services and properties.
+assignment has a vendor, the vendor's own first invoice month and an optional inclusive
+last month. The service's first expected month bounds the checked months; it is not the
+vendor's start date. The vendor form lists its assigned property services and links back
+to their configuration. One vendor can bill several services and properties.
 
-The first month anchors monthly, two-monthly, quarterly, six-monthly or yearly
-expectations; last months are inclusive. For quarterly invoices in February, May,
-August and November, set February as the first month. **As needed** records an active
-service without producing recurring expectations. Use it for occasional tank emptying.
-Select **Waste collection** separately so a tank-emptying invoice cannot fill a waste
-collection expectation. An empty waste cost subcategory matches any waste allocation.
+The service's first expected month anchors monthly, two-monthly, quarterly, six-monthly
+or yearly expectations; last months are inclusive. Months before it are not checked.
+For quarterly invoices in February, May, August and November, set February as the first
+month. **As needed** records an active service without producing recurring expectations.
+Use it for occasional tank emptying. Select **Waste collection** separately so a
+tank-emptying invoice cannot fill a waste collection expectation. An empty waste cost
+subcategory matches any waste allocation.
 
 When changing vendor, set the former assignment's last invoice month and add its
-replacement. The property's service and frequency remain in place. Old and new vendors
-can both bill in a transition month. Enabled assignments for the same vendor cannot
-overlap. Months without an enabled vendor remain visible as **Needs vendor**.
+replacement with its own first invoice month. The property's service and frequency
+remain in place. Old and new vendors can both bill in a transition month. Enabled
+assignments for the same vendor cannot overlap. Months without an enabled vendor remain
+visible as **Needs vendor**.
 
 For a confirmed month with no invoice, choose **Not sent this month** on the missing
 row and save a reason. This requires permission to add a month with no invoice.
@@ -97,8 +101,8 @@ approved values. See
 | Property / Vendor | Display names and safe unique storage slugs; vendors also have an optional default property. |
 | VendorIssuerIdentifier / VendorLayoutFamily | Private vendor identification numbers and compatible installed invoice formats. |
 | PropertyIdentifier | A vendor-scoped installation, contract, product-number or delivery-address key mapped to one property. |
-| PropertyService | Property/service activity, optional waste cost subcategory, enabled flag, first/last invoice months, billing frequency and grace days. |
-| ServiceVendorAssignment | A vendor attached to a property service for inclusive invoice months, with an enabled flag. |
+| PropertyService | Property/service activity, optional waste cost subcategory, enabled flag, first/last expected invoice months, billing frequency and grace days. |
+| ServiceVendorAssignment | A vendor attached to a property service for the vendor's own inclusive invoice months, with an enabled flag. |
 | ServiceInvoiceException | A confirmed month with no invoice for one property service and vendor, with a required reason. |
 | Document | Source (`upload` or `manual`), unique SHA-256 for uploads, original filename, relative private path, separate processing/storage state and messages, staging/publication journal paths, extraction counter and a private legacy fee archive. |
 | ExtractionAttempt | Append-only candidate JSON, page evidence, layout family/version, parser revision, error/state and attempt number. Invalid and failed results remain private proposals. |

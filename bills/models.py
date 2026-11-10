@@ -384,8 +384,16 @@ class PropertyService(ValidatedModel):
         max_length=20, choices=WASTE_COST_SUBCATEGORIES, blank=True, default=""
     )
     is_active = models.BooleanField("enabled", default=True)
-    start_month = models.DateField("first invoice month")
-    end_month = models.DateField("last invoice month", null=True, blank=True)
+    start_month = models.DateField(
+        "first expected invoice month",
+        help_text="Recurring expectations start here; earlier months are not checked.",
+    )
+    end_month = models.DateField(
+        "last expected invoice month",
+        null=True,
+        blank=True,
+        help_text="Inclusive. Leave blank while the service continues.",
+    )
     frequency_months = models.PositiveSmallIntegerField(
         "frequency", choices=Frequency, default=Frequency.MONTHLY
     )
@@ -434,7 +442,7 @@ class PropertyService(ValidatedModel):
             if value and value.day != 1:
                 errors[field] = "Use the first day of the invoice month."
         if self.start_month and self.end_month and self.end_month < self.start_month:
-            errors["end_month"] = "The last invoice month must not precede the first."
+            errors["end_month"] = "The last expected month must not precede the first."
         if errors:
             raise ValidationError(errors)
 
@@ -461,8 +469,16 @@ class ServiceVendorAssignment(ValidatedModel):
     )
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name="service_assignments")
     is_active = models.BooleanField("enabled", default=True)
-    start_month = models.DateField("first invoice month")
-    end_month = models.DateField("last invoice month", null=True, blank=True)
+    start_month = models.DateField(
+        "vendor's first invoice month",
+        help_text="First month this vendor should send an invoice for the service.",
+    )
+    end_month = models.DateField(
+        "vendor's last invoice month",
+        null=True,
+        blank=True,
+        help_text="Inclusive. End the vendor before or when its replacement starts.",
+    )
 
     class Meta:
         ordering = ["property_service__property__name", "start_month", "pk"]
@@ -489,14 +505,16 @@ class ServiceVendorAssignment(ValidatedModel):
             if value and value.day != 1:
                 errors[field] = "Use the first day of the invoice month."
         if self.start_month and self.end_month and self.end_month < self.start_month:
-            errors["end_month"] = "The last invoice month must not precede the first."
+            errors["end_month"] = "The last vendor month must not precede the first."
         if self.property_service_id:
             service = self.property_service
             if self.start_month and self.start_month < service.start_month:
-                errors["start_month"] = "The vendor must start within the service's invoice months."
+                errors["start_month"] = (
+                    "The vendor must start within the service's expected invoice months."
+                )
             if service.end_month and (self.end_month is None or self.end_month > service.end_month):
                 errors["end_month"] = (
-                    "End the vendor assignment within the service's invoice months."
+                    "End the vendor assignment within the service's expected invoice months."
                 )
         if errors:
             raise ValidationError(errors)
