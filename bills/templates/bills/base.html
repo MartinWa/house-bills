@@ -23,6 +23,7 @@
             <a href="{% url 'bills:invoices' %}"{% if request.resolver_match.url_name == 'invoices' or request.resolver_match.url_name == 'invoice' %} aria-current="page"{% endif %}>Invoices</a>
             <a href="{% url 'bills:documents' %}"{% if request.resolver_match.url_name == 'documents' or request.resolver_match.url_name == 'document' or request.resolver_match.url_name == 'upload' or request.resolver_match.url_name == 'review' or request.resolver_match.url_name == 'delete_document' %} aria-current="page"{% endif %}>Documents</a>
             <a href="{% url 'bills:reports' %}"{% if request.resolver_match.url_name == 'reports' %} aria-current="page"{% endif %}>Reports</a>
+            <a href="{% url 'bills:invoice_coverage' %}"{% if request.resolver_match.url_name == 'invoice_coverage' or request.resolver_match.url_name == 'invoice_not_sent' %} aria-current="page"{% endif %}>Missing invoices</a>
           </nav>
           <details class="user-menu">
             <summary>{% include "bills/_icon.html" with name="user" %}<span>User</span>{% include "bills/_icon.html" with name="chevron" %}</summary>

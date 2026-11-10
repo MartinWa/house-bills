@@ -19,7 +19,42 @@ that whole interval. No quantity or cost is prorated. Electricity source selecti
 uses all approved records before applying the report filters, including network bills
 with a different invoice date.
 
-## SQLite contract, version 2
+## Missing invoices
+
+**Missing invoices** compares received invoices with configured
+[property services and vendor history](data-model.md#property-services-and-vendor-history).
+It defaults to the current year and shows missing expectations or invoices needing
+review. Filters select whole invoice months by property, vendor, service and status.
+The expandable service table also shows as-needed services, vendor history and
+ended/disabled configurations.
+
+Each row checks one property service and its assigned vendor in an expected month.
+One shared invoice may satisfy several rows, while several allocations from one
+invoice count as a single receipt within each row. Statuses are:
+
+- **Received**: a matching approved invoice exists.
+- **Needs review**: a matching unapproved invoice or latest routed extraction exists.
+  It counts as received without contributing costs or consumption to Reports.
+- **Expected**: no matching invoice exists, but the month or grace period is still open.
+- **Missing**: no matching invoice exists after the month and grace period have ended.
+- **Not sent**: the vendor is confirmed not to have sent an invoice for this service
+  and month. A saved reason explains the exception. It is excluded from the attention
+  queue; a matching received invoice takes precedence if one arrives later.
+- **Needs vendor**: the property needs a recurring service in this month, but no enabled
+  vendor assignment covers it. It remains in the default attention queue.
+
+Matches use invoice dates, rather than upload dates, payment due dates or consumption
+periods. A credit invoice cannot replace a regular expected invoice. An approved
+revision takes precedence over a newer extraction, including when the new proposal
+changes its property or vendor. Unknown dates/vendors, unassigned properties and
+unclassified services remain in Documents for review and cannot fill expectations.
+Use the review links to resolve pending receipts. As-needed schedules produce no
+missing invoices. Costs for absent invoices are never estimated.
+Choose **Not sent this month** on a missing row to record a confirmed exception.
+The invoice must still be missing when the action is saved; a repeated submission
+retains the original reason. Exceptions do not change future billing expectations.
+
+## SQLite contract, version 3
 
 Migration `0008_reporting_views` creates five read-only SQL views in the application
 database. They use native SQLite functions and work through an ordinary SQLite
@@ -29,9 +64,10 @@ change invoices, consumption, originals or private history.
 
 Migration `0009_usage_subcategories` adds `category` and `subcategory` to the cost
 and usage projections. Electricity costs use category `electricity`, with subcategories
-`electricity_network` (Elnät) and `electricity_supply` (Elhandel). Waste costs keep an
-empty subcategory because the printed contract total includes shared fees. Waste usage
-uses `restavfall`, `matavfall` or an empty, unspecified subcategory. Other categories
+`electricity_network` (Elnät) and `electricity_supply` (Elhandel). Migration
+`0013_vendor_billing_schedules` extends waste cost subcategories with `waste_collection`
+and `tank_emptying`; unclassified costs remain empty. Waste usage uses `restavfall`,
+`matavfall` or an empty, unspecified subcategory. Other categories
 retain their existing service keys and have no subcategory.
 
 The Reports screen groups waste consumption by subcategory. Electricity consumption
@@ -45,6 +81,7 @@ shows Elnät and Elhandel. Group raw waste queries by `subcategory` when compari
 | `reporting_usage` | One signed billed consumption interval, retaining every source and basis. |
 | `reporting_electricity_selection` | One raw electricity interval with its selection and reason. |
 | `reporting_electricity_usage` | One electricity interval selected for combined consumption reporting. |
+| `reporting_invoice_coverage` | One recurring property-service expectation and assigned vendor in an invoice month, or an unassigned expectation, with receipt counts and status. |
 
 The views contain invoice/document IDs, references, vendor IDs/names/slugs, invoice
 kind/date, review revision and approval time. Cost and usage rows also identify the
@@ -52,6 +89,27 @@ property by ID/name/slug and the allocation by `allocation_id`/`section_key`. Th
 exclude issuer/installation identifiers, source paths, extracted text, review
 snapshots and user account details. The application database still contains private
 configuration and login tables; these views do not create an external access boundary.
+
+Migration `0014_invoice_coverage_view` adds coverage without changing the approved
+reporting views' source rules. Migration `0015_property_services` anchors expectations
+to property services and joins dated vendor assignments. Vendor changes preserve
+earlier expectations; a transition month can have both vendors. Missing assignments
+produce `unassigned` rows with null vendor/assignment IDs. Disabling a property service
+suppresses all its expectations. Coverage includes expected months through the current
+UTC month, `expected_time` at UTC midnight, `missing_after`, approved invoice and
+pending review document counts, `property_service_id`, `assignment_id`, representative
+invoice/review document IDs and status.
+Migration `0016_service_invoice_exceptions` adds `exception_id` and the configured
+`exception_reason`; a confirmed no-invoice month uses status `not_expected` (shown as
+**Not sent**). Approved or pending receipts take precedence over this status.
+Current status uses the UTC date. It is live and requires no export or refresh job.
+Migration `0017_legacy_invoice_coverage` classifies pending waste receipts from older
+snapshots using explicit retained period, fee or usage evidence. Mixed or unidentified
+costs remain unclassified; an existing subcategory, including an explicit empty value,
+takes precedence. The native view derives these labels without rewriting extraction
+attempts, approval snapshots or approved allocations.
+The [SQL examples](reporting-examples.sql) include a missing-invoice table suitable
+for Grafana and a count of missing property/service expectations.
 
 Invoice IDs persist through correction. Allocation and usage IDs change when the
 review service replaces the current normalized rows. Query the current views afresh;

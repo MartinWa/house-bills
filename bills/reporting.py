@@ -141,7 +141,9 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         row["service_label"] = Service(row["service"]).label
         row["category_label"] = CATEGORY_LABELS[row["service"]]
         row["subcategory_label"] = (
-            subcategory_label(row["service"]) if row["service"] != "waste" else ""
+            subcategory_label(row["service"], row["subcategory"])
+            if row["service"] != "waste" or row["subcategory"]
+            else ""
         )
     for row in [*consumption, *breakdown]:
         row["utility_label"] = Usage.Utility(row["utility"]).label

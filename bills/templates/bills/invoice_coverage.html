@@ -1,0 +1,50 @@
+{% extends "bills/base.html" %}
+{% block title %}Missing invoices · House Bills{% endblock %}
+{% block content %}
+  <h2>Missing invoices</h2>
+  <p>Check received invoices against the property's services, billing frequencies and assigned vendors. Invoices become missing after their expected month and any grace period. Received invoices awaiting approval need review.</p>
+  <p>One invoice can cover several services. <a href="{% url 'bills:documents' %}">Review imported documents</a> if a received file has no matching assignment.</p>
+  <p>For a confirmed month with no invoice, use “Not sent this month” on its missing row. Received invoices still count if they arrive later.</p>
+  {% if perms.bills.view_propertyservice %}<p><a href="{% url 'admin:bills_propertyservice_changelist' %}">Configure property services</a></p>{% endif %}
+  {% include "bills/_filters.html" with clear_url="bills:invoice_coverage" %}
+  {% if unavailable %}
+    <p role="alert">Invoice coverage is unavailable. Try again shortly.</p>
+  {% elif not form.errors %}
+    {% if not property_services %}
+      <p class="notice">No property services match these filters. Add services and vendors to track expected invoices.</p>
+    {% else %}
+      <p class="report-summary"><strong>{{ missing_count }} missing</strong> · {{ review_count }} needing review · {{ received_count }} received · {{ expected_count }} expected · {{ not_expected_count }} not sent · {{ unassigned_count }} needing a vendor</p>
+      <p>Filters select whole invoice months.</p>
+      <div class="table-scroll">
+        <table id="invoice-coverage">
+          <caption>Expected invoices</caption>
+          <thead><tr><th scope="col">Invoice month</th><th scope="col">Property</th><th scope="col">Vendor</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Status</th><th scope="col">Missing from</th><th scope="col">Invoice</th></tr></thead>
+          <tbody>{% for row in page %}<tr>
+            <td>{{ row.expected_month|date:"Y-m" }}</td>
+            <td>{{ row.property_name }}</td>
+            <td>{{ row.vendor_name|default:"Unassigned" }}</td>
+            <td><span class="category">{% include "bills/_icon.html" with name=row.category %}{{ row.category_label }}</span></td>
+            <td>{{ row.subcategory_label|default:"—" }}</td>
+            <td><span class="status status-{{ row.status }}">{{ row.status_label }}</span>{% if row.status == "not_expected" %}<br>{{ row.exception_reason }}{% endif %}</td>
+            <td>{% if row.status == "not_expected" %}—{% else %}{{ row.missing_after|date:"Y-m-d" }}{% endif %}</td>
+            <td>{% if row.invoice_id %}<a href="{% url 'bills:invoice' row.invoice_id %}">Open invoice</a>{% elif row.review_document_id %}<a href="{% url 'bills:review' row.review_document_id %}">Review invoice</a>{% elif row.status == "missing" and perms.bills.add_serviceinvoiceexception %}<a href="{% url 'bills:invoice_not_sent' row.property_service_id row.vendor_id row.expected_month|date:'Y-m' %}">Not sent this month</a>{% elif row.status == "unassigned" and perms.bills.change_propertyservice %}<a href="{% url 'admin:bills_propertyservice_change' row.property_service_id %}">Assign vendor</a>{% elif row.status == "not_expected" and perms.bills.change_propertyservice %}<a href="{% url 'admin:bills_propertyservice_change' row.property_service_id %}#invoice_exceptions-group">Configure service</a>{% else %}—{% endif %}</td>
+          </tr>{% empty %}<tr><td colspan="8">No invoices match the selected status and months.</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      {% include "bills/_pagination.html" %}
+      <details class="schedule-details">
+        <summary>Property services and vendors</summary>
+        <p>As-needed services record vendor activity without expecting recurring invoices. End months are inclusive.</p>
+        <div class="table-scroll">
+          <table id="property-services">
+            <thead><tr><th scope="col">Property</th><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Frequency</th><th scope="col">First month</th><th scope="col">Last month</th><th scope="col">Activity</th><th scope="col">Vendor history</th></tr></thead>
+            <tbody>{% for configured in property_services %}<tr>
+              <td>{{ configured.property_name }}</td><td>{{ configured.category_label }}</td><td>{{ configured.subcategory_label|default:"—" }}</td><td>{{ configured.frequency_label }}</td><td>{{ configured.start_month|date:"Y-m" }}</td><td>{{ configured.end_month|date:"Y-m"|default:"Ongoing" }}</td><td>{{ configured.activity_label }}</td>
+              <td>{% for assignment in configured.vendor_assignments %}{{ assignment.vendor_name }} ({{ assignment.start_month|date:"Y-m" }}–{{ assignment.end_month|date:"Y-m"|default:"ongoing" }}{% if not assignment.is_active %}, disabled{% endif %}){% if not forloop.last %}<br>{% endif %}{% empty %}Needs vendor{% endfor %}{% if perms.bills.change_propertyservice %}<br><a href="{% url 'admin:bills_propertyservice_change' configured.id %}">Configure service</a>{% endif %}</td>
+            </tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </details>
+    {% endif %}
+  {% endif %}
+{% endblock %}

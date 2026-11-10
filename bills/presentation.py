@@ -133,8 +133,8 @@ def candidate_summary(candidate, *, error=""):
                 "service": service,
                 "category": CATEGORY_LABELS.get(section.get("service"), "Unknown service"),
                 "subcategory": (
-                    subcategory_label(section.get("service"))
-                    if section.get("service") != "waste"
+                    subcategory_label(section.get("service"), section.get("subcategory", ""))
+                    if section.get("service") != "waste" or section.get("subcategory")
                     else ""
                 ),
                 "gross": scaled_value(section.get("gross_minor"), 100, 2),
@@ -246,6 +246,13 @@ def _comparison_values(values, *, vendor_id, properties, kind):
             f"{prefix}.service",
             f"{label} service",
             dict(Service.choices).get(section.get("service")),
+        )
+        put(
+            f"{prefix}.subcategory",
+            f"{label} cost subcategory",
+            subcategory_label(section.get("service"), section.get("subcategory", ""))
+            if section.get("service") != "waste" or section.get("subcategory")
+            else "",
         )
         for field, title in (("net_minor", "net"), ("vat_minor", "VAT"), ("gross_minor", "cost")):
             put(f"{prefix}.{field}", f"{label} {title}", scaled_value(section.get(field), 100, 2))

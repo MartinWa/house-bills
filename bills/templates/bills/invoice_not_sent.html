@@ -1,0 +1,14 @@
+{% extends "bills/base.html" %}
+{% block title %}Not sent this month · House Bills{% endblock %}
+{% block content %}
+  <h2>Not sent this month</h2>
+  <p>{{ row.expected_month|date:"Y-m" }} · {{ row.property_name }} · {{ row.vendor_name }}</p>
+  <p>{{ row.category_label }}{% if row.subcategory_label %} / {{ row.subcategory_label }}{% endif %}</p>
+  <p>Record why this vendor did not send an invoice for this month. Future invoice expectations continue normally. An invoice will count if it arrives later.</p>
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div role="alert">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="field">{{ form.reason.label_tag }}{{ form.reason }}{{ form.reason.errors }}<small id="id_reason_helptext">{{ form.reason.help_text }}</small></div>
+    <p><button type="submit">Mark as not sent</button> <a href="{{ back_url }}">Cancel</a></p>
+  </form>
+{% endblock %}

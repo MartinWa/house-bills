@@ -44,6 +44,7 @@ class Section:
     gross_minor: int | None = None
     tax_evidence: Evidence | None = None
     total_evidence: Evidence | None = None
+    subcategory: str = ""
 
 
 @dataclass

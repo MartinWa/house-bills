@@ -1,0 +1,21 @@
+{% extends "admin/change_form.html" %}
+
+{% block after_field_sets %}
+  {{ block.super }}
+  {% if original and perms.bills.view_propertyservice %}
+    <section class="module" aria-labelledby="property-services-heading">
+      <h2 id="property-services-heading">Property services</h2>
+      {% if perms.bills.add_propertyservice %}<p><a href="{% url 'admin:bills_propertyservice_add' %}?property={{ original.pk }}">Add service</a></p>{% endif %}
+      <p>Each service has a billing frequency and dated vendor assignments. Food and Rest waste remain consumption details within Waste.</p>
+      <table>
+        <thead><tr><th scope="col">Service</th><th scope="col">Frequency</th><th scope="col">First invoice month</th><th scope="col">Last invoice month</th><th scope="col">Vendors</th><th scope="col">Enabled</th></tr></thead>
+        <tbody>{% for service in property_services %}<tr>
+          <td><a href="{% url 'admin:bills_propertyservice_change' service.pk %}">{{ service.category_label }}{% if service.subcategory_label %} / {{ service.subcategory_label }}{% endif %}</a></td>
+          <td>{{ service.get_frequency_months_display }}</td><td>{{ service.start_month|date:"Y-m" }}</td><td>{{ service.end_month|date:"Y-m"|default:"Ongoing" }}</td>
+          <td>{% for assignment in service.vendor_assignments.all %}{{ assignment.vendor }} ({{ assignment.start_month|date:"Y-m" }}–{{ assignment.end_month|date:"Y-m"|default:"ongoing" }}{% if not assignment.is_active %}, disabled{% endif %}){% if not forloop.last %}<br>{% endif %}{% empty %}Needs vendor{% endfor %}</td>
+          <td>{{ service.is_active|yesno:"Yes,No" }}</td>
+        </tr>{% empty %}<tr><td colspan="6">No services configured.</td></tr>{% endfor %}</tbody>
+      </table>
+    </section>
+  {% endif %}
+{% endblock %}

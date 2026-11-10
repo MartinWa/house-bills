@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from .models import ExtractionAttempt, Invoice, ReviewRevision
 from .services import invoice_for_review
 
-REVIEW_SALT = "bills.document-review.cost-totals"
+REVIEW_SALT = "bills.document-review.cost-subcategories"
 
 
 @dataclass(frozen=True)
