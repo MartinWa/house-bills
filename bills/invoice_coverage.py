@@ -172,6 +172,9 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         and scoped["reviewed_invoice_id"] == approved[0]["id"]
         and scoped["reviewed_revision"] == approved[0]["review_revision"]
     )
+    not_sent_exception = any(
+        item and item["reviewed_invoice_id"] is None for item in (scoped, global_exception)
+    )
     status = (
         "unassigned"
         if assignment is None
@@ -182,7 +185,7 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         else "needs_review"
         if pending_matches
         else "not_expected"
-        if reviewed_exception or (not bills and (scoped or global_exception))
+        if reviewed_exception or (not bills and not_sent_exception)
         else "incomplete"
         if approved
         else "needs_review"

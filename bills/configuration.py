@@ -7,6 +7,13 @@ from datetime import date
 from django.core.exceptions import ValidationError
 
 _staged = ContextVar("staged_configuration", default=False)
+EXCEPTION_CONTEXT_FIELDS = (
+    "property_service_id",
+    "vendor_id",
+    "month",
+    "reviewed_invoice_id",
+    "reviewed_revision",
+)
 
 
 def configuration_is_staged():
@@ -165,10 +172,19 @@ def validate_configuration(graph):
             and (assignment.end_month is None or assignment.end_month > service.end_month)
         ):
             raise ValidationError("Service vendor dates must be within the service tracking dates.")
+    saved_contexts = {
+        row[0]: row[1:]
+        for row in ServiceInvoiceException.objects.values_list("pk", *EXCEPTION_CONTEXT_FIELDS)
+    }
     for exception in exceptions:
         validate_months(exception)
         if not exception.reason.strip():
             raise ValidationError("Explain why no invoice was issued.")
+        context = tuple(getattr(exception, field) for field in EXCEPTION_CONTEXT_FIELDS)
+        # Retain saved scopes as history when schedules, services or invoices change.
+        # New or retargeted annotations must still match the current configuration.
+        if exception.pk is not None and saved_contexts.get(exception.pk) == context:
+            continue
         applicable = [
             row
             for row in schedules

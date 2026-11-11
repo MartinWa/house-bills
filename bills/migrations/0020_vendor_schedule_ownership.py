@@ -50,6 +50,12 @@ def restore_schedules(apps, schema_editor):
                 "New service configuration cannot be downgraded without choosing a legacy "
                 "schedule. Restore a backup instead."
             )
+        original_mode = "occasional" if original["frequency_months"] == 0 else "regular"
+        if service.mode != original_mode:
+            raise RuntimeError(
+                "Changed service modes cannot be represented by the archived legacy "
+                "schedule. Restore a backup instead."
+            )
         legacy.append({**services.values().get(pk=service.pk), **original})
     assignments = list(
         apps.get_model("bills", "ServiceVendorAssignment").objects.using(alias).values()

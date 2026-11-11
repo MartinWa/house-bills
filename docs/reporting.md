@@ -41,7 +41,8 @@ days. **Not sent this month** records a vendor-wide reason once. Existing scoped
 annotations remain visible on their services. A received bill takes precedence
 over a no-invoice annotation. An absent allocation still needs review; after
 review of the approved invoice, an explicit service confirmation can excuse it
-for that revision. Corrections invalidate that review binding. A later matching
+for that revision. Corrections invalidate that review binding while retaining its
+history; a stale confirmation cannot excuse a missing bill. A later matching
 allocation takes precedence.
 
 Active regular services without vendors show **Needs vendor**. Assigned vendors
@@ -141,7 +142,7 @@ same consumption twice. Both electricity services still contribute to costs.
 | `network` | Selected network consumption. |
 | `supply_fallback` | Selected supply consumption whose whole period is disjoint from network intervals. |
 | `network_preferred` | Supply interval fully covered by network intervals; excluded from combined consumption. |
-| `needs_review` | Ambiguous source overlap or partial network coverage; excluded and shown on Reports. |
+| `needs_review` | Unspecified electricity source, ambiguous source overlap or partial network coverage; excluded and shown on Reports. |
 
 Network coverage may be one interval or several consecutive readings. Gaps are checked;
 matching the outer endpoints alone does not establish coverage. If network readings

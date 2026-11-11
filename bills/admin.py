@@ -111,8 +111,11 @@ class ConfigurationAdmin(admin.ModelAdmin):
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)
-        if hasattr(form, "defer_graph") and self.inlines:
-            form.defer_graph = True
+        if hasattr(form, "defer_graph"):
+            form.defer_graph = any(
+                issubclass(inline.formset, ConfigurationInlineFormSet)
+                for inline in self.get_inline_instances(request, obj)
+            )
         return form
 
     def _create_formsets(self, request, obj, change):
@@ -152,7 +155,7 @@ class ConfigurationAdmin(admin.ModelAdmin):
                     **form.cleaned_data,
                 )
             except ValidationError as exc:
-                form.add_error(None, exc)
+                form.add_error(None, exc.messages)
             else:
                 self.log_change(request, obj, "Ended period through dated configuration change.")
                 self.log_addition(request, replacement, "Created replacement dated period.")

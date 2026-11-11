@@ -95,11 +95,14 @@ requirement. See [missing invoices](reporting.md#missing-invoices).
 
 Choose **Not sent this month** once for a missing combined bill, with a required
 reason. Existing service-specific annotations retain their original vendor,
-service, month and reason. A later receipt takes precedence. After reviewing an
-approved bill with an absent service, use **Confirm service not sent after review**
+service, month and reason through later configuration changes. New annotations
+or changes to their scope must match the current schedule and service configuration.
+A later receipt takes precedence. After reviewing an approved bill with an absent
+service, use **Confirm service not sent after review**
 on that allocation and explicitly confirm the review. This binds the annotation
-to the approved invoice revision. A subsequent correction requires a new review;
-a later explicit allocation takes precedence. Manage annotations through
+to the approved invoice revision. A subsequent correction requires a new review.
+The stale confirmation remains as history and cannot excuse a missing bill.
+A later explicit allocation takes precedence. Manage annotations through
 **Months with no invoice**, also available on each service form.
 
 Configuration forms, direct model saves and configuration actions share validation.
@@ -131,7 +134,8 @@ Food waste (Matavfall) and Residual waste (Restavfall) quantities. Keep the prin
 cost together when the source supplies no reliable monetary split. Explicit
 separate monetary allocations retain their classifications. Electricity network
 and supply remain distinct consumption sources with the existing selection that
-avoids counting energy twice.
+avoids counting energy twice. Unspecified consumption sources require review before
+selection, even when their cost is classified as network or supply.
 
 ## Records and precision
 
@@ -167,11 +171,11 @@ Invoice/document/assignment identities, money, signed quantities, units, periods
 approval metadata, original storage and immutable extraction/review JSON remain
 intact. Compatibility adapters read older classification keys in memory. Earlier
 migrations remain unchanged. Migrated service billing settings are archived
-privately for recovery. A synthetic unchanged-data downgrade restores their values;
-new classifications, independent electricity consumption sources, schedule edits
-or reviewed/vendor-wide annotations that the old schema cannot represent reject
-a lossy downgrade. Restore the verified
-pre-upgrade backup with the previous image in that case.
+privately for recovery. An unchanged-data downgrade restores their values.
+A downgrade stops if service modes or vendor schedules changed, or the old schema
+cannot represent new classifications, independent electricity consumption sources
+or reviewed/vendor-wide annotations. Restore the verified pre-upgrade backup with
+the previous image in that case.
 
 Money uses signed integer minor units: `100` is one SEK. Quantities use signed integer
 thousandths: `1000` is one kWh, m³ or kg. Floats, booleans and strings are rejected by the

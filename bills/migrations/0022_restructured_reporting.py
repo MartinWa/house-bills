@@ -25,7 +25,8 @@ USAGE = (
         "c.service AS source_service,",
         """CASE WHEN u.utility = 'electricity'
               AND u.subcategory IN ('electricity_network', 'electricity_supply')
-         THEN u.subcategory ELSE c.service END AS source_service,""",
+         THEN u.subcategory WHEN u.utility = 'electricity' THEN u.utility
+         ELSE c.service END AS source_service,""",
     )
     .replace(
         """CASE WHEN u.utility = 'electricity' THEN c.subcategory
@@ -129,6 +130,8 @@ WITH RECURSIVE months(property_service_id, expected_month) AS (
     allocation_review_count,
            max(x.id) AS exception_id,
            max(x.reason) AS exception_reason,
+           max(CASE WHEN x.id IS NOT NULL AND x.reviewed_invoice_id IS NULL
+               THEN 1 ELSE 0 END) AS not_sent_exception,
            max(CASE WHEN x.reviewed_invoice_id IS NOT NULL AND EXISTS (
                SELECT 1 FROM receipts r WHERE r.invoice_id=x.reviewed_invoice_id
                AND r.review_revision=x.reviewed_revision AND r.vendor_id=a.vendor_id
@@ -167,7 +170,7 @@ SELECT matched.*,
     THEN 'not_expected'
             WHEN approved_invoice_count > 0 THEN 'incomplete'
             WHEN review_document_count > 0 THEN 'needs_review'
-            WHEN exception_id IS NOT NULL THEN 'not_expected'
+            WHEN not_sent_exception=1 THEN 'not_expected'
             WHEN date('now') >= missing_after THEN 'missing' ELSE 'expected' END AS status
 FROM matched
 """
@@ -255,11 +258,19 @@ BEGIN SELECT RAISE(ABORT, 'Referenced subcategory category is immutable'); END""
 
 for operation in ("INSERT", "UPDATE"):
     name = f"invoice_exception_scope_{operation.lower()}"
+    changed_context = (
+        """(NEW.property_service_id IS NOT OLD.property_service_id
+        OR NEW.vendor_id IS NOT OLD.vendor_id OR NEW.month IS NOT OLD.month
+        OR NEW.reviewed_invoice_id IS NOT OLD.reviewed_invoice_id
+        OR NEW.reviewed_revision IS NOT OLD.reviewed_revision) AND """
+        if operation == "UPDATE"
+        else ""
+    )
     TRIGGERS.append(
         (
             name,
             f"""CREATE TRIGGER {name} BEFORE {operation} ON bills_serviceinvoiceexception
-    WHEN NOT EXISTS (
+    WHEN {changed_context}(NOT EXISTS (
         SELECT 1 FROM bills_vendorbillingschedule q
         JOIN bills_servicevendorassignment a ON a.vendor_id=q.vendor_id
         JOIN bills_propertyservice s ON s.id=a.property_service_id
@@ -280,7 +291,7 @@ for operation in ("INSERT", "UPDATE"):
         AND i.vendor_id=NEW.vendor_id AND i.status='approved' AND i.kind='invoice'
         AND date(i.invoice_date, 'start of month')=NEW.month AND
     NEW.reviewed_revision<=i.review_revision
-    ))
+    )))
     BEGIN SELECT RAISE(ABORT, 'Invalid invoice exception schedule or scope'); END""",
         )
     )

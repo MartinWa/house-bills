@@ -329,3 +329,92 @@ def test_restructure_migration_preserves_and_recovers_or_aborts_conflicts(tmp_pa
         capture_output=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+CONFIGURATION_SCRIPT = r"""
+from datetime import date
+import django
+
+django.setup()
+from django.core.management import call_command
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+
+auth = ("auth", "0012_alter_user_first_name_max_length")
+old = [("bills", "0018_expected_invoice_month_labels"), auth]
+new = [("bills", "0022_restructured_reporting"), auth]
+MigrationExecutor(connection).migrate(old)
+apps = MigrationExecutor(connection).loader.project_state(old).apps
+house = apps.get_model("bills", "Property").objects.create(name="Synthetic House", slug="house")
+vendor = apps.get_model("bills", "Vendor").objects.create(name="Synthetic Vendor", slug="vendor")
+Service = apps.get_model("bills", "PropertyService")
+regular = Service.objects.create(
+    property=house, service="electricity_network", start_month=date(2024, 1, 1),
+    frequency_months=1, is_active=(CASE != "disabled_annotation")
+)
+occasional = Service.objects.create(
+    property=house, service="waste", subcategory="tank_emptying",
+    start_month=date(2024, 1, 1), frequency_months=0
+)
+for service in (regular, occasional):
+    apps.get_model("bills", "ServiceVendorAssignment").objects.create(
+        property_service=service, vendor=vendor, start_month=service.start_month
+    )
+if CASE == "disabled_annotation":
+    annotation = apps.get_model("bills", "ServiceInvoiceException").objects.create(
+        property_service=regular, vendor=vendor, month=date(2024, 2, 1),
+        reason="Synthetic historical note on a disabled service"
+    )
+call_command("audit_model_restructure")
+MigrationExecutor(connection).migrate(new)
+from bills.models import PropertyService, ServiceInvoiceException, VendorBillingSchedule
+call_command("audit_model_restructure")
+if CASE == "disabled_annotation":
+    current = PropertyService.objects.get(pk=regular.pk)
+    assert not current.is_active
+    PropertyService.objects.create(property=current.property, category="water",
+                                   start_month=date(2024, 1, 1))
+    retained = ServiceInvoiceException.objects.get(pk=annotation.pk)
+    assert retained.reason == annotation.reason
+    retained.reason = "Synthetic corrected historical explanation"
+    retained.save()
+    call_command("audit_model_restructure")
+else:
+    source = regular if CASE == "changed_regular_mode" else occasional
+    current = PropertyService.objects.get(pk=source.pk)
+    current.mode = "occasional" if CASE == "changed_regular_mode" else "regular"
+    current.save()
+    services_before = list(PropertyService.objects.order_by("pk").values())
+    schedules_before = list(VendorBillingSchedule.objects.order_by("pk").values())
+    try:
+        MigrationExecutor(connection).migrate(old)
+    except RuntimeError as exc:
+        assert "Changed service modes" in str(exc), str(exc)
+    else:
+        raise AssertionError("Downgrade must refuse to lose a changed service mode")
+    assert list(PropertyService.objects.order_by("pk").values()) == services_before
+    assert list(VendorBillingSchedule.objects.order_by("pk").values()) == schedules_before
+    MigrationExecutor(connection).migrate(new)
+    assert list(PropertyService.objects.order_by("pk").values()) == services_before
+    assert list(VendorBillingSchedule.objects.order_by("pk").values()) == schedules_before
+    call_command("audit_model_restructure")
+call_command("check", databases=["default"])
+"""
+
+
+@pytest.mark.parametrize(
+    "case", ["disabled_annotation", "changed_regular_mode", "changed_occasional_mode"]
+)
+def test_restructure_configuration_history_and_downgrade_recovery(tmp_path, case):
+    environment = {
+        **os.environ,
+        "DJANGO_SETTINGS_MODULE": "house_bills.settings.test",
+        "HOUSE_BILLS_STATE_DIR": str(tmp_path),
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", CONFIGURATION_SCRIPT.replace("CASE", repr(case))],
+        env=environment,
+        text=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
