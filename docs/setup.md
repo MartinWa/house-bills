@@ -11,10 +11,10 @@ and open **User → Administration**.
 3. Select compatible **Invoice formats**. Upload a representative PDF and inspect
    its proposal if you need to identify its family. An unfamiliar structure uses
    manual review.
-4. Add **Property mappings** for installation or contract keys. Each section of a
+4. Add **Invoice property rules** for installation or contract keys. Each section of a
    shared invoice maps independently. Shared customer accounts and recipient
    postal addresses do not identify a property.
-5. A vendor's optional **Default property** supplies a fallback. Specific mappings
+5. A vendor's optional **Default property** supplies a fallback. Specific rules
    and delivery-address mappings take precedence; conflicts require review.
 
 Use **Documents → Upload invoice** to preserve a PDF, then **Review and approve

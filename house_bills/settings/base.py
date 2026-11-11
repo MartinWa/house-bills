@@ -22,7 +22,7 @@ def env_list(name):
 
 
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    "house_bills.admin_site.HouseBillsAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -47,7 +47,7 @@ WSGI_APPLICATION = "house_bills.wsgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "house_bills" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

@@ -1,0 +1,6 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <p>{{ original }}</p>
+  <p>This dated change ends the current period and creates its replacement, preserving history.</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<input type="submit" value="Save dated change"></form>
+{% endblock %}

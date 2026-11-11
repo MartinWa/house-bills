@@ -16,10 +16,10 @@
       <h2 id="vendor-services-heading">Property services</h2>
       <p><a href="{% url 'admin:bills_propertyservice_changelist' %}">Configure services and vendor assignments</a></p>
       <table>
-        <thead><tr><th scope="col">Property service</th><th scope="col">Frequency</th><th scope="col">Vendor starts</th><th scope="col">Vendor ends</th><th scope="col">Enabled</th></tr></thead>
+        <thead><tr><th scope="col">Property service</th><th scope="col">Mode</th><th scope="col">Vendor starts</th><th scope="col">Vendor ends</th><th scope="col">Enabled</th></tr></thead>
         <tbody>{% for assignment in service_assignments %}<tr>
           <td><a href="{% url 'admin:bills_propertyservice_change' assignment.property_service_id %}">{{ assignment.property_service }}</a></td>
-          <td>{{ assignment.property_service.get_frequency_months_display }}</td><td>{{ assignment.start_month|date:"Y-m" }}</td><td>{{ assignment.end_month|date:"Y-m"|default:"Ongoing" }}</td><td>{{ assignment.is_active|yesno:"Yes,No" }}</td>
+          <td>{{ assignment.property_service.get_mode_display }}</td><td>{{ assignment.start_month|date:"Y-m" }}</td><td>{{ assignment.end_month|date:"Y-m"|default:"Ongoing" }}</td><td>{{ assignment.is_active|yesno:"Yes,No" }}</td>
         </tr>{% empty %}<tr><td colspan="5">No property services assigned to this vendor.</td></tr>{% endfor %}</tbody>
       </table>
     </section>
@@ -34,7 +34,7 @@
   {% endfor %}
 
   <section class="module" id="property-mappings" aria-labelledby="property-mappings-heading">
-    <h2 id="property-mappings-heading">{% translate "Property mappings" %}</h2>
+    <h2 id="property-mappings-heading">{% translate "Invoice property rules" %}</h2>
     {% for fieldset in adminform %}
       {% if "property-mappings" in fieldset.classes %}
         {% include "admin/includes/fieldset.html" with heading_level=3 prefix="property-mappings" id_prefix=0 id_suffix=forloop.counter0 %}

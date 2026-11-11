@@ -346,7 +346,7 @@ def test_dated_water_reversals_survive_model_persistence(setup, tmp_path):
     assert list(reversals.values_list("quantity_milli", "start", "end")) == [
         (usage.quantity_milli, usage.start, usage.end) for usage in candidate.sections[0].usages[1:]
     ]
-    water = approved.sections.get(service="water")
+    water = approved.sections.get(category="water")
     assert (water.net_minor, water.vat_minor, water.gross_minor) == (51000, 12750, 63750)
     assert (water.start, water.end) == (date(2023, 12, 1), date(2024, 3, 1))
 

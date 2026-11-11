@@ -33,6 +33,7 @@ def cost_totals_candidate(values):
     """Adapt in memory; stored extraction and approval snapshots stay immutable."""
     result = deepcopy(values)
     for section in result.get("sections", []):
+        legacy_classification = not section.get("category")
         if "subcategory" not in section:
             texts = [(section.get("period_evidence") or {}).get("text", "")]
             texts.extend(
@@ -46,6 +47,22 @@ def cost_totals_candidate(values):
             section["start"], section["end"], section["period_evidence"] = legacy_billing_period(
                 section
             )
+        service = section.get("service", section.get("category", ""))
+        section["category"] = section.get("category") or (
+            "electricity" if service.startswith("electricity_") else service
+        )
+        if (
+            legacy_classification
+            and service.startswith("electricity_")
+            and not section.get("subcategory")
+        ):
+            section["subcategory"] = service
+        section["service"] = (
+            section["subcategory"]
+            if section["category"] == "electricity"
+            and section.get("subcategory") in ("electricity_network", "electricity_supply")
+            else section["category"]
+        )
         section.pop("charges", None)
         for usage in section.get("usages", []):
             if "subcategory" not in usage:
@@ -54,4 +71,10 @@ def cost_totals_candidate(values):
                     if usage.get("utility") == "waste"
                     else ""
                 )
+            if (
+                legacy_classification
+                and usage.get("utility") == "electricity"
+                and not usage.get("subcategory")
+            ):
+                usage["subcategory"] = section.get("subcategory", "")
     return result

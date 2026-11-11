@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from django.contrib.auth.models import Permission
 from django.test import Client
@@ -8,6 +10,7 @@ from bills.models import (
     PropertyService,
     ServiceVendorAssignment,
     Vendor,
+    VendorBillingSchedule,
 )
 
 pytestmark = pytest.mark.django_db
@@ -73,6 +76,8 @@ def test_vendor_configuration_saves_identifiers_layouts_and_both_houses(client, 
         "issuer_identifiers-MAX_NUM_FORMS": 1000,
         "issuer_identifiers-0-kind": "vat",
         "issuer_identifiers-0-value": "se 000-000-999",
+        "billing_schedules-TOTAL_FORMS": 0,
+        "billing_schedules-INITIAL_FORMS": 0,
         "layout_families-TOTAL_FORMS": 2,
         "layout_families-INITIAL_FORMS": 0,
         "layout_families-MIN_NUM_FORMS": 0,
@@ -117,7 +122,7 @@ def test_configuration_errors_do_not_write_invalid_mapping(client, admin_user):
     vendor = Vendor.objects.create(name="Synthetic Utilities", slug="vendor")
     client.force_login(admin_user)
     response = client.post(
-        "/admin/bills/propertyidentifier/add/",
+        "/admin/bills/invoicepropertyrule/add/",
         {
             "vendor": vendor.pk,
             "property": house.pk,
@@ -147,6 +152,8 @@ def test_normalized_duplicate_inline_keys_show_form_errors(client, admin_user):
             "issuer_identifiers-0-value": "se 000-999",
             "issuer_identifiers-1-kind": "vat",
             "issuer_identifiers-1-value": "SE000999",
+            "billing_schedules-TOTAL_FORMS": 0,
+            "billing_schedules-INITIAL_FORMS": 0,
             "layout_families-TOTAL_FORMS": 0,
             "layout_families-INITIAL_FORMS": 0,
             "layout_families-MIN_NUM_FORMS": 0,
@@ -178,7 +185,7 @@ def test_deleting_a_specific_mapping_preserves_the_property_and_vendor_default(c
     assert b'id="delete_id_default_property"' not in response.content
     assert b'id="delete_id_property_identifiers-0-property"' not in response.content
     assert b'name="property_identifiers-0-DELETE"' in response.content
-    response = client.get(f"/admin/bills/propertyidentifier/{mapping.pk}/change/")
+    response = client.get(f"/admin/bills/invoicepropertyrule/{mapping.pk}/change/")
     assert response.status_code == 200
     assert b'id="delete_id_property"' not in response.content
     response = client.post(
@@ -192,6 +199,8 @@ def test_deleting_a_specific_mapping_preserves_the_property_and_vendor_default(c
             "issuer_identifiers-INITIAL_FORMS": 0,
             "issuer_identifiers-MIN_NUM_FORMS": 0,
             "issuer_identifiers-MAX_NUM_FORMS": 1000,
+            "billing_schedules-TOTAL_FORMS": 0,
+            "billing_schedules-INITIAL_FORMS": 0,
             "layout_families-TOTAL_FORMS": 0,
             "layout_families-INITIAL_FORMS": 0,
             "layout_families-MIN_NUM_FORMS": 0,
@@ -218,7 +227,8 @@ def test_deleting_a_specific_mapping_preserves_the_property_and_vendor_default(c
 def property_service_data(house, vendors):
     data = {
         "property": house.pk,
-        "service": "waste",
+        "category": "waste",
+        "mode": "regular",
         "subcategory": "waste_collection",
         "is_active": "on",
         "start_month": "2024-02",
@@ -268,7 +278,7 @@ def test_property_services_attach_a_vendor_to_both_properties(client, admin_user
     assert b"Property services" in page.content and b"Waste collection" in page.content
     configured = PropertyService.objects.first()
     page = client.get(f"/admin/bills/propertyservice/{configured.pk}/change/")
-    assert b'type="month"' in page.content and b"Vendor assignments" in page.content
+    assert b'type="month"' in page.content and b"Service vendors" in page.content
     assert b'id="add_id_property"' not in page.content
 
 
@@ -283,7 +293,6 @@ def test_service_editor_can_save_with_view_only_vendor_assignments(client, djang
         subcategory="waste_collection",
         start_month=date(2024, 2, 1),
         end_month=date(2024, 11, 1),
-        frequency_months=3,
     )
     assignment = ServiceVendorAssignment.objects.create(
         property_service=configured,
@@ -307,7 +316,7 @@ def test_service_editor_can_save_with_view_only_vendor_assignments(client, djang
     data = property_service_data(house, [])
     data.update(
         {
-            "grace_days": 2,
+            "mode": "occasional",
             "vendor_assignments-TOTAL_FORMS": 1,
             "vendor_assignments-INITIAL_FORMS": 1,
             "vendor_assignments-0-id": assignment.pk,
@@ -316,7 +325,7 @@ def test_service_editor_can_save_with_view_only_vendor_assignments(client, djang
     response = client.post(path, data)
     assert response.status_code == 302
     configured.refresh_from_db()
-    assert configured.grace_days == 2
+    assert configured.mode == "occasional"
     assert ServiceVendorAssignment.objects.count() == 1
     assert ServiceVendorAssignment.objects.values().get(pk=assignment.pk) == before
 
@@ -352,7 +361,7 @@ def test_vendor_transition_and_as_needed_tank_emptying_can_be_configured(client,
     )
     assert client.post("/admin/bills/propertyservice/add/", data).status_code == 302
     tank = property_service_data(house, [second])
-    tank.update({"subcategory": "tank_emptying", "frequency_months": 0})
+    tank.update({"subcategory": "tank_emptying", "mode": "occasional"})
     assert client.post("/admin/bills/propertyservice/add/", tank).status_code == 302
     assert PropertyService.objects.count() == 2 and ServiceVendorAssignment.objects.count() == 3
 
@@ -374,8 +383,8 @@ def test_service_and_vendor_invoice_months_are_labelled_separately(client, admin
     configured = PropertyService.objects.get()
 
     page = client.get(f"/admin/bills/propertyservice/{configured.pk}/change/")
-    assert b"First expected invoice month" in page.content
-    assert b"Vendor&#x27;s first invoice month" in page.content
+    assert b"First tracking month" in page.content
+    assert b"First assignment month" in page.content
 
     listing = client.get("/admin/bills/propertyservice/").content
     assert b"Vendor since" in listing and b"Service starts" in listing
@@ -386,14 +395,13 @@ def test_service_and_vendor_invoice_months_are_labelled_separately(client, admin
     assert b"2024-02" in vendor_page.content
 
 
-def test_enabled_service_requires_a_vendor(client, admin_user):
+def test_enabled_service_without_a_vendor_can_be_configured(client, admin_user):
     house = Property.objects.create(name="Synthetic House", slug="house")
     client.force_login(admin_user)
     response = client.post("/admin/bills/propertyservice/add/", property_service_data(house, []))
-    assert response.status_code == 200
-    inline = response.context["inline_admin_formsets"][0]
-    assert "Attach at least one enabled vendor" in str(inline.formset.non_form_errors())
-    assert not PropertyService.objects.exists()
+    assert response.status_code == 302
+    assert PropertyService.objects.count() == 1
+    assert not ServiceVendorAssignment.objects.exists()
 
 
 @pytest.mark.parametrize("month,valid", [("2024-05", True), ("2024-03", False)])
@@ -405,6 +413,12 @@ def test_confirmed_no_invoice_month_can_be_configured_with_a_new_service(
     house = Property.objects.create(name="Synthetic House", slug="house")
     vendor = Vendor.objects.create(name="Synthetic Vendor", slug="vendor")
     client.force_login(admin_user)
+    VendorBillingSchedule.objects.create(
+        vendor=vendor,
+        start_month=date(2024, 2, 1),
+        first_expected_month=date(2024, 2, 1),
+        frequency_months=3,
+    )
     data = property_service_data(house, [vendor])
     data.update(
         {
@@ -422,7 +436,7 @@ def test_confirmed_no_invoice_month_can_be_configured_with_a_new_service(
         assert exception.property_service.vendor_assignments.get().vendor == exception.vendor
     else:
         assert response.status_code == 200
-        assert b"Choose a recurring invoice month" in response.content
+        assert b"Choose a scheduled invoice month" in response.content
         assert not PropertyService.objects.exists() and not ServiceInvoiceException.objects.exists()
 
 
@@ -435,7 +449,7 @@ def test_duplicate_property_services_are_rejected(client, admin_user):
     data["start_month"] = data["vendor_assignments-0-start_month"] = "2024-05"
     response = client.post("/admin/bills/propertyservice/add/", data)
     assert response.status_code == 200
-    assert "already has an enabled service" in str(response.context["adminform"].form.errors)
+    assert b"property services must not overlap" in response.content
     assert PropertyService.objects.count() == 1
 
 
@@ -447,7 +461,7 @@ def test_vendor_assignment_must_fit_the_service_months(client, admin_user):
     data["vendor_assignments-0-start_month"] = "2024-01"
     response = client.post("/admin/bills/propertyservice/add/", data)
     assert response.status_code == 200
-    assert "within the service's expected invoice months" in str(
+    assert "within the service tracking dates" in str(
         response.context["inline_admin_formsets"][0].formset.non_form_errors()[0]
     )
     assert not PropertyService.objects.exists()

@@ -125,7 +125,7 @@ def test_product_numbers_map_independently_and_survive_approval(client, configur
     )
     assert 'value="product" selected' in str(product_form["kind"])
     invoice = approved(client, document)
-    water = invoice.sections.get(service="water")
+    water = invoice.sections.get(category="water")
     assert water.property == houses[1]
     assert water.identifiers[0] == candidate["sections"][0]["identifiers"][0]
     assert water.identifiers[0]["kind"] == "product"
@@ -201,12 +201,16 @@ def test_waste_subcategories_survive_review_correction_and_proposal_comparison(
         "",
         "matavfall",
         "restavfall",
-        "",
+        "electricity_network",
     ]
     invoice = approved(client, document)
     original = copy.deepcopy(invoice.reviews.get(revision=1).snapshot)
     page = client.get(f"/invoices/{invoice.pk}/").content.decode()
-    assert "Restavfall" in page and "Matavfall" in page and "Electricity › Elnät" in page
+    assert (
+        "Restavfall" in page
+        and "Matavfall" in page
+        and "Electricity › Electricity network (Elnät)" in page
+    )
     _, data = review_data(client, document)
     data["usages-1-subcategory"] = "restavfall"
     assert client.post(path, data).status_code == 302
@@ -231,8 +235,8 @@ def test_waste_subcategories_survive_review_correction_and_proposal_comparison(
     response = client.get(f"/documents/{document.pk}/")
     assert any(
         row["field"].endswith("subcategory")
-        and row["approved"] == "Restavfall"
-        and row["proposed"] == "Matavfall"
+        and row["approved"] == "Residual waste (Restavfall)"
+        and row["proposed"] == "Food waste (Matavfall)"
         for row in response.context["differences"]
     )
 
@@ -290,7 +294,7 @@ def manual_fields(data, vendor, house):
         "page": "1",
         "warnings_confirmed": "on",
         "sections-0-property": str(house.pk),
-        "sections-0-service": "water",
+        "sections-0-category": "water",
         "sections-0-net_minor": "-100,00",
         "sections-0-vat_minor": "-25,00",
         "sections-0-gross_minor": "-125,00",
@@ -473,7 +477,7 @@ def test_supported_upload_approval_list_detail_and_private_original(client, conf
     assert f'href="/documents/{document.pk}/view/"' not in detail
     assert f'href="/documents/{document.pk}/source/"' not in detail
     for house in houses:
-        listing = client.get("/invoices/", {"property": house.pk, "service": "electricity_supply"})
+        listing = client.get("/invoices/", {"property": house.pk, "service": "electricity"})
         assert listing.status_code == 200 and listing.context["page"].paginator.count == 1
         assert b"880003" in listing.content
     assert client.get("/invoices/", {"service": "water"}).context["page"].paginator.count == 0
@@ -575,10 +579,10 @@ def test_multi_service_and_dated_corrections_survive_web_review(
     document, _ = upload(client, tmp_path, factory())
     invoice = approved(client, document)
     assert invoice.sections.count() == 4
-    assert set(invoice.sections.values_list("service", flat=True)) == {
+    assert set(invoice.sections.values_list("category", flat=True)) == {
         "water",
         "waste",
-        "electricity_network",
+        "electricity",
     }
     quantities = list(Usage.objects.order_by("pk").values_list("quantity_milli", flat=True))
     expected = (
@@ -596,7 +600,10 @@ def test_multi_service_and_dated_corrections_survive_web_review(
         ({"usages-0-quantity_milli": "140,2501"}, "decimal places"),
         ({"sections-0-end": "2024-01-31"}, "Last billed day"),
         ({"usages-0-unit": "kg"}, "unit that matches"),
-        ({"usages-0-utility": "water", "usages-0-unit": "m3"}, "allocation&#x27;s service"),
+        (
+            {"usages-0-utility": "water", "usages-0-unit": "m3", "usages-0-subcategory": ""},
+            "allocation&#x27;s category",
+        ),
         ({"usages-0-basis": "reversal"}, "negative quantity"),
         ({"sections-0-gross_minor": "100,00"}, "Net plus VAT"),
         ({"vendor": "999999"}, "Select a valid choice"),

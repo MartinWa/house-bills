@@ -4,11 +4,17 @@
   <h2>Not sent this month</h2>
   <p>{{ row.expected_month|date:"Y-m" }} · {{ row.property_name }} · {{ row.vendor_name }}</p>
   <p>{{ row.category_label }}{% if row.subcategory_label %} / {{ row.subcategory_label }}{% endif %}</p>
-  <p>Record why this vendor did not send an invoice for this month. Future invoice expectations continue normally. An invoice will count if it arrives later.</p>
+  {% if form.reviewed_allocation %}
+    <p><a href="{% url 'bills:invoice' row.invoice_id %}">Review the received invoice</a> and confirm why this service was not billed. This confirmation applies to the reviewed invoice revision.</p>
+  {% else %}
+    <p>Record why this vendor did not send an invoice for this month. Future invoice expectations continue normally. An invoice will count if it arrives later.</p>
+  {% endif %}
   <form method="post">
     {% csrf_token %}
+    {{ form.reviewed_invoice_id }}{{ form.reviewed_revision }}
     {% if form.non_field_errors %}<div role="alert">{{ form.non_field_errors }}</div>{% endif %}
     <div class="field">{{ form.reason.label_tag }}{{ form.reason }}{{ form.reason.errors }}<small id="id_reason_helptext">{{ form.reason.help_text }}</small></div>
+    {% if form.reviewed_allocation %}<div class="field checkbox-field">{{ form.reviewed_allocation.label_tag }}{{ form.reviewed_allocation }}{{ form.reviewed_allocation.errors }}</div>{% endif %}
     <p><button type="submit">Mark as not sent</button> <a href="{{ back_url }}">Cancel</a></p>
   </form>
 {% endblock %}

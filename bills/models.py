@@ -7,14 +7,15 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator
 from django.db import models
 from django.db.models import F, Q
-from django.db.models.functions import Length, Substr
+from django.db.models.functions import Coalesce, Length, Substr
 from django.db.models.lookups import Exact
 
-from .categories import (
-    CATEGORY_LABELS,
-    WASTE_COST_SUBCATEGORIES,
-    WASTE_SUBCATEGORIES,
-    subcategory_label,
+from .configuration import (
+    configuration_is_staged,
+    validate_classification,
+    validate_configuration_delete,
+    validate_configuration_write,
+    validate_months,
 )
 from .fields import ScaledIntegerField, integer_constraint
 from .parsing.registry import layout_family_choices
@@ -129,7 +130,7 @@ class VendorLayoutFamily(ValidatedModel):
         return f"{self.vendor}: {self.family}"
 
 
-class PropertyIdentifier(ValidatedModel):
+class InvoicePropertyRule(ValidatedModel):
     class Kind(models.TextChoices):
         INSTALLATION = "installation", "Installation"
         CONTRACT = "contract", "Contract"
@@ -144,8 +145,8 @@ class PropertyIdentifier(ValidatedModel):
     value = models.CharField(max_length=200)
 
     class Meta:
-        verbose_name = "property mapping"
-        verbose_name_plural = "property mappings"
+        verbose_name = "invoice property rule"
+        verbose_name_plural = "invoice property rules"
         constraints = [
             models.UniqueConstraint(
                 fields=["vendor", "kind", "value"], name="property_identifier_unique"
@@ -362,61 +363,162 @@ class ExtractionAttempt(ValidatedModel):
 
 
 class Service(models.TextChoices):
+    ELECTRICITY = "electricity", "Electricity"
     ELECTRICITY_SUPPLY = "electricity_supply", "Electricity supply"
     ELECTRICITY_NETWORK = "electricity_network", "Electricity network"
     WATER = "water", "Water"
     WASTE = "waste", "Waste"
-    OTHER = "other", "Other charges"
+    OTHER = "other", "Other"
 
 
-class PropertyService(ValidatedModel):
-    class Frequency(models.IntegerChoices):
-        AS_NEEDED = 0, "As needed"
-        MONTHLY = 1, "Monthly"
-        EVERY_TWO_MONTHS = 2, "Every two months"
-        QUARTERLY = 3, "Quarterly"
-        HALF_YEARLY = 6, "Every six months"
-        YEARLY = 12, "Yearly"
+class Category(models.TextChoices):
+    ELECTRICITY = "electricity", "Electricity"
+    WATER = "water", "Water"
+    WASTE = "waste", "Waste"
+    OTHER = "other", "Other"
 
-    property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name="services")
-    service = models.CharField(max_length=24, choices=Service)
-    subcategory = models.CharField(
-        max_length=20, choices=WASTE_COST_SUBCATEGORIES, blank=True, default=""
-    )
+
+class Subcategory(ValidatedModel):
+    key = models.SlugField(primary_key=True, max_length=64)
+    category = models.CharField(max_length=20, choices=Category)
+    name = models.CharField(max_length=120)
     is_active = models.BooleanField("enabled", default=True)
-    start_month = models.DateField(
-        "first expected invoice month",
-        help_text="Recurring expectations start here; earlier months are not checked.",
-    )
-    end_month = models.DateField(
-        "last expected invoice month",
-        null=True,
-        blank=True,
-        help_text="Inclusive. Leave blank while the service continues.",
-    )
-    frequency_months = models.PositiveSmallIntegerField(
-        "frequency", choices=Frequency, default=Frequency.MONTHLY
-    )
-    grace_days = models.PositiveSmallIntegerField(
-        default=0,
-        validators=[MaxValueValidator(60)],
-        help_text="Days after the invoice month ends before marking an invoice missing.",
-    )
 
     class Meta:
-        ordering = ["property__name", "service", "subcategory", "start_month", "pk"]
+        ordering = ["category", "name", "pk"]
+        verbose_name_plural = "subcategories"
         constraints = [
             models.CheckConstraint(
-                condition=Q(service__in=Service.values), name="property_service_type_valid"
+                condition=Q(category__in=Category.values) & ~Q(name="") & ~Q(key=""),
+                name="subcategory_valid",
+            )
+        ]
+
+    def clean(self):
+        self.name = self.name.strip()
+        if getattr(self, "_saved_key", self.key) != self.key:
+            raise ValidationError({"key": "A saved subcategory key cannot be changed."})
+        if not self._state.adding:
+            old = type(self).objects.filter(pk=self.pk).first()
+            if (
+                old
+                and old.category != self.category
+                and any(
+                    getattr(self, relation).exists()
+                    for relation in ("property_services", "billing_sections", "usages")
+                )
+            ):
+                raise ValidationError(
+                    {"category": "A referenced subcategory cannot change category."}
+                )
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        if "key" in field_names:
+            instance._saved_key = instance.key
+        return instance
+
+    def save(self, *args, **kwargs):
+        result = super().save(*args, **kwargs)
+        self._saved_key = self.key
+        return result
+
+    def __str__(self):
+        return self.name
+
+
+class ClassificationMixin:
+    """Accept installed parser service keys at the normalized model boundary."""
+
+    def __init__(self, *args, **kwargs):
+        service = kwargs.pop("service", None)
+        if service is not None:
+            kwargs["category"] = "electricity" if service.startswith("electricity_") else service
+            if service.startswith("electricity_") and not kwargs.get("subcategory"):
+                kwargs["subcategory_id"] = service
+        if isinstance(kwargs.get("subcategory"), str):
+            kwargs["subcategory_id"] = kwargs.pop("subcategory") or None
+        super().__init__(*args, **kwargs)
+
+    @computed_property
+    def service(self):
+        if self.category == Category.ELECTRICITY and self.subcategory_id in (
+            "electricity_network",
+            "electricity_supply",
+        ):
+            return self.subcategory_id
+        return self.category
+
+    def get_service_display(self):
+        return dict(Service.choices).get(self.service, self.get_category_display())
+
+    @computed_property
+    def category_label(self):
+        return self.get_category_display()
+
+    @computed_property
+    def subcategory_label(self):
+        return self.subcategory.name if self.subcategory_id else ""
+
+
+class ConfigurationModel(ValidatedModel):
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        validate_months(self)
+        # Model forms stage all related rows before validating the proposed graph.
+        if self.start_month if hasattr(self, "start_month") else self.month:
+            validate_configuration_write(self)
+
+    def save(self, *args, **kwargs):
+        from django.db import transaction
+
+        with transaction.atomic():
+            return super().save(*args, **kwargs)
+
+    def validate_constraints(self, exclude=None):
+        if not configuration_is_staged():
+            return super().validate_constraints(exclude=exclude)
+
+    def delete(self, *args, **kwargs):
+        from django.db import transaction
+
+        with transaction.atomic():
+            validate_configuration_delete(self)
+            return super().delete(*args, **kwargs)
+
+
+class PropertyService(ClassificationMixin, ConfigurationModel):
+    class Mode(models.TextChoices):
+        REGULAR = "regular", "Regular"
+        OCCASIONAL = "occasional", "Occasional"
+
+    property = models.ForeignKey(Property, on_delete=models.PROTECT, related_name="services")
+    category = models.CharField(max_length=20, choices=Category)
+    subcategory = models.ForeignKey(
+        Subcategory,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="property_services",
+        db_column="subcategory",
+    )
+    mode = models.CharField(max_length=12, choices=Mode, default=Mode.REGULAR)
+    is_active = models.BooleanField("enabled", default=True)
+    start_month = models.DateField("first tracking month")
+    end_month = models.DateField("last tracking month", null=True, blank=True)
+    legacy_billing_configuration = models.JSONField(default=dict, blank=True, editable=False)
+
+    class Meta:
+        ordering = ["property__name", "category", "subcategory", "start_month", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(category__in=Category.values), name="property_service_category_valid"
             ),
             models.CheckConstraint(
-                condition=Q(subcategory="")
-                | Q(service="waste", subcategory__in=["waste_collection", "tank_emptying"]),
-                name="property_service_subcategory_valid",
-            ),
-            models.CheckConstraint(
-                condition=Q(frequency_months__in=[0, 1, 2, 3, 6, 12]) & Q(grace_days__lte=60),
-                name="property_service_frequency_valid",
+                condition=Q(mode__in=["regular", "occasional"]), name="property_service_mode_valid"
             ),
             models.CheckConstraint(
                 condition=Exact(Substr("start_month", 9, 2), models.Value("01"))
@@ -427,60 +529,34 @@ class PropertyService(ValidatedModel):
                 ),
                 name="property_service_months_valid",
             ),
-            models.UniqueConstraint(
-                fields=["property", "service", "subcategory", "start_month"],
-                name="property_service_start_unique",
-            ),
         ]
 
     def clean(self):
-        if self.subcategory and self.service != Service.WASTE:
-            raise ValidationError({"subcategory": "Choose a cost subcategory only for waste."})
-        errors = {}
-        for field in ("start_month", "end_month"):
-            value = getattr(self, field)
-            if value and value.day != 1:
-                errors[field] = "Use the first day of the invoice month."
-        if self.start_month and self.end_month and self.end_month < self.start_month:
-            errors["end_month"] = "The last expected month must not precede the first."
-        if errors:
-            raise ValidationError(errors)
-
-    @computed_property
-    def category_label(self):
-        return CATEGORY_LABELS[self.service]
-
-    @computed_property
-    def subcategory_label(self):
-        return (
-            subcategory_label(self.service, self.subcategory)
-            if self.service != "waste" or self.subcategory
-            else ""
-        )
+        validate_classification(self.category, self.subcategory_id)
+        if self.pk:
+            old = (
+                type(self).objects.filter(pk=self.pk).values("legacy_billing_configuration").first()
+            )
+            if old and old["legacy_billing_configuration"] != self.legacy_billing_configuration:
+                raise ValidationError("Legacy billing configuration is immutable.")
+        super().clean()
 
     def __str__(self):
-        label = self.subcategory_label or self.get_service_display()
-        return f"{self.property}: {label}"
+        return f"{self.property}: {self.subcategory_label or self.category_label}"
 
 
-class ServiceVendorAssignment(ValidatedModel):
+class ServiceVendorAssignment(ConfigurationModel):
     property_service = models.ForeignKey(
         PropertyService, on_delete=models.CASCADE, related_name="vendor_assignments"
     )
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name="service_assignments")
     is_active = models.BooleanField("enabled", default=True)
-    start_month = models.DateField(
-        "vendor's first invoice month",
-        help_text="First month this vendor should send an invoice for the service.",
-    )
-    end_month = models.DateField(
-        "vendor's last invoice month",
-        null=True,
-        blank=True,
-        help_text="Inclusive. End the vendor before or when its replacement starts.",
-    )
+    start_month = models.DateField("first assignment month")
+    end_month = models.DateField("last assignment month", null=True, blank=True)
 
     class Meta:
+        verbose_name = "service vendor"
+        verbose_name_plural = "service vendors"
         ordering = ["property_service__property__name", "start_month", "pk"]
         constraints = [
             models.CheckConstraint(
@@ -498,50 +574,101 @@ class ServiceVendorAssignment(ValidatedModel):
             ),
         ]
 
-    def clean(self):
-        errors = {}
-        for field in ("start_month", "end_month"):
-            value = getattr(self, field)
-            if value and value.day != 1:
-                errors[field] = "Use the first day of the invoice month."
-        if self.start_month and self.end_month and self.end_month < self.start_month:
-            errors["end_month"] = "The last vendor month must not precede the first."
-        if self.property_service_id:
-            service = self.property_service
-            if self.start_month and self.start_month < service.start_month:
-                errors["start_month"] = (
-                    "The vendor must start within the service's expected invoice months."
-                )
-            if service.end_month and (self.end_month is None or self.end_month > service.end_month):
-                errors["end_month"] = (
-                    "End the vendor assignment within the service's expected invoice months."
-                )
-        if errors:
-            raise ValidationError(errors)
-
     def __str__(self):
         return f"{self.property_service} → {self.vendor}"
 
 
-class ServiceInvoiceException(ValidatedModel):
+class VendorBillingSchedule(ConfigurationModel):
+    class Frequency(models.IntegerChoices):
+        AS_NEEDED = 0, "As needed"
+        MONTHLY = 1, "Monthly"
+        EVERY_TWO_MONTHS = 2, "Every two months"
+        QUARTERLY = 3, "Quarterly"
+        HALF_YEARLY = 6, "Every six months"
+        YEARLY = 12, "Yearly"
+
+    vendor = models.ForeignKey(Vendor, on_delete=models.CASCADE, related_name="billing_schedules")
+    start_month = models.DateField("effective first month")
+    end_month = models.DateField("effective last month", null=True, blank=True)
+    first_expected_month = models.DateField("first expected invoice month")
+    frequency_months = models.PositiveSmallIntegerField("frequency", choices=Frequency, default=1)
+    grace_days = models.PositiveSmallIntegerField(default=0, validators=[MaxValueValidator(60)])
+    is_active = models.BooleanField("enabled", default=True)
+
+    class Meta:
+        ordering = ["vendor__name", "start_month", "pk"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(frequency_months__in=[0, 1, 2, 3, 6, 12]) & Q(grace_days__lte=60),
+                name="vendor_schedule_frequency_valid",
+            ),
+            models.CheckConstraint(
+                condition=Exact(Substr("start_month", 9, 2), models.Value("01"))
+                & Exact(Substr("first_expected_month", 9, 2), models.Value("01"))
+                & Q(first_expected_month__gte=F("start_month"))
+                & (
+                    Q(end_month__isnull=True)
+                    | Exact(Substr("end_month", 9, 2), models.Value("01"))
+                    & Q(end_month__gte=F("start_month"))
+                ),
+                name="vendor_schedule_months_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["vendor", "start_month"],
+                condition=Q(is_active=True),
+                name="vendor_schedule_start_unique",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.vendor}: {self.start_month:%Y-%m}, {self.get_frequency_months_display()}"
+
+
+class ServiceInvoiceException(ConfigurationModel):
     property_service = models.ForeignKey(
-        PropertyService, on_delete=models.CASCADE, related_name="invoice_exceptions"
+        PropertyService,
+        on_delete=models.CASCADE,
+        related_name="invoice_exceptions",
+        null=True,
+        blank=True,
+        help_text="Leave blank for the vendor's combined bill.",
     )
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name="invoice_exceptions")
     month = models.DateField("invoice month")
-    reason = models.CharField(
-        max_length=300,
-        help_text="Explain why this vendor issued no invoice in this month.",
+    reason = models.CharField(max_length=300)
+    reviewed_invoice = models.ForeignKey(
+        "Invoice",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="allocation_exceptions",
+        editable=False,
     )
+    reviewed_revision = models.PositiveBigIntegerField(null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ["month", "vendor__name", "pk"]
         verbose_name = "month with no invoice"
         verbose_name_plural = "months with no invoice"
         constraints = [
+            models.CheckConstraint(
+                condition=Q(reviewed_invoice__isnull=True, reviewed_revision__isnull=True)
+                | Q(
+                    reviewed_invoice__isnull=False,
+                    reviewed_revision__isnull=False,
+                    reviewed_revision__gte=1,
+                    property_service__isnull=False,
+                ),
+                name="exception_review_scope_valid",
+            ),
             models.UniqueConstraint(
                 fields=["property_service", "vendor", "month"],
                 name="service_invoice_exception_unique",
+            ),
+            models.UniqueConstraint(
+                fields=["vendor", "month"],
+                condition=Q(property_service__isnull=True),
+                name="vendor_invoice_exception_unique",
             ),
             models.CheckConstraint(
                 condition=Exact(Substr("month", 9, 2), models.Value("01")) & ~Q(reason=""),
@@ -551,35 +678,10 @@ class ServiceInvoiceException(ValidatedModel):
 
     def clean(self):
         self.reason = self.reason.strip()
-        errors = {}
-        if not self.reason:
-            errors["reason"] = "Explain why no invoice was issued."
-        if self.month and self.month.day != 1:
-            errors["month"] = "Use the first day of the invoice month."
-        try:
-            service = self.property_service
-        except PropertyService.DoesNotExist:
-            service = None
-        if service is not None and self.month:
-            if not service.frequency_months:
-                errors["month"] = "As-needed services do not create invoice expectations."
-            elif service.start_month:
-                offset = (
-                    (self.month.year - service.start_month.year) * 12
-                    + self.month.month
-                    - service.start_month.month
-                )
-                if (
-                    offset < 0
-                    or (service.end_month and self.month > service.end_month)
-                    or offset % service.frequency_months
-                ):
-                    errors["month"] = "Choose a recurring invoice month within this service."
-        if errors:
-            raise ValidationError(errors)
+        super().clean()
 
     def __str__(self):
-        return f"{self.property_service}: {self.vendor}, {self.month:%Y-%m}"
+        return f"{self.vendor}, {self.month:%Y-%m}"
 
 
 def total_constraint(name):
@@ -732,15 +834,20 @@ class AllocationModel(ValidatedModel):
         return super().delete(*args, **kwargs)
 
 
-class BillingSection(AllocationModel):
+class BillingSection(ClassificationMixin, AllocationModel):
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="sections")
     section_id = models.CharField(max_length=120)
     property = models.ForeignKey(
         Property, on_delete=models.PROTECT, related_name="billing_sections", null=True, blank=True
     )
-    service = models.CharField(max_length=24, choices=Service)
-    subcategory = models.CharField(
-        max_length=20, choices=WASTE_COST_SUBCATEGORIES, blank=True, default=""
+    category = models.CharField(max_length=20, choices=Category)
+    subcategory = models.ForeignKey(
+        Subcategory,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="billing_sections",
+        db_column="subcategory",
     )
     identifiers = models.JSONField(
         default=list, blank=True, validators=[validate_source_identifiers]
@@ -755,19 +862,14 @@ class BillingSection(AllocationModel):
     total_evidence = models.JSONField(default=dict, blank=True, validators=[validate_evidence])
 
     class Meta:
-        indexes = [models.Index(fields=["property", "service"], name="section_property_service")]
+        indexes = [models.Index(fields=["property", "category"], name="section_property_service")]
         constraints = [
             models.UniqueConstraint(
                 fields=["invoice", "section_id"], name="invoice_section_unique"
             ),
             models.CheckConstraint(
-                condition=Q(service__in=Service.values) & ~Q(section_id=""),
+                condition=Q(category__in=Category.values) & ~Q(section_id=""),
                 name="section_service_valid",
-            ),
-            models.CheckConstraint(
-                condition=Q(subcategory="")
-                | Q(service="waste", subcategory__in=["waste_collection", "tank_emptying"]),
-                name="section_subcategory_valid",
             ),
             total_constraint("section_total_reconciles"),
             models.CheckConstraint(
@@ -785,30 +887,14 @@ class BillingSection(AllocationModel):
         return Invoice.objects.get(pk=self.invoice_id)
 
     def clean(self):
-        if self.subcategory and self.service != Service.WASTE:
-            raise ValidationError({"subcategory": "Choose a cost subcategory only for waste."})
-
-    @computed_property
-    def category_label(self):
-        return CATEGORY_LABELS[self.service]
-
-    @computed_property
-    def subcategory_label(self):
-        return (
-            subcategory_label(self.service, self.subcategory)
-            if self.service != Service.WASTE or self.subcategory
-            else ""
-        )
+        validate_classification(self.category, self.subcategory_id)
 
     def __str__(self):
         return f"{self.invoice}: {self.section_id}"
 
 
 class Usage(AllocationModel):
-    class Utility(models.TextChoices):
-        ELECTRICITY = "electricity", "Electricity"
-        WATER = "water", "Water"
-        WASTE = "waste", "Waste"
+    Utility = Category
 
     class Basis(models.TextChoices):
         MEASURED = "measured", "Measured"
@@ -820,8 +906,13 @@ class Usage(AllocationModel):
     section = models.ForeignKey(BillingSection, on_delete=models.CASCADE, related_name="usages")
     position = models.PositiveIntegerField()
     utility = models.CharField(max_length=20, choices=Utility)
-    subcategory = models.CharField(
-        max_length=20, choices=WASTE_SUBCATEGORIES, blank=True, default=""
+    subcategory = models.ForeignKey(
+        Subcategory,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="usages",
+        db_column="subcategory",
     )
     unit = models.CharField(max_length=8, choices=[("kWh", "kWh"), ("m3", "m³"), ("kg", "kg")])
     quantity_milli = ScaledIntegerField()
@@ -836,20 +927,21 @@ class Usage(AllocationModel):
         constraints = [
             models.UniqueConstraint(fields=["section", "position"], name="usage_position_unique"),
             models.UniqueConstraint(
-                fields=["section", "utility", "start", "end", "basis"],
+                "section",
+                "utility",
+                Coalesce("subcategory", models.Value("")),
+                "start",
+                "end",
+                "basis",
                 condition=Q(utility="electricity"),
                 name="electricity_usage_once_per_basis",
             ),
             models.CheckConstraint(condition=Q(start__lt=F("end")), name="usage_period_valid"),
             models.CheckConstraint(
-                condition=Q(subcategory="")
-                | Q(utility="waste", subcategory__in=["restavfall", "matavfall"]),
-                name="usage_subcategory_matches_utility",
-            ),
-            models.CheckConstraint(
                 condition=Q(utility="electricity", unit="kWh")
                 | Q(utility="water", unit="m3")
-                | Q(utility="waste", unit="kg"),
+                | Q(utility="waste", unit="kg")
+                | Q(utility="other", unit__in=["kWh", "m3", "kg"]),
                 name="usage_unit_matches_utility",
             ),
             models.CheckConstraint(
@@ -865,26 +957,22 @@ class Usage(AllocationModel):
             integer_constraint("quantity_milli", "usage_quantity_integer"),
         ]
 
+    def __init__(self, *args, **kwargs):
+        if isinstance(kwargs.get("subcategory"), str):
+            kwargs["subcategory_id"] = kwargs.pop("subcategory") or None
+        super().__init__(*args, **kwargs)
+
     def clean(self):
-        if self.subcategory and self.utility != self.Utility.WASTE:
-            raise ValidationError({"subcategory": "Only waste consumption has a waste subtype."})
-        if self.section_id:
-            service = self.section.service
-            expected = {
-                Service.ELECTRICITY_SUPPLY: "electricity",
-                Service.ELECTRICITY_NETWORK: "electricity",
-                Service.WATER: "water",
-                Service.WASTE: "waste",
-            }.get(service)
-            if self.utility != expected:
-                raise ValidationError({"utility": "Usage must match its section's service."})
+        validate_classification(self.utility, self.subcategory_id)
+        if self.section_id and self.utility != self.section.category:
+            raise ValidationError({"utility": "Usage must match its allocation's category."})
 
     def _invoice(self):
         return Invoice.objects.get(sections__pk=self.section_id)
 
     @computed_property
     def subcategory_label(self):
-        return subcategory_label(self.section.service, self.subcategory)
+        return self.subcategory.name if self.subcategory_id else ""
 
 
 class ReviewRevision(ValidatedModel):
@@ -920,3 +1008,7 @@ class ReviewRevision(ValidatedModel):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Review revisions are immutable; retain the approval history.")
+
+
+# Compatibility for installed integrations using the former model name.
+PropertyIdentifier = InvoicePropertyRule

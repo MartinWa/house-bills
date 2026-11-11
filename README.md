@@ -11,9 +11,11 @@ extraction service or runtime CDN dependencies.
 
 ## What it does
 
-- Configure properties, vendors, issuer identification and property mappings.
-- Configure each property's services, billing frequency and vendor history, and identify
-  missing invoices separately from received invoices awaiting review.
+- Configure properties, vendors, issuer identification and invoice property rules.
+- Configure property services and vendor history, with shared dated vendor billing schedules.
+- Track missing combined bills separately from received invoices needing review or
+  incomplete service allocations.
+- Maintain shared cost and consumption subcategories under Electricity, Water, Waste and Other.
 - Mark confirmed months with no invoice as not sent, retaining a reason and later expectations.
 - Preserve original bytes and reuse exact duplicate uploads, including invoices
   copied into different property folders.

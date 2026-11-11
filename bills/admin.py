@@ -2,23 +2,35 @@
 
 from django.contrib import admin
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
+from django.http import Http404, HttpResponseRedirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 from django.utils import timezone
 
+from .configuration import staged_configuration
+from .configuration_actions import change_billing_frequency, change_vendor
 from .forms import (
-    PropertyIdentifierForm,
+    ChangeBillingFrequencyForm,
+    ChangeVendorForm,
+    ConfigurationInlineFormSet,
+    InvoicePropertyRuleForm,
     PropertyServiceForm,
     ServiceInvoiceExceptionForm,
     ServiceVendorAssignmentForm,
-    ServiceVendorAssignmentFormSet,
+    VendorBillingScheduleForm,
     VendorIssuerIdentifierForm,
 )
 from .models import (
+    InvoicePropertyRule,
     Property,
-    PropertyIdentifier,
     PropertyService,
     ServiceInvoiceException,
     ServiceVendorAssignment,
+    Subcategory,
     Vendor,
+    VendorBillingSchedule,
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
@@ -52,31 +64,141 @@ class LayoutFamilyInline(admin.TabularInline):
     extra = 1
 
 
-class PropertyIdentifierInline(PropertySelectorMixin, admin.TabularInline):
-    model = PropertyIdentifier
-    form = PropertyIdentifierForm
-    verbose_name = "specific mapping"
-    verbose_name_plural = "specific mappings"
+class InvoicePropertyRuleInline(PropertySelectorMixin, admin.TabularInline):
+    model = InvoicePropertyRule
+    form = InvoicePropertyRuleForm
+    verbose_name = "specific rule"
+    verbose_name_plural = "specific rules"
     extra = 1
 
 
 class ServiceVendorAssignmentInline(admin.StackedInline):
     model = ServiceVendorAssignment
     form = ServiceVendorAssignmentForm
-    formset = ServiceVendorAssignmentFormSet
-    verbose_name_plural = "Vendor assignments"
+    formset = ConfigurationInlineFormSet
+    verbose_name_plural = "Service vendors"
     fields = [
         ("vendor", "is_active"),
         ("start_month", "end_month"),
     ]
     extra = 1
+    show_change_link = True
+
+    def get_formset(self, request, obj=None, **kwargs):
+        base = super().get_formset(request, obj, **kwargs)
+
+        class DefaultDatesFormSet(base):
+            def _construct_form(self, index, **form_kwargs):
+                form = super()._construct_form(index, **form_kwargs)
+                if obj and not form.instance.pk:
+                    form.initial.setdefault("start_month", obj.start_month)
+                    form.initial.setdefault("end_month", obj.end_month)
+                return form
+
+        return DefaultDatesFormSet
 
 
 class ServiceInvoiceExceptionInline(admin.StackedInline):
     model = ServiceInvoiceException
     form = ServiceInvoiceExceptionForm
+    formset = ConfigurationInlineFormSet
     fields = [("vendor", "month"), "reason"]
     extra = 1
+
+
+class ConfigurationAdmin(admin.ModelAdmin):
+    class Media:
+        js = ["bills/classification.js"]
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form = super().get_form(request, obj, change, **kwargs)
+        if hasattr(form, "defer_graph"):
+            form.defer_graph = any(
+                issubclass(inline.formset, ConfigurationInlineFormSet)
+                for inline in self.get_inline_instances(request, obj)
+            )
+        return form
+
+    def _create_formsets(self, request, obj, change):
+        formsets, inlines = super()._create_formsets(request, obj, change)
+        group = [formset for formset in formsets if isinstance(formset, ConfigurationInlineFormSet)]
+        for formset in group:
+            formset.configuration_group = group
+            formset.form.defer_graph = True
+        return formsets, inlines
+
+    def save_model(self, request, obj, form, change):
+        with staged_configuration():
+            super().save_model(request, obj, form, change)
+
+    def save_related(self, request, form, formsets, change):
+        with transaction.atomic(), staged_configuration():
+            # Keep overlap triggers valid while applying the checked final periods.
+            # Form instances retain their intended enabled flags for the normal save.
+            for formset in formsets:
+                if isinstance(formset, ConfigurationInlineFormSet) and formset.model in (
+                    ServiceVendorAssignment,
+                    VendorBillingSchedule,
+                ):
+                    changed_pks = [
+                        row.instance.pk for row in formset.initial_forms if row.has_changed()
+                    ]
+                    formset.get_queryset().filter(pk__in=changed_pks, is_active=True).update(
+                        is_active=False
+                    )
+            super().save_related(request, form, formsets, change)
+
+    def delete_model(self, request, obj):
+        obj.delete()
+
+    def dated_change(self, request, object_id, *, frequency=False):
+        obj = self.get_object(request, object_id)
+        if obj is None:
+            raise Http404
+        if not self.has_change_permission(request, obj) or not self.has_add_permission(request):
+            raise PermissionDenied
+        if request.method not in ("GET", "POST"):
+            raise PermissionDenied
+        form_class = ChangeBillingFrequencyForm if frequency else ChangeVendorForm
+        initial = {"grace_days": getattr(obj, "grace_days", 0)}
+        form = form_class(request.POST if request.method == "POST" else None, initial=initial)
+        if request.method == "POST" and form.is_valid():
+            try:
+                replacement = (change_billing_frequency if frequency else change_vendor)(
+                    obj.pk,
+                    **form.cleaned_data,
+                )
+            except ValidationError as exc:
+                form.add_error(None, exc.messages)
+            else:
+                self.log_change(request, obj, "Ended period through dated configuration change.")
+                self.log_addition(request, replacement, "Created replacement dated period.")
+                self.message_user(request, "Configuration history saved.")
+                return HttpResponseRedirect(
+                    reverse(
+                        f"admin:bills_{self.model._meta.model_name}_change",
+                        args=[replacement.pk],
+                    )
+                )
+        return TemplateResponse(
+            request,
+            "admin/bills/dated_change.html",
+            {
+                **self.admin_site.each_context(request),
+                "form": form,
+                "original": obj,
+                "title": "Change billing frequency" if frequency else "Change vendor",
+                "opts": self.model._meta,
+            },
+        )
+
+
+class VendorBillingScheduleInline(admin.StackedInline):
+    model = VendorBillingSchedule
+    form = VendorBillingScheduleForm
+    formset = ConfigurationInlineFormSet
+    extra = 1
+    show_change_link = True
 
 
 @admin.register(Property)
@@ -99,7 +221,7 @@ class PropertyAdmin(admin.ModelAdmin):
 
 
 @admin.register(Vendor)
-class VendorAdmin(PropertySelectorMixin, admin.ModelAdmin):
+class VendorAdmin(PropertySelectorMixin, ConfigurationAdmin):
     change_form_template = "admin/bills/vendor/change_form.html"
     fieldsets = [
         (None, {"fields": ["name", "slug"]}),
@@ -112,7 +234,8 @@ class VendorAdmin(PropertySelectorMixin, admin.ModelAdmin):
     inlines = [
         IssuerIdentifierInline,
         LayoutFamilyInline,
-        PropertyIdentifierInline,
+        VendorBillingScheduleInline,
+        InvoicePropertyRuleInline,
     ]
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
@@ -126,27 +249,27 @@ class VendorAdmin(PropertySelectorMixin, admin.ModelAdmin):
 
 
 @admin.register(PropertyService)
-class PropertyServiceAdmin(PropertySelectorMixin, admin.ModelAdmin):
+class PropertyServiceAdmin(PropertySelectorMixin, ConfigurationAdmin):
     form = PropertyServiceForm
     list_display = [
         "property",
         "category_label",
         "subcategory_label",
         "vendors",
-        "frequency_months",
+        "mode",
         "service_starts",
         "service_ends",
         "vendor_since",
         "is_active",
     ]
     list_select_related = ["property"]
-    list_filter = ["property", "service", "subcategory", "is_active"]
+    list_filter = ["property", "category", "subcategory", "is_active"]
     search_fields = ["property__name", "vendor_assignments__vendor__name"]
     fieldsets = [
-        (None, {"fields": [("property", "is_active"), ("service", "subcategory")]}),
+        (None, {"fields": [("property", "is_active"), ("category", "subcategory")]}),
         (
-            "Expected invoices",
-            {"fields": [("start_month", "end_month"), ("frequency_months", "grace_days")]},
+            "Tracking period",
+            {"fields": [("start_month", "end_month"), "mode"]},
         ),
     ]
     inlines = [ServiceVendorAssignmentInline, ServiceInvoiceExceptionInline]
@@ -187,9 +310,70 @@ class PropertyServiceAdmin(PropertySelectorMixin, admin.ModelAdmin):
         )
 
 
-@admin.register(PropertyIdentifier)
-class PropertyIdentifierAdmin(PropertySelectorMixin, admin.ModelAdmin):
-    form = PropertyIdentifierForm
+@admin.register(InvoicePropertyRule)
+class InvoicePropertyRuleAdmin(PropertySelectorMixin, admin.ModelAdmin):
+    form = InvoicePropertyRuleForm
     list_display = ["vendor", "kind", "value", "property"]
     list_filter = ["vendor", "kind", "property"]
     search_fields = ["value", "vendor__name", "property__name"]
+
+
+@admin.register(Subcategory)
+class SubcategoryAdmin(admin.ModelAdmin):
+    list_display = ["name", "key", "category", "is_active"]
+    list_filter = ["category", "is_active"]
+    search_fields = ["name", "key"]
+
+    def get_readonly_fields(self, request, obj=None):
+        return ["key"] if obj else []
+
+
+@admin.register(VendorBillingSchedule)
+class VendorBillingScheduleAdmin(ConfigurationAdmin):
+    change_form_template = "admin/bills/vendorbillingschedule/change_form.html"
+    form = VendorBillingScheduleForm
+    list_display = [
+        "vendor",
+        "start_month",
+        "end_month",
+        "frequency_months",
+        "first_expected_month",
+        "grace_days",
+        "is_active",
+    ]
+    list_filter = ["vendor", "is_active", "frequency_months"]
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/change-frequency/",
+                self.admin_site.admin_view(
+                    lambda request, object_id: self.dated_change(request, object_id, frequency=True)
+                ),
+                name="bills_vendorbillingschedule_change_frequency",
+            )
+        ] + super().get_urls()
+
+
+@admin.register(ServiceVendorAssignment)
+class ServiceVendorAssignmentAdmin(ConfigurationAdmin):
+    change_form_template = "admin/bills/servicevendorassignment/change_form.html"
+    form = ServiceVendorAssignmentForm
+    list_display = ["property_service", "vendor", "start_month", "end_month", "is_active"]
+    list_filter = ["vendor", "property_service__property", "is_active"]
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/change-vendor/",
+                self.admin_site.admin_view(self.dated_change),
+                name="bills_servicevendorassignment_change_vendor",
+            )
+        ] + super().get_urls()
+
+
+@admin.register(ServiceInvoiceException)
+class ServiceInvoiceExceptionAdmin(ConfigurationAdmin):
+    form = ServiceInvoiceExceptionForm
+    list_display = ["vendor", "property_service", "month", "reason"]
+    list_filter = ["vendor", "property_service__property"]

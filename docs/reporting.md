@@ -21,38 +21,34 @@ with a different invoice date.
 
 ## Missing invoices
 
-**Missing invoices** compares received invoices with configured
-[property services and vendor history](data-model.md#property-services-and-vendor-history).
-It defaults to the current year and shows missing expectations or invoices needing
-review. Filters select whole invoice months by property, vendor, service and status.
-The expandable service table also shows as-needed services, vendor history and
-ended/disabled configurations.
+**Missing invoices** checks one combined bill per vendor and scheduled invoice
+month, bounded by tracked regular services and dated service vendor assignments.
+Several properties or services on a bill do not multiply the invoice count.
+Property and category filters select relevant services while keeping each vendor
+bill counted once. Effective schedule dates and the first expected invoice month
+are separate; dated frequency changes retain earlier expectations.
 
-Each row checks one property service and its assigned vendor in an expected month.
-One shared invoice may satisfy several rows, while several allocations from one
-invoice count as a single receipt within each row. Statuses are:
+Approved invoices and pending documents match by vendor and invoice date,
+independently of their allocation and consumption periods. Credits cannot satisfy
+a regular expectation. Pending documents remain **Needs review**, including
+unresolved allocations. Approved receipt is visible separately from
+**Incomplete allocations**. Expand a bill's required services to inspect each
+property/category/subcategory match. Occasional tank emptying is not required on
+every bill and cannot satisfy a regular waste-collection check.
 
-- **Received**: a matching approved invoice exists.
-- **Needs review**: a matching unapproved invoice or latest routed extraction exists.
-  It counts as received without contributing costs or consumption to Reports.
-- **Expected**: no matching invoice exists, but the month or grace period is still open.
-- **Missing**: no matching invoice exists after the month and grace period have ended.
-- **Not sent**: the vendor is confirmed not to have sent an invoice for this service
-  and month. A saved reason explains the exception. It is excluded from the attention
-  queue; a matching received invoice takes precedence if one arrives later.
-- **Needs vendor**: the property needs a recurring service in this month, but no enabled
-  vendor assignment covers it. It remains in the default attention queue.
+Missing bills become **Missing** after the scheduled month plus its stored grace
+days. **Not sent this month** records a vendor-wide reason once. Existing scoped
+annotations remain visible on their services. A received bill takes precedence
+over a no-invoice annotation. An absent allocation still needs review; after
+review of the approved invoice, an explicit service confirmation can excuse it
+for that revision. Corrections invalidate that review binding while retaining its
+history; a stale confirmation cannot excuse a missing bill. A later matching
+allocation takes precedence.
 
-Matches use invoice dates, rather than upload dates, payment due dates or consumption
-periods. A credit invoice cannot replace a regular expected invoice. An approved
-revision takes precedence over a newer extraction, including when the new proposal
-changes its property or vendor. Unknown dates/vendors, unassigned properties and
-unclassified services remain in Documents for review and cannot fill expectations.
-Use the review links to resolve pending receipts. As-needed schedules produce no
-missing invoices. Costs for absent invoices are never estimated.
-Choose **Not sent this month** on a missing row to record a confirmed exception.
-The invoice must still be missing when the action is saved; a repeated submission
-retains the original reason. Exceptions do not change future billing expectations.
+Active regular services without vendors show **Needs vendor**. Assigned vendors
+without applicable schedules show **Needs billing schedule**. Configuration links
+lead to the appropriate editors. The service detail table also retains occasional,
+ended and disabled activity and vendor history.
 
 ## SQLite contract, version 3
 
@@ -90,26 +86,22 @@ exclude issuer/installation identifiers, source paths, extracted text, review
 snapshots and user account details. The application database still contains private
 configuration and login tables; these views do not create an external access boundary.
 
-Migration `0014_invoice_coverage_view` adds coverage without changing the approved
-reporting views' source rules. Migration `0015_property_services` anchors expectations
-to property services and joins dated vendor assignments. Vendor changes preserve
-earlier expectations; a transition month can have both vendors. Missing assignments
-produce `unassigned` rows with null vendor/assignment IDs. Disabling a property service
-suppresses all its expectations. Coverage includes expected months through the current
-UTC month, `expected_time` at UTC midnight, `missing_after`, approved invoice and
-pending review document counts, `property_service_id`, `assignment_id`, representative
-invoice/review document IDs and status.
-Migration `0016_service_invoice_exceptions` adds `exception_id` and the configured
-`exception_reason`; a confirmed no-invoice month uses status `not_expected` (shown as
-**Not sent**). Approved or pending receipts take precedence over this status.
-Current status uses the UTC date. It is live and requires no export or refresh job.
-Migration `0017_legacy_invoice_coverage` classifies pending waste receipts from older
-snapshots using explicit retained period, fee or usage evidence. Mixed or unidentified
-costs remain unclassified; an existing subcategory, including an explicit empty value,
-takes precedence. The native view derives these labels without rewriting extraction
-attempts, approval snapshots or approved allocations.
-The [SQL examples](reporting-examples.sql) include a missing-invoice table suitable
-for Grafana and a count of missing property/service expectations.
+`reporting_invoice_coverage` exposes one combined vendor/month expectation with
+schedule policy, required/received service counts, approved/pending receipt counts,
+representative invoice/document IDs and status. `reporting_service_coverage`
+provides the property, category, subcategory and assignment detail behind each
+bill, including retained scoped annotations. Unassigned rows retain their service
+ID; unscheduled assignments remain visible. Native views include months through
+the current UTC month and use UTC status dates. The application can also inspect
+explicit future month ranges without changing configured records.
+
+Migrations `0019`–`0022` rebuild these projections for shared schedules and the
+classification catalogue. Legacy pending waste sections still derive labels only
+from explicit retained evidence. Existing values, including an explicit empty
+subcategory, take precedence. Immutable proposals and approval snapshots are
+interpreted in memory without rewriting their JSON. The
+[SQL examples](reporting-examples.sql) include combined-bill counts and service
+details for Grafana-style tables.
 
 Invoice IDs persist through correction. Allocation and usage IDs change when the
 review service replaces the current normalized rows. Query the current views afresh;
@@ -150,7 +142,7 @@ same consumption twice. Both electricity services still contribute to costs.
 | `network` | Selected network consumption. |
 | `supply_fallback` | Selected supply consumption whose whole period is disjoint from network intervals. |
 | `network_preferred` | Supply interval fully covered by network intervals; excluded from combined consumption. |
-| `needs_review` | Ambiguous source overlap or partial network coverage; excluded and shown on Reports. |
+| `needs_review` | Unspecified electricity source, ambiguous source overlap or partial network coverage; excluded and shown on Reports. |
 
 Network coverage may be one interval or several consecutive readings. Gaps are checked;
 matching the outer endpoints alone does not establish coverage. If network readings

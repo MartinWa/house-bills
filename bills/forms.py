@@ -3,16 +3,22 @@
 from django import forms
 from django.core.exceptions import ValidationError
 
-from .categories import subcategory_label
+from .classification_forms import catalogue_field
+from .configuration import (
+    proposed_configuration,
+    staged_configuration,
+    validate_configuration,
+)
 from .models import (
+    Category,
     Document,
+    InvoicePropertyRule,
     Property,
-    PropertyIdentifier,
     PropertyService,
-    Service,
     ServiceInvoiceException,
     ServiceVendorAssignment,
     Vendor,
+    VendorBillingSchedule,
     VendorIssuerIdentifier,
 )
 from .validators import normalize_identifier
@@ -57,7 +63,7 @@ class InvoiceFilterForm(DateRangeFilterForm):
         empty_label="All properties",
     )
     service = forms.ChoiceField(
-        label="Service", choices=[("", "All services"), *Service.choices], required=False
+        label="Category", choices=[("", "All categories"), *Category.choices], required=False
     )
 
 
@@ -89,6 +95,8 @@ class CoverageFilterForm(InvoiceFilterForm):
             ("expected", "Expected"),
             ("not_expected", "Not sent"),
             ("unassigned", "Needs vendor"),
+            ("unscheduled", "Needs billing schedule"),
+            ("incomplete", "Incomplete allocations"),
         ],
         required=False,
     )
@@ -107,130 +115,145 @@ class InvoiceMonthField(forms.DateField):
         return result.replace(day=1) if result else result
 
 
-class PropertyServiceForm(forms.ModelForm):
-    start_month = InvoiceMonthField(label="First expected invoice month")
-    end_month = InvoiceMonthField(label="Last expected invoice month", required=False)
-    service = forms.ChoiceField(
-        label="Category / service",
-        choices=[
-            (
-                service.value,
-                f"Electricity / {subcategory_label(service)}"
-                if service in (Service.ELECTRICITY_NETWORK, Service.ELECTRICITY_SUPPLY)
-                else service.label,
-            )
-            for service in Service
-        ],
-    )
+class ConfigurationForm(forms.ModelForm):
+    defer_graph = False
+
+    def _post_clean(self):
+        with staged_configuration():
+            super()._post_clean()
+        if not self.defer_graph and not self.errors:
+            try:
+                validate_configuration(proposed_configuration([self.instance]))
+            except ValidationError as exc:
+                self.add_error(None, exc)
+
+
+class ClassificationFormMixin:
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        current = getattr(self.instance, "subcategory_id", None)
+        self.fields["subcategory"] = catalogue_field(current)
+
+
+class PropertyServiceForm(ClassificationFormMixin, ConfigurationForm):
+    start_month = InvoiceMonthField(label="First tracking month")
+    end_month = InvoiceMonthField(label="Last tracking month", required=False)
 
     class Meta:
         model = PropertyService
         fields = [
             "property",
-            "service",
+            "category",
             "subcategory",
+            "mode",
             "is_active",
             "start_month",
             "end_month",
-            "frequency_months",
-            "grace_days",
         ]
-        help_texts = {
-            "subcategory": "Waste collection or tank emptying. Blank matches any waste cost.",
-            "frequency_months": (
-                "As needed records vendor activity without expecting regular invoices."
-            ),
-        }
-
-    def clean(self):
-        values = super().clean()
-        if not all(values.get(field) for field in ("property", "service", "start_month")):
-            return values
-        if not values.get("is_active"):
-            return values
-        existing = PropertyService.objects.filter(
-            property=values["property"],
-            service=values["service"],
-            subcategory=values.get("subcategory", ""),
-            is_active=True,
-        ).exclude(pk=self.instance.pk)
-        for service in existing:
-            if (values.get("end_month") is None or service.start_month <= values["end_month"]) and (
-                service.end_month is None or values["start_month"] <= service.end_month
-            ):
-                raise ValidationError(
-                    "This property already has an enabled service for these invoice months. "
-                    "Change its vendor assignments, or end it before starting a replacement."
-                )
-        return values
 
 
 class InvoiceNotSentForm(forms.Form):
-    reason = forms.CharField(
-        max_length=300,
-        widget=forms.Textarea(attrs={"rows": 3}),
-        help_text="For example, the vendor confirmed that no invoice was issued.",
-    )
+    reason = forms.CharField(max_length=300, widget=forms.Textarea(attrs={"rows": 3}))
+    reviewed_invoice_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
+    reviewed_revision = forms.IntegerField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, review_required=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if review_required:
+            self.fields["reviewed_allocation"] = forms.BooleanField(
+                label="I reviewed the invoice and confirmed this service was not billed",
+            )
 
 
-class ServiceInvoiceExceptionForm(forms.ModelForm):
+class ServiceInvoiceExceptionForm(ConfigurationForm):
     month = InvoiceMonthField(label="Invoice month")
 
     class Meta:
         model = ServiceInvoiceException
-        fields = ["vendor", "month", "reason"]
+        fields = ["property_service", "vendor", "month", "reason"]
 
 
-class ServiceVendorAssignmentForm(forms.ModelForm):
-    start_month = InvoiceMonthField(label="Vendor's first invoice month")
-    end_month = InvoiceMonthField(label="Vendor's last invoice month", required=False)
+class ServiceVendorAssignmentForm(ConfigurationForm):
+    start_month = InvoiceMonthField(label="First assignment month")
+    end_month = InvoiceMonthField(label="Last assignment month", required=False)
 
     class Meta:
         model = ServiceVendorAssignment
-        fields = ["vendor", "is_active", "start_month", "end_month"]
-        help_texts = {
-            "end_month": (
-                "Inclusive. End the former vendor and add its replacement to retain history. "
-                "Both vendors may bill in the transition month."
-            ),
-        }
+        fields = ["property_service", "vendor", "is_active", "start_month", "end_month"]
 
 
-class ServiceVendorAssignmentFormSet(forms.BaseInlineFormSet):
+class VendorBillingScheduleForm(ConfigurationForm):
+    start_month = InvoiceMonthField(label="Effective first month")
+    end_month = InvoiceMonthField(label="Effective last month", required=False)
+    first_expected_month = InvoiceMonthField(label="First expected invoice month")
+
+    class Meta:
+        model = VendorBillingSchedule
+        fields = [
+            "vendor",
+            "start_month",
+            "end_month",
+            "frequency_months",
+            "first_expected_month",
+            "grace_days",
+            "is_active",
+        ]
+
+
+class ChangeVendorForm(forms.Form):
+    month = InvoiceMonthField(label="Change from month")
+    vendor = forms.ModelChoiceField(queryset=Vendor.objects.all(), label="Replacement vendor")
+    transition_month = forms.BooleanField(
+        required=False,
+        label="Both vendors may bill in the transition month",
+    )
+
+
+class ChangeBillingFrequencyForm(forms.Form):
+    month = InvoiceMonthField(label="Effective first month")
+    frequency_months = forms.TypedChoiceField(
+        choices=VendorBillingSchedule.Frequency.choices,
+        coerce=int,
+        label="Frequency",
+    )
+    first_expected_month = InvoiceMonthField(label="First expected invoice month")
+    grace_days = forms.IntegerField(min_value=0, max_value=60)
+
+
+class ConfigurationInlineFormSet(forms.BaseInlineFormSet):
     def clean(self):
         super().clean()
-        if any(self.errors):
+        group = getattr(self, "configuration_group", [self])
+        if self is not group[0]:
             return
-        assignments = {}
-        for form in self.forms:
-            values = form.cleaned_data
-            if not values or values.get("DELETE") or not values.get("is_active"):
-                continue
-            # Django uses initial ForeignKey IDs for view-only inline forms.
-            key = getattr(values["vendor"], "pk", values["vendor"])
-            start, end = values["start_month"], values.get("end_month")
-            service = self.instance
-            if service.start_month and start < service.start_month:
-                raise ValidationError(
-                    "Vendor assignments must start within the service's expected invoice months."
-                )
-            if service.end_month and (end is None or end > service.end_month):
-                raise ValidationError(
-                    "Vendor assignments must end within the service's expected invoice months."
-                )
-            for other_start, other_end in assignments.get(key, []):
-                if (end is None or other_start <= end) and (
-                    other_end is None or start <= other_end
-                ):
-                    raise ValidationError(
-                        "Enabled assignments for the same vendor must not overlap. "
-                        "End the earlier assignment before starting its replacement."
-                    )
-            assignments.setdefault(key, []).append((start, end))
-        if self.instance.is_active and not assignments:
-            raise ValidationError(
-                "Attach at least one enabled vendor to an enabled property service."
-            )
+        for formset in group:
+            for form in formset.forms:
+                if not hasattr(form, "cleaned_data"):
+                    form.full_clean()
+        if any(
+            form.errors
+            for formset in group
+            for form in formset.forms
+            if not (formset.can_delete and formset._should_delete_form(form))
+        ):
+            return
+        replacements, deletions = [self.instance], []
+        for formset in group:
+            for form in formset.forms:
+                if not form.cleaned_data:
+                    continue
+                if formset.can_delete and formset._should_delete_form(form):
+                    deletions.append(form.instance)
+                else:
+                    replacements.append(form.instance)
+        try:
+            validate_configuration(proposed_configuration(replacements, deletions))
+        except ValidationError as exc:
+            # The parent may already have field errors; formsets require an error list.
+            raise ValidationError(exc.messages) from exc
+
+
+ServiceVendorAssignmentFormSet = ConfigurationInlineFormSet
 
 
 class DocumentFilterForm(forms.Form):
@@ -256,9 +279,9 @@ class IdentifierForm(forms.ModelForm):
         return normalize_identifier(self.cleaned_data.get("kind", ""), self.cleaned_data["value"])
 
 
-class PropertyIdentifierForm(IdentifierForm):
+class InvoicePropertyRuleForm(IdentifierForm):
     class Meta:
-        model = PropertyIdentifier
+        model = InvoicePropertyRule
         fields = ["vendor", "property", "kind", "value"]
 
 
