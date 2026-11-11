@@ -46,6 +46,20 @@ def read(**kwargs):
     )
 
 
+def admin_form_data(page):
+    forms = [page.context["adminform"].form]
+    for inline in page.context["inline_admin_formsets"]:
+        forms.extend([inline.formset.management_form, *inline.formset.initial_forms])
+    data = {
+        field.html_name: field.value() if field.value() is not None else ""
+        for form in forms
+        for field in form
+    }
+    for inline in page.context["inline_admin_formsets"]:
+        data[f"{inline.formset.prefix}-TOTAL_FORMS"] = inline.formset.initial_form_count()
+    return data
+
+
 def test_combined_bill_counts_once_and_filters_keep_required_allocations(coverage):
     first, second = coverage["houses"]
     for house in (first, second):
@@ -585,6 +599,138 @@ def test_restricted_service_editor_cannot_shorten_dates_outside_assignments(
     service.refresh_from_db()
     assert service.mode == "occasional"
     assert ServiceVendorAssignment.objects.values().get(property_service=service) == before
+
+
+def test_deleted_inline_errors_do_not_skip_remaining_configuration_validation(
+    coverage, client, admin_user
+):
+    service = coverage["schedule"]()
+    assignment = service.vendor_assignments.get()
+    annotation = ServiceInvoiceException.objects.create(
+        property_service=service,
+        vendor=coverage["vendor"],
+        month=date(2024, 3, 1),
+        reason="Synthetic annotation to remove",
+    )
+    before = {
+        model: list(model.objects.order_by("pk").values())
+        for model in (PropertyService, ServiceVendorAssignment, ServiceInvoiceException)
+    }
+    client.force_login(admin_user)
+    path = reverse("admin:bills_propertyservice_change", args=[service.pk])
+    data = admin_form_data(client.get(path))
+    data.update(
+        {
+            "end_month": "2024-03",
+            "invoice_exceptions-0-reason": "",
+            "invoice_exceptions-0-DELETE": "on",
+        }
+    )
+    response = client.post(path, data)
+    assert response.status_code == 200
+    assert b"within the service tracking dates" in response.content
+    for model, rows in before.items():
+        assert list(model.objects.order_by("pk").values()) == rows
+
+    # A deleted row's field errors must not block an otherwise valid edit.
+    response = client.post(path, {**data, "vendor_assignments-0-end_month": "2024-03"})
+    assert response.status_code == 302
+    service.refresh_from_db()
+    assignment.refresh_from_db()
+    assert service.end_month == assignment.end_month == date(2024, 3, 1)
+    assert assignment.is_active
+    assert not ServiceInvoiceException.objects.filter(pk=annotation.pk).exists()
+    validate_configuration(proposed_configuration())
+
+
+@pytest.mark.parametrize(
+    "changes,field",
+    [
+        ({"end_month": "2024-01"}, "end_month"),
+        ({"category": "waste", "subcategory": "electricity_network"}, "subcategory"),
+    ],
+)
+def test_invalid_parent_configuration_renders_field_errors(
+    coverage, client, admin_user, changes, field
+):
+    service = coverage["schedule"]()
+    before = PropertyService.objects.values().get(pk=service.pk)
+    before_assignments = list(ServiceVendorAssignment.objects.values())
+    client.force_login(admin_user)
+    path = reverse("admin:bills_propertyservice_change", args=[service.pk])
+    data = admin_form_data(client.get(path))
+    response = client.post(path, {**data, **changes})
+    assert response.status_code == 200
+    assert field in response.context["adminform"].form.errors
+    assert PropertyService.objects.values().get(pk=service.pk) == before
+    assert list(ServiceVendorAssignment.objects.values()) == before_assignments
+
+
+@pytest.mark.parametrize("period", ["schedule", "assignment"])
+def test_adjacent_inline_period_edits_preserve_identities_and_enabled_flags(
+    coverage, client, admin_user, period
+):
+    service = coverage["schedule"](end_month=date(2024, 12, 1))
+    vendor = coverage["vendor"]
+    annotation = ServiceInvoiceException.objects.create(
+        property_service=service,
+        vendor=vendor,
+        month=date(2024, 3, 1),
+        reason="Synthetic retained no-invoice annotation",
+    )
+    before_annotation = ServiceInvoiceException.objects.values().get(pk=annotation.pk)
+    if period == "schedule":
+        first = vendor.billing_schedules.get()
+        second = change_billing_frequency(
+            first.pk,
+            month=date(2024, 7, 1),
+            frequency_months=3,
+            first_expected_month=date(2024, 7, 1),
+            grace_days=5,
+        )
+        prefix = "billing_schedules"
+        path = reverse("admin:bills_vendor_change", args=[vendor.pk])
+    else:
+        first = service.vendor_assignments.get()
+        first.end_month = date(2024, 6, 1)
+        first.save()
+        second = ServiceVendorAssignment.objects.create(
+            property_service=service,
+            vendor=vendor,
+            start_month=date(2024, 7, 1),
+            end_month=service.end_month,
+        )
+        prefix = "vendor_assignments"
+        path = reverse("admin:bills_propertyservice_change", args=[service.pk])
+    client.force_login(admin_user)
+    data = admin_form_data(client.get(path))
+    data[f"{prefix}-0-end_month"] = "2024-07"
+    data[f"{prefix}-1-start_month"] = "2024-08"
+    if period == "schedule":
+        data[f"{prefix}-1-first_expected_month"] = "2024-08"
+    response = client.post(path, data)
+    assert response.status_code == 302
+    first.refresh_from_db()
+    second.refresh_from_db()
+    assert first.end_month == date(2024, 7, 1)
+    assert second.start_month == date(2024, 8, 1)
+    assert first.is_active and second.is_active
+    assert set(type(first).objects.values_list("pk", flat=True)) == {first.pk, second.pk}
+    assert ServiceInvoiceException.objects.values().get(pk=annotation.pk) == before_annotation
+    if period == "schedule":
+        assert second.first_expected_month == date(2024, 8, 1)
+        assert (second.frequency_months, second.grace_days) == (3, 5)
+        assert {row["expected_month"].month for row in read()["coverage_rows"]} == {
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            11,
+        }
+    validate_configuration(proposed_configuration())
 
 
 @pytest.mark.parametrize("action", ["vendor", "frequency"])

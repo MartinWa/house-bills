@@ -230,18 +230,27 @@ class ConfigurationInlineFormSet(forms.BaseInlineFormSet):
             for form in formset.forms:
                 if not hasattr(form, "cleaned_data"):
                     form.full_clean()
-        if any(form.errors for formset in group for form in formset.forms):
+        if any(
+            form.errors
+            for formset in group
+            for form in formset.forms
+            if not (formset.can_delete and formset._should_delete_form(form))
+        ):
             return
         replacements, deletions = [self.instance], []
         for formset in group:
             for form in formset.forms:
                 if not form.cleaned_data:
                     continue
-                if form.cleaned_data.get("DELETE"):
+                if formset.can_delete and formset._should_delete_form(form):
                     deletions.append(form.instance)
                 else:
                     replacements.append(form.instance)
-        validate_configuration(proposed_configuration(replacements, deletions))
+        try:
+            validate_configuration(proposed_configuration(replacements, deletions))
+        except ValidationError as exc:
+            # The parent may already have field errors; formsets require an error list.
+            raise ValidationError(exc.messages) from exc
 
 
 ServiceVendorAssignmentFormSet = ConfigurationInlineFormSet

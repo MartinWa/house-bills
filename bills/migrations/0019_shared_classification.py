@@ -48,6 +48,15 @@ def forwards(apps, schema_editor):
 
 def backwards(apps, schema_editor):
     alias = schema_editor.connection.alias
+    expected_catalogue = {
+        (key, category, name, True) for key, category, name in INITIAL_SUBCATEGORIES
+    }
+    catalogue = apps.get_model("bills", "Subcategory").objects.using(alias)
+    if set(catalogue.values_list("key", "category", "name", "is_active")) != expected_catalogue:
+        raise RuntimeError(
+            "Changed subcategory catalogue cannot be represented by the old schema. "
+            "Restore a backup instead."
+        )
     usages = apps.get_model("bills", "Usage").objects.using(alias)
     if (
         usages.filter(utility="electricity")

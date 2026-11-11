@@ -3,6 +3,7 @@
 from django.contrib import admin
 from django.contrib.admin.widgets import RelatedFieldWidgetWrapper
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.http import Http404, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -131,7 +132,20 @@ class ConfigurationAdmin(admin.ModelAdmin):
             super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):
-        with staged_configuration():
+        with transaction.atomic(), staged_configuration():
+            # Keep overlap triggers valid while applying the checked final periods.
+            # Form instances retain their intended enabled flags for the normal save.
+            for formset in formsets:
+                if isinstance(formset, ConfigurationInlineFormSet) and formset.model in (
+                    ServiceVendorAssignment,
+                    VendorBillingSchedule,
+                ):
+                    changed_pks = [
+                        row.instance.pk for row in formset.initial_forms if row.has_changed()
+                    ]
+                    formset.get_queryset().filter(pk__in=changed_pks, is_active=True).update(
+                        is_active=False
+                    )
             super().save_related(request, form, formsets, change)
 
     def delete_model(self, request, obj):

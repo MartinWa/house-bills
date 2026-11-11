@@ -228,7 +228,7 @@ legacy_tables = [
 ]
 before = snapshot(legacy_tables)
 
-if CONFLICT and CONFLICT != "independent_source":
+if CONFLICT in ("frequency", "phase", "grace"):
     changes = {
         "frequency": {"frequency_months": 3},
         "phase": {"frequency_months": 3, "start_month": date(2024, 2, 1)},
@@ -310,12 +310,54 @@ else:
         assert snapshot(["bills_billingsection", "bills_usage"]) == independent
         assert snapshot(immutable_tables) == immutable
         assert hashlib.sha256(original.read_bytes()).hexdigest() == digest
+    if CONFLICT.startswith("catalogue_"):
+        Catalogue = state.get_model("bills", "Subcategory")
+        if CONFLICT == "catalogue_name":
+            Catalogue.objects.filter(pk="electricity_network").update(name="Invented network label")
+        elif CONFLICT == "catalogue_enabled":
+            Catalogue.objects.filter(pk="electricity_network").update(is_active=False)
+        elif CONFLICT == "catalogue_added":
+            Catalogue.objects.create(key="plastic", category="waste", name="Invented plastic")
+        elif CONFLICT == "catalogue_deleted":
+            Catalogue.objects.filter(pk="electricity_supply").delete()
+        elif CONFLICT == "catalogue_category":
+            Catalogue.objects.filter(pk="electricity_supply").update(category="other")
+        catalogue_before = list(Catalogue.objects.order_by("pk").values())
+        allocations_before = snapshot(["bills_billingsection", "bills_usage"])
+        try:
+            MigrationExecutor(connection).migrate(old)
+        except RuntimeError as exc:
+            assert "Changed subcategory catalogue" in str(exc), str(exc)
+        else:
+            raise AssertionError("Downgrade must refuse to lose catalogue changes")
+        assert list(Catalogue.objects.order_by("pk").values()) == catalogue_before
+        assert snapshot(["bills_billingsection", "bills_usage"]) == allocations_before
+        assert snapshot(immutable_tables) == immutable
+        MigrationExecutor(connection).migrate(new)
+        assert list(Catalogue.objects.order_by("pk").values()) == catalogue_before
+        assert snapshot(["bills_billingsection", "bills_usage"]) == allocations_before
+        assert snapshot(immutable_tables) == immutable
+        assert hashlib.sha256(original.read_bytes()).hexdigest() == digest
     call_command("check", databases=["default"])
 print("Synthetic model-restructure migration preservation and recovery passed.")
 """
 
 
-@pytest.mark.parametrize("conflict", ["", "frequency", "phase", "grace", "independent_source"])
+@pytest.mark.parametrize(
+    "conflict",
+    [
+        "",
+        "frequency",
+        "phase",
+        "grace",
+        "independent_source",
+        "catalogue_name",
+        "catalogue_enabled",
+        "catalogue_added",
+        "catalogue_deleted",
+        "catalogue_category",
+    ],
+)
 def test_restructure_migration_preserves_and_recovers_or_aborts_conflicts(tmp_path, conflict):
     environment = {
         **os.environ,

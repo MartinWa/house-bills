@@ -172,10 +172,12 @@ approval metadata, original storage and immutable extraction/review JSON remain
 intact. Compatibility adapters read older classification keys in memory. Earlier
 migrations remain unchanged. Migrated service billing settings are archived
 privately for recovery. An unchanged-data downgrade restores their values.
-A downgrade stops if service modes or vendor schedules changed, or the old schema
-cannot represent new classifications, independent electricity consumption sources
-or reviewed/vendor-wide annotations. Restore the verified pre-upgrade backup with
-the previous image in that case.
+A downgrade stops if service modes, vendor schedules or the subcategory catalogue
+changed, or the old schema cannot represent new classifications, independent
+electricity consumption sources or reviewed/vendor-wide annotations. Catalogue
+guards include edited names, enabled flags, categories and added or deleted entries,
+even when those entries have no allocations. Restore the verified pre-upgrade backup
+with the previous image in that case.
 
 Money uses signed integer minor units: `100` is one SEK. Quantities use signed integer
 thousandths: `1000` is one kWh, m³ or kg. Floats, booleans and strings are rejected by the
