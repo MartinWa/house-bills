@@ -55,25 +55,21 @@ SELECT i.invoice_id, i.reference, i.currency,
 FROM reporting_invoices AS i
 JOIN allocated AS a ON a.invoice_id = i.invoice_id
 ORDER BY i.invoice_date, i.invoice_id;
--- Missing invoice expectations for a Grafana table. Each row is a property/service
--- expectation; one PDF can satisfy several services or properties. Filter the chosen
--- invoice year or expected_time after selecting the live view.
-SELECT expected_month, property_name, vendor_name, category, subcategory,
+-- One missing combined bill per vendor/month, with its required service count.
+SELECT expected_month, vendor_name, property_names, required_service_count,
        missing_after, status
 FROM reporting_invoice_coverage
 WHERE status = 'missing'
-ORDER BY expected_month, property_name, vendor_name, service, subcategory;
+ORDER BY expected_month, vendor_name;
 
--- Missing property/service expectations and received documents needing review.
--- Unassigned months identify services needing a vendor.
+-- Attention counts do not multiply combined bills by property or service.
 SELECT status, count(*) AS expectation_count
 FROM reporting_invoice_coverage
-WHERE status IN ('missing', 'needs_review', 'unassigned')
+WHERE status IN ('missing', 'needs_review', 'incomplete', 'unassigned', 'unscheduled')
 GROUP BY status;
 
--- Confirmed months with no invoice. These do not enter the missing-invoice count.
-SELECT expected_month, property_name, vendor_name, category, subcategory,
-       exception_reason
+-- Confirmed no-invoice months. Inspect scoped detail in reporting_service_coverage.
+SELECT expected_month, vendor_name, exception_reason
 FROM reporting_invoice_coverage
 WHERE status = 'not_expected'
-ORDER BY expected_month, property_name, vendor_name, service, subcategory;
+ORDER BY expected_month, vendor_name;

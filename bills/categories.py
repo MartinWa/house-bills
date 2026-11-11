@@ -18,7 +18,8 @@ CATEGORY_LABELS = {
     "electricity_supply": "Electricity",
     "water": "Water",
     "waste": "Waste",
-    "other": "Other charges",
+    "other": "Other",
+    "electricity": "Electricity",
 }
 
 
@@ -45,8 +46,12 @@ def waste_cost_subcategory(source_texts):
 
 
 def subcategory_label(service, subcategory=""):
-    if service in ("electricity_network", "electricity_supply"):
-        return SUBCATEGORY_LABELS[service]
-    if service == "waste":
-        return SUBCATEGORY_LABELS.get(subcategory, "Unspecified")
-    return ""
+    key = getattr(subcategory, "pk", subcategory) or ""
+    if not key and service in ("electricity_network", "electricity_supply"):
+        key = service
+    if key:
+        from .models import Subcategory
+
+        row = Subcategory.objects.filter(pk=key).first()
+        return row.name if row else SUBCATEGORY_LABELS.get(key, key)
+    return "Unspecified" if service == "waste" else ""

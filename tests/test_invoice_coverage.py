@@ -1,6 +1,7 @@
 """Recurring expectations, unapproved receipts, vendor changes and waste cost categories."""
 
 import hashlib
+from collections import Counter
 from datetime import date
 from itertools import count
 
@@ -19,6 +20,7 @@ from bills.models import (
     ServiceInvoiceException,
     ServiceVendorAssignment,
     Vendor,
+    VendorBillingSchedule,
 )
 from bills.parsing.types import Candidate, Evidence, Section
 from bills.reporting import read_report
@@ -112,6 +114,10 @@ def coverage(tmp_path, settings, django_user_model):
         return invoice, proposed, assignments
 
     def schedule(house=houses[0], service="water", **changes):
+        frequency = changes.pop("frequency_months", 1)
+        grace = changes.pop("grace_days", 0)
+        if frequency == 0:
+            changes["mode"] = "occasional"
         configured = PropertyService.objects.create(
             property=house,
             service=service,
@@ -123,10 +129,20 @@ def coverage(tmp_path, settings, django_user_model):
             start_month=configured.start_month,
             end_month=configured.end_month,
         )
+        if frequency and configured.is_active and not vendor.billing_schedules.exists():
+            VendorBillingSchedule.objects.create(
+                vendor=vendor,
+                start_month=configured.start_month,
+                end_month=None,
+                first_expected_month=configured.start_month,
+                frequency_months=frequency,
+                grace_days=grace,
+            )
         return configured
 
     def read(**changes):
-        return read_invoice_coverage(
+        status = changes.pop("status", "")
+        result = read_invoice_coverage(
             **{
                 "date_from": date(2024, 2, 1),
                 "date_to": date(2024, 4, 30),
@@ -134,6 +150,40 @@ def coverage(tmp_path, settings, django_user_model):
                 **changes,
             }
         )
+
+        # These legacy regressions inspect allocation detail, not combined-bill counts.
+        rows = [
+            {**bill, **allocation, "service": allocation["category"]}
+            for bill in result["coverage_rows"]
+            for allocation in bill["required_services"]
+        ]
+        counts = Counter(row["status"] for row in rows)
+        result.update(
+            {
+                f"{name}_count": counts[name]
+                for name in (
+                    "missing",
+                    "received",
+                    "expected",
+                    "not_expected",
+                    "unassigned",
+                    "unscheduled",
+                    "incomplete",
+                )
+            }
+        )
+        result["review_count"] = counts["needs_review"]
+        if status == "attention":
+            rows = [
+                row
+                for row in rows
+                if row["status"]
+                in ("missing", "needs_review", "unassigned", "unscheduled", "incomplete")
+            ]
+        elif status:
+            rows = [row for row in rows if row["status"] == status]
+        result["coverage_rows"] = rows
+        return result
 
     return {
         "vendor": vendor,
@@ -165,7 +215,8 @@ def test_invoice_month_and_property_service_match_without_counting_allocations_t
     assert {row["expected_month"] for row in received} == {date(2024, 3, 1)}
     assert {row["invoice_id"] for row in received} == {invoice.pk}
     assert {row["approved_invoice_count"] for row in received} == {1}
-    assert report["missing_count"] == 7
+    assert report["missing_count"] == 6
+    assert report["incomplete_count"] == 1
     assert all(row["category"] == "water" for row in received)
 
 
@@ -256,11 +307,11 @@ def test_legacy_pending_waste_receipts_match_retained_evidence(
     source, extraction = legacy_waste_extraction(coverage, [changes])
     before = ExtractionAttempt.objects.values().get(pk=extraction.pk)
     result = coverage["read"](date_from=date(2024, 3, 1), date_to=date(2024, 3, 31))
-    pending = [row for row in result["coverage_rows"] if row["status"] == "needs_review"]
-    assert len(pending) == result["review_count"] == 1
+    pending = [row for row in result["coverage_rows"] if row["review_document_count"]]
+    assert len(pending) == 1 and result["review_count"] == 2
     assert pending[0]["subcategory"] == subcategory
     assert pending[0]["review_document_id"] == source.pk
-    assert result["missing_count"] == 1 and result["received_count"] == 0
+    assert result["missing_count"] == 0 and result["received_count"] == 0
     with pytest.raises(ValidationError, match="no longer missing"):
         mark_invoice_not_sent(
             configured[subcategory].pk,
@@ -289,8 +340,8 @@ def test_legacy_mixed_or_unidentified_waste_receipts_remain_missing(coverage, te
         coverage, [{"charges": [{"evidence": legacy_evidence(text)} for text in texts]}]
     )
     result = coverage["read"](date_from=date(2024, 3, 1), date_to=date(2024, 3, 31))
-    assert result["missing_count"] == 2
-    assert result["review_count"] == result["received_count"] == 0
+    assert result["missing_count"] == result["received_count"] == 0
+    assert result["review_count"] == 2
 
 
 @pytest.mark.parametrize("subcategory", ["", "waste_collection", "tank_emptying", None])
@@ -307,7 +358,7 @@ def test_explicit_subcategories_override_legacy_waste_evidence(coverage, subcate
         ],
     )
     result = coverage["read"](date_from=date(2024, 3, 1), date_to=date(2024, 3, 31))
-    pending = [row for row in result["coverage_rows"] if row["status"] == "needs_review"]
+    pending = [row for row in result["coverage_rows"] if row["review_document_count"]]
     assert [row["subcategory"] for row in pending] == ([subcategory] if subcategory else [])
 
 
@@ -400,7 +451,8 @@ def test_uncertain_or_different_receipts_do_not_hide_a_missing_invoice(coverage,
     else:
         routing["kind"] = "credit"
     record_extraction(coverage["document"](proposed.reference).pk, proposed, routing=routing)
-    assert coverage["read"]()["coverage_rows"][0]["status"] == "missing"
+    expected_status = "needs_review" if unmatched in ("property", "service") else "missing"
+    assert coverage["read"]()["coverage_rows"][0]["status"] == expected_status
 
 
 def test_approved_revision_wins_over_new_extraction_and_duplicate_proposals(coverage):
@@ -450,6 +502,11 @@ def test_vendor_changes_keep_prior_receipts_and_allow_both_vendors_in_transition
     original.end_month = date(2024, 3, 1)
     original.save()
     replacement = Vendor.objects.create(name="Synthetic Replacement", slug="replacement")
+    VendorBillingSchedule.objects.create(
+        vendor=replacement,
+        start_month=date(2024, 3, 1),
+        first_expected_month=date(2024, 3, 1),
+    )
     ServiceVendorAssignment.objects.create(
         property_service=configured,
         vendor=replacement,
@@ -500,6 +557,12 @@ def test_property_frequency_keeps_its_anchor_when_the_vendor_changes(coverage):
     first.end_month = date(2024, 6, 1)
     first.save()
     replacement = Vendor.objects.create(name="Synthetic New Waste Vendor", slug="new-waste")
+    VendorBillingSchedule.objects.create(
+        vendor=replacement,
+        start_month=date(2024, 7, 1),
+        first_expected_month=date(2024, 8, 1),
+        frequency_months=3,
+    )
     ServiceVendorAssignment.objects.create(
         property_service=configured,
         vendor=replacement,
@@ -533,9 +596,8 @@ def test_quarterly_anchor_end_month_as_needed_and_disabled_schedules(coverage):
     assert {row["subcategory"] for row in report["coverage_rows"]} == {"waste_collection"}
     assert len(report["property_services"]) == 3
     assert {s["frequency_label"] for s in report["property_services"]} == {
-        "As needed",
-        "Monthly",
-        "Quarterly",
+        "Occasional",
+        "Regular",
     }
 
 
@@ -554,6 +616,11 @@ def test_confirmed_no_invoice_month_is_scoped_to_service_vendor_and_month(covera
     original.end_month = date(2024, 3, 1)
     original.save()
     replacement = Vendor.objects.create(name="Synthetic New Utility", slug="new-utility")
+    VendorBillingSchedule.objects.create(
+        vendor=replacement,
+        start_month=date(2024, 3, 1),
+        first_expected_month=date(2024, 3, 1),
+    )
     ServiceVendorAssignment.objects.create(
         property_service=configured,
         vendor=replacement,
@@ -576,7 +643,8 @@ def test_confirmed_no_invoice_month_is_scoped_to_service_vendor_and_month(covera
     assert skipped[0]["vendor_id"] == coverage["vendor"].pk
     assert result["missing_count"] == 6
     assert all(
-        row["status"] == "missing" for row in coverage["read"](status="attention")["coverage_rows"]
+        row["status"] in ("missing", "not_expected")
+        for row in coverage["read"](status="attention")["coverage_rows"]
     )
     assert coverage["read"](status="not_expected")["coverage_rows"] == skipped
     assert read_report() == before
@@ -686,7 +754,11 @@ def test_missing_row_can_be_marked_not_sent_without_mutating_reports(client, cov
         reverse("bills:invoice_coverage"),
         {"date_from": "2024-03-01", "date_to": "2024-03-31"},
     )
-    assert path.encode() in page.content and b"Not sent this month" in page.content
+    assert (
+        reverse("bills:vendor_invoice_not_sent", args=[coverage["vendor"].pk, "2024-03"]).encode()
+        in page.content
+        and b"Not sent this month" in page.content
+    )
     assert client.get(path).status_code == 200 and not ServiceInvoiceException.objects.exists()
     assert client.post(path, {"reason": " "}).status_code == 400
     assert not ServiceInvoiceException.objects.exists()
@@ -824,7 +896,7 @@ def test_waste_cost_subcategory_can_be_corrected_through_the_review_screen(clien
     assert response.status_code == 302
     invoice.refresh_from_db()
     assert invoice.review_revision == 2
-    assert invoice.sections.get().subcategory == "waste_collection"
+    assert invoice.sections.get().subcategory_id == "waste_collection"
     assert (
         invoice.reviews.get(revision=1).snapshot["values"]["sections"][0]["subcategory"]
         == "tank_emptying"

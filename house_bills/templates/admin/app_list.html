@@ -1,0 +1,34 @@
+{% load i18n %}
+
+{% if app_list %}
+  {% for app in app_list %}
+    <div class="app-{{ app.app_label }} module{% if app.app_url in request.path|urlencode %} current-app{% endif %}">
+      <table>
+        <caption>
+          <a href="{{ app.app_url }}" class="section" title="{% blocktranslate with name=app.name %}Models in the {{ name }} application{% endblocktranslate %}">{{ app.name }}</a>
+        </caption>
+        <thead class="visually-hidden">
+          <tr>
+            <th scope="col">{% translate 'Model name' %}</th>
+            <th scope="col">{% translate 'Add link' %}</th>
+            <th scope="col">{% translate 'Change or view list link' %}</th>
+          </tr>
+        </thead>
+        {% if app.model_groups %}
+          {% for group in app.model_groups %}
+            <tbody>
+              <tr class="configuration-group">
+                <th scope="rowgroup" colspan="{% if show_changelinks %}3{% else %}2{% endif %}"><h3>{{ group.name }}</h3></th>
+              </tr>
+              {% include "admin/configuration_model_rows.html" with models=group.models %}
+            </tbody>
+          {% endfor %}
+        {% else %}
+          <tbody>{% include "admin/configuration_model_rows.html" with models=app.models %}</tbody>
+        {% endif %}
+      </table>
+    </div>
+  {% endfor %}
+{% else %}
+  <p>{% translate 'You don’t have permission to view or edit anything.' %}</p>
+{% endif %}

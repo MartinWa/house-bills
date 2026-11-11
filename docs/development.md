@@ -20,8 +20,8 @@ change the loopback host port; the container listens on port 8000. The server ap
 migrations before starting Django's development reloader. Login and logout use Django's
 built-in authentication, with POST and CSRF protection for logout. Only staff accounts
 can use the admin, subject to model permissions. Configure houses under **Properties**,
-then vendors with their identification numbers, invoice formats and property
-mappings. **Administration** and **Sign out** are in the header's **User** menu.
+then vendors with their identification numbers, invoice formats and invoice property
+rules. **Administration** and **Sign out** are in the header's **User** menu.
 See [configuration and the data model](data-model.md). The domain app is
 `bills`. Sign-in opens **Invoices**, with property, service and invoice-date filters.
 Use **Upload invoice** on **Documents** to choose and upload a PDF directly. Documents
@@ -35,12 +35,15 @@ and correction. See [review and correction](review.md),
 [uploads and private originals](ingestion.md).
 **Reports** shows approved service costs and billed consumption, with property/date
 filters and electricity source selection. See [approved reporting](reporting.md).
-**Missing invoices** checks configured property services against their billing frequency
-and dated vendor assignments. Configure these under **Property services**, also linked
-from each property form. See [property services](data-model.md#property-services-and-vendor-history).
-Use **Not sent this month** on a missing row to record a confirmed exception and its reason.
-For a vendor that always bills one house, set its optional **Default property**;
-specific property mappings take precedence.
+**Missing invoices** checks combined vendor bills using dated shared billing
+schedules and their required property services. Configure services from
+**Properties**, assignments under **Service vendors**, and schedules from
+**Vendors**. Use **Not sent this month** once on a missing combined bill. Required
+allocations remain inspectable, including an after-review confirmation for a
+service that was not billed. Maintain the shared catalogue under **Subcategories**.
+See [configuration](data-model.md#property-services-and-vendor-history).
+For a vendor that always bills one house, its optional **Default property** applies
+after specific invoice property rules.
 
 The source checkout is mounted at `/app`. The `development-state` volume holds the
 Linux virtualenv, `/state/development/db.sqlite3`, the development secret, temporary

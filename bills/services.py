@@ -12,11 +12,12 @@ from .models import (
     Document,
     ExtractionAttempt,
     Invoice,
+    InvoicePropertyRule,
     Property,
-    PropertyIdentifier,
     ReviewRevision,
     Usage,
 )
+from .parsing.compatibility import cost_totals_candidate
 from .storage import coordinated_write, publish_original
 from .validators import normalize_identifier
 
@@ -30,12 +31,12 @@ def resolve_section_property(vendor, identifiers):
     specific, addresses = set(), set()
     for identifier in identifiers:
         kind = identifier.kind
-        if kind not in PropertyIdentifier.Kind.values:
+        if kind not in InvoicePropertyRule.Kind.values:
             continue
-        matches = PropertyIdentifier.objects.filter(
+        matches = InvoicePropertyRule.objects.filter(
             vendor=vendor, kind=kind, value=normalize_identifier(kind, identifier.value)
         ).values_list("property_id", flat=True)
-        (addresses if kind == PropertyIdentifier.Kind.DELIVERY_ADDRESS else specific).update(
+        (addresses if kind == InvoicePropertyRule.Kind.DELIVERY_ADDRESS else specific).update(
             matches
         )
     matches = specific or addresses
@@ -136,7 +137,7 @@ def invoice_for_review(document_id):
 @coordinated_write
 @transaction.atomic
 def discard_manual_entry(document_id):
-    """Remove an empty manual placeholder, checking again inside the write transaction."""
+    "Remove an empty manual placeholder, checking again inside the write transaction."
     document = Document.objects.select_for_update().get(pk=document_id)
     if not document.can_discard_manual_entry:
         raise ValidationError("Only unfinished manual entries can be cancelled.")
@@ -235,10 +236,10 @@ def validate_allocations(invoice):
             if usage.utility == Usage.Utility.ELECTRICITY:
                 # A reversal and its replacement can overlap. Two positive-source
                 # measurements with the same basis cannot silently become a sum.
-                for other, property_id, service in electricity:
+                for other, property_id, source in electricity:
                     if (
                         section.property_id == property_id
-                        and section.service == service
+                        and usage.subcategory_id == source
                         and usage.basis == other.basis
                         and usage.start < other.end
                         and other.start < usage.end
@@ -246,7 +247,7 @@ def validate_allocations(invoice):
                         raise ValidationError(
                             "Overlapping electricity usage for this property/source needs review."
                         )
-                electricity.append((usage, section.property_id, section.service))
+                electricity.append((usage, section.property_id, usage.subcategory_id))
     if (
         totals["net_minor"] != invoice.net_minor
         or totals["vat_minor"] != invoice.vat_minor
@@ -317,7 +318,7 @@ def approve_review(
         "amount_due_minor",
     ]:
         setattr(invoice, field, getattr(candidate, field))
-    payload = candidate.to_dict()
+    payload = cost_totals_candidate(candidate.to_dict())
     invoice.header_evidence = payload["header_evidence"]
     invoice.identifiers = payload["identifiers"]
     invoice.source_pages = sorted({item["page"] for item in _evidence_in(payload)})
@@ -331,8 +332,8 @@ def approve_review(
             invoice=invoice,
             section_id=source.section_id,
             property=property,
-            service=source.service,
-            subcategory=source.subcategory,
+            category=source_payload["category"],
+            subcategory_id=source_payload.get("subcategory") or None,
             identifiers=source_payload["identifiers"],
             net_minor=source.net_minor,
             vat_minor=source.vat_minor,
@@ -348,7 +349,7 @@ def approve_review(
                 section=section,
                 position=position,
                 utility=usage.utility,
-                subcategory=usage.subcategory,
+                subcategory_id=source_payload["usages"][position].get("subcategory") or None,
                 unit=usage.unit,
                 quantity_milli=usage.quantity_milli,
                 start=usage.start,

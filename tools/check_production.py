@@ -275,7 +275,7 @@ def check_ingestion_http():
             "amount_due_minor": "-10,00",
             "warnings_confirmed": "on",
             "sections-0-property": house.pk,
-            "sections-0-service": "water",
+            "sections-0-category": "water",
             "sections-0-net_minor": "-8,00",
             "sections-0-vat_minor": "-2,00",
             "sections-0-gross_minor": "-10,00",

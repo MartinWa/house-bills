@@ -17,7 +17,7 @@ the replacement values before approval.
 
 ## Configuration and versions
 
-Configure vendor identification, compatible invoice formats and property mappings
+Configure vendor identification, compatible invoice formats and invoice property rules
 in Administration; see [configuration](data-model.md). Recognition uses labelled
 organization/VAT cover fields and legal identity in a bounded F-skatt footer, including
 wrapped cover footers above a payment slip. Recipient addresses, filenames, customer accounts and arbitrary numbers in

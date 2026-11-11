@@ -85,7 +85,7 @@ def upload(request):
 @never_cache
 @require_POST
 def manual_invoice(request):
-    """Create a reviewable invoice with no original PDF, for older paper or ledger data."""
+    "Create a reviewable invoice with no original PDF, for older paper or ledger data."
     document = Document.objects.create(
         source=Document.Source.MANUAL,
         state=Document.State.REVIEW,
@@ -275,7 +275,7 @@ def invoices(request):
             Prefetch(
                 "sections",
                 queryset=BillingSection.objects.select_related("property").order_by(
-                    "property__name", "property_id", "service", "start", "pk"
+                    "property__name", "property_id", "category", "start", "pk"
                 ),
             )
         )
@@ -286,7 +286,7 @@ def invoices(request):
         if form.cleaned_data["property"]:
             allocations["sections__property"] = form.cleaned_data["property"]
         if form.cleaned_data["service"]:
-            allocations["sections__service"] = form.cleaned_data["service"]
+            allocations["sections__category"] = form.cleaned_data["service"]
         if allocations:
             records = records.filter(**allocations).distinct()
         if form.cleaned_data["date_from"]:
@@ -408,27 +408,44 @@ def invoice_not_sent(request, property_service_id, vendor_id, month):
     except sqlite3.DatabaseError:
         return render(request, "bills/storage_busy.html", status=503)
     row = next(
-        (
-            item
-            for item in report["coverage_rows"]
-            if item["property_service_id"] == property_service_id
-        ),
+        (item for item in report["coverage_rows"] if item["vendor_id"] == vendor_id),
         None,
     )
     if row is None:
         raise Http404("Invoice expectation not found.")
+    if property_service_id is not None:
+        scoped = next(
+            (
+                item
+                for item in row["required_services"]
+                if item["property_service_id"] == property_service_id
+            ),
+            None,
+        )
+        if scoped is None:
+            raise Http404("Service expectation not found.")
+        row = {**row, **scoped}
     parameters = {
         "property": row["property_id"],
         "vendor": vendor_id,
-        "service": row["service"],
+        "service": row["category"],
         "date_from": invoice_month.isoformat(),
         "date_to": invoice_month.isoformat(),
         "status": row["status"],
     }
+    parameters = {key: value for key, value in parameters.items() if value is not None}
     back_url = f"{reverse('bills:invoice_coverage')}?{urlencode(parameters)}"
-    if request.method == "GET" and row["status"] != "missing":
+    review_required = row.get("can_confirm_not_sent", False)
+    if request.method == "GET" and row["status"] != "missing" and not review_required:
         return redirect(back_url)
-    form = InvoiceNotSentForm(request.POST if request.method == "POST" else None)
+    form = InvoiceNotSentForm(
+        request.POST if request.method == "POST" else None,
+        review_required=review_required,
+        initial={
+            "reviewed_invoice_id": row["invoice_id"],
+            "reviewed_revision": row["invoice_revision"],
+        },
+    )
     status = 200
     if request.method == "POST":
         status = 400
@@ -439,6 +456,8 @@ def invoice_not_sent(request, property_service_id, vendor_id, month):
                     vendor_id,
                     invoice_month,
                     reason=form.cleaned_data["reason"],
+                    reviewed_invoice_id=form.cleaned_data.get("reviewed_invoice_id"),
+                    reviewed_revision=form.cleaned_data.get("reviewed_revision"),
                 )
             except ValidationError as exc:
                 form.add_error(None, exc)
@@ -448,7 +467,7 @@ def invoice_not_sent(request, property_service_id, vendor_id, month):
                 status = 503
             else:
                 messages.success(request, f"Invoice marked as not sent for {month}.")
-                parameters["status"] = "not_expected"
+                parameters["status"] = "received" if review_required else "not_expected"
                 return redirect(f"{reverse('bills:invoice_coverage')}?{urlencode(parameters)}")
     return render(
         request,

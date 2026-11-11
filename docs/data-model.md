@@ -11,12 +11,17 @@ Sign in with a staff account and open **Administration**. Superusers can maintai
 configuration; other staff need the relevant Django model permissions. Changes require
 POST and CSRF protection.
 
+The billing lists are grouped in both the Administration dashboard and sidebar:
+**Property configuration** (Properties, Property services, Service vendors),
+**Vendor configuration** (Vendors, Vendor billing schedules, Invoice property rules),
+**Classification** (Subcategories), and **Invoice follow-up** (Months with no invoice).
+
 1. Add each house under **Properties**, with a display name and unique storage slug.
    Slugs use lowercase letters, digits and single hyphens. `shared` and `inbox` are
    reserved for document storage.
 2. Add a vendor, with a display name and unique safe slug. On the vendor form add its
    organization/VAT numbers under **Vendor identification**, select invoice formats
-   and add **Property mappings**. Identification numbers identify the billing vendor and
+   and add **Invoice property rules**. Identification numbers identify the billing vendor and
    cannot belong to two vendors.
 3. Select the vendor's **Invoice formats**. One vendor may use both `layout_01` and
    `layout_02`; vendors remain stable when a layout version changes. The installed
@@ -29,7 +34,7 @@ POST and CSRF protection.
    and product keys preserve punctuation and case while normalizing whitespace.
    Delivery addresses normalize whitespace and case.
 
-**Property mappings** also provides a separate mapping editor. One customer account
+**Invoice property rules** also provides a separate mapping editor. One customer account
 may cover both houses. Customer accounts remain source hints and cannot be configured
 as property keys. A delivery-address mapping is used only when no mapped installation,
 contract or product key exists. Conflicting specific keys require review. An explicitly
@@ -40,59 +45,93 @@ and save. This removes the mapping and preserves the property. Property selector
 are plain dropdowns; add, edit, view or delete properties from **Properties**.
 
 When a vendor always bills one property, select its optional **Default property** in
-the vendor form's **Property mappings** section, above **Specific mappings**.
+the vendor form's **Invoice property rules** section, above **Specific rules**.
 Sections with no matching property mapping use this default, so you
-can leave property mappings empty for that vendor. Installation, contract and product
+can leave invoice property rules empty for that vendor. Installation, contract and product
 mappings take precedence, followed by delivery-address mappings, then the vendor default. Conflicting
 mappings still require review. Leave the default blank when each section needs a
 specific assignment. Changing this setting does not alter previously approved invoices.
 
 ## Property services and vendor history
 
-On each property form, use **Property services** and **Add service** to configure the
-services the property needs. The separate **Property services** editor provides the
-same configuration with property and service filters. Each service has a category,
-optional waste cost subcategory, enabled flag, first and optional last *expected*
-invoice month, billing frequency and grace days. Electricity supply and network are
-separate services under Electricity. Waste collection and tank emptying are separate
-services under Waste. Food/Rest waste stay consumption details within one waste
-collection service.
+Use **Properties** as the entry point for the services a property needs. Each
+**Property service** has a category, optional subcategory, regular/occasional mode,
+enabled flag and inclusive first/last tracking months. Existing first expected
+months migrate as tracking bounds; they do not establish an earlier physical
+service start date. Separate dated service records retain gaps and disabled periods.
 
-Attach at least one enabled vendor under the service's **Vendor assignments**. Each
-assignment has a vendor, the vendor's own first invoice month and an optional inclusive
-last month. The service's first expected month bounds the checked months; it is not the
-vendor's start date. The vendor form lists its assigned property services and links back
-to their configuration. One vendor can bill several services and properties.
+**Service vendors** attach vendors to those services for inclusive assignment
+months. The first assignment defaults to the service's tracking dates, with
+overrides available. Several vendors may bill in a transition month; enabled
+assignments for the same vendor and service cannot overlap. Use **Change vendor**
+from the assignment editor to end the old assignment and create its replacement.
+The service keeps its identity, tracking dates and classification.
 
-The service's first expected month anchors monthly, two-monthly, quarterly, six-monthly
-or yearly expectations; last months are inclusive. Months before it are not checked.
-For quarterly invoices in February, May, August and November, set February as the first
-month. **As needed** records an active service without producing recurring expectations.
-Use it for occasional tank emptying. Select **Waste collection** separately so a
-tank-emptying invoice cannot fill a waste collection expectation. An empty waste cost
-subcategory matches any waste allocation.
+Maintain **Vendor billing schedules** on **Vendors**, or in the filtered schedule
+editor. A vendor has one shared schedule history: effective first/last months,
+frequency, first expected invoice month, grace days and enabled flag. Frequencies
+are monthly, every two months, quarterly, every six months, yearly and as needed.
+The effective first month and first expected invoice month are independent. A
+quarterly period effective in July with its first invoice in August expects August,
+November, February and May. An anchor may fall after the effective last month for
+a short period that produces no invoice. Enabled schedule periods cannot overlap.
 
-When changing vendor, set the former assignment's last invoice month and add its
-replacement with its own first invoice month. The property's service and frequency
-remain in place. Old and new vendors can both bill in a transition month. Enabled
-assignments for the same vendor cannot overlap. Months without an enabled vendor remain
-visible as **Needs vendor**.
+Use **Change billing frequency** from a schedule editor to end its current period
+and create its dated replacement. Earlier months continue to use their original
+frequency, anchor and grace policy. Property services and service vendors keep
+their identities. A replacement vendor uses its own schedule and invoice anchor.
 
-For a confirmed month with no invoice, choose **Not sent this month** on the missing
-row and save a reason. This requires permission to add a month with no invoice.
-You can also manage **Months with no invoice** on the service form: each entry applies
-to one vendor and a recurring invoice month. To undo an entry, delete that exception
-on the service form. Later expectations continue normally, and an invoice that arrives
-afterward takes precedence over the exception. Exceptions must stay within the
-service's dates and billing frequency.
+Regular services participate in allocation checks on scheduled combined bills.
+Occasional services, including tank emptying, remain available without becoming
+required on each bill. A vendor billing entirely as needed creates no recurring
+invoice expectation. An active regular service without a vendor appears as
+**Needs vendor**; an assignment without a schedule appears as **Needs billing schedule**.
 
-To change frequency while preserving earlier expectations, end the service's current
-configuration and add its replacement from the next invoice month. Enabled service
-configurations with the same property, service and cost subcategory cannot overlap.
-Disabling a service suppresses its expectations, including earlier months; use an end
-month to preserve history. Configuration does not assign invoice properties or change
-approved values. See
-[missing invoices](reporting.md#missing-invoices).
+One scheduled vendor/month produces one combined-bill expectation across its
+properties and services. Receipt and allocation completeness remain separate. A
+water-only bill from a vendor configured for water and waste collection needs
+review for the missing waste allocation. Tank emptying cannot fill the collection
+requirement. See [missing invoices](reporting.md#missing-invoices).
+
+Choose **Not sent this month** once for a missing combined bill, with a required
+reason. Existing service-specific annotations retain their original vendor,
+service, month and reason. A later receipt takes precedence. After reviewing an
+approved bill with an absent service, use **Confirm service not sent after review**
+on that allocation and explicitly confirm the review. This binds the annotation
+to the approved invoice revision. A subsequent correction requires a new review;
+a later explicit allocation takes precedence. Manage annotations through
+**Months with no invoice**, also available on each service form.
+
+Configuration forms, direct model saves and configuration actions share validation.
+Administration checks the parent and all proposed inline rows before committing
+atomically. Month boundaries, date order/containment, enabled overlaps,
+classification compatibility, normalized identifiers and exception scope are
+validated. Database constraints and triggers also protect row invariants,
+classification relationships and enabled overlaps. End periods to preserve earlier
+activity; disabling a service suppresses its expectations.
+
+## Categories and subcategories
+
+The fixed categories are **Electricity**, **Water**, **Waste** and **Other**.
+Maintain their shared **Subcategories** catalogue in Administration. Initial keys
+are `electricity_network`, `electricity_supply`, `matavfall`, `restavfall`,
+`tank_emptying` and `waste_collection`. Add entries such as Plastic or Cardboard
+without changing the schema. Category selectors filter available subcategories.
+Empty subcategories preserve combined or unspecified classification.
+
+Each subcategory has a stable key, editable name and enabled flag. Renaming updates
+display labels. Disable obsolete entries to keep existing references. Saved keys
+are immutable; referenced entries cannot be deleted or moved to another category.
+New entries supply classification choices; they do not add PDF extraction rules.
+Parsers continue to classify only explicit source evidence.
+
+Cost allocations and consumption rows choose subcategories independently within
+the allocation's category. One Waste / Waste collection cost may contain both
+Food waste (Matavfall) and Residual waste (Restavfall) quantities. Keep the printed
+cost together when the source supplies no reliable monetary split. Explicit
+separate monetary allocations retain their classifications. Electricity network
+and supply remain distinct consumption sources with the existing selection that
+avoids counting energy twice.
 
 ## Records and precision
 
@@ -100,45 +139,39 @@ approved values. See
 | --- | --- |
 | Property / Vendor | Display names and safe unique storage slugs; vendors also have an optional default property. |
 | VendorIssuerIdentifier / VendorLayoutFamily | Private vendor identification numbers and compatible installed invoice formats. |
-| PropertyIdentifier | A vendor-scoped installation, contract, product-number or delivery-address key mapped to one property. |
-| PropertyService | Property/service activity, optional waste cost subcategory, enabled flag, first/last expected invoice months, billing frequency and grace days. |
-| ServiceVendorAssignment | A vendor attached to a property service for the vendor's own inclusive invoice months, with an enabled flag. |
-| ServiceInvoiceException | A confirmed month with no invoice for one property service and vendor, with a required reason. |
+| InvoicePropertyRule | A vendor-scoped installation, contract, product-number or delivery-address key mapped to one property. |
+| Subcategory | Stable key, fixed category, editable name and enabled flag. |
+| PropertyService | Property, category, optional catalogue subcategory, regular/occasional mode, enabled flag and tracking months. A private immutable legacy billing configuration supports migration recovery. |
+| VendorBillingSchedule | Vendor, effective months, first expected invoice month, frequency, grace days and enabled flag. |
+| ServiceVendorAssignment | A vendor attached to a property service for inclusive assignment months, with an enabled flag. |
+| ServiceInvoiceException | Vendor/month/reason, optional property-service scope and optional reviewed invoice/revision binding for an absent allocation. |
 | Document | Source (`upload` or `manual`), unique SHA-256 for uploads, original filename, relative private path, separate processing/storage state and messages, staging/publication journal paths, extraction counter and a private legacy fee archive. |
 | ExtractionAttempt | Append-only candidate JSON, page evidence, layout family/version, parser revision, error/state and attempt number. Invalid and failed results remain private proposals. |
 | Invoice | Document, vendor, reference/kind, dates, SEK, net/VAT/rounding/total/amount due, header evidence, supporting identifiers, source pages and approval metadata. |
-| BillingSection | Invoice, section key, assigned property, service, optional waste cost subcategory, source identifiers, explicit signed net/VAT/gross, overall billing period and period/tax/total evidence. |
-| Usage | Section, source order, utility/unit, optional waste subcategory, signed quantity, its own period, measurement basis and page evidence. |
+| BillingSection | Invoice, section key, assigned property, category and optional catalogue subcategory, source identifiers, explicit signed net/VAT/gross, overall billing period and period/tax/total evidence. |
+| Usage | Section, source order, utility/unit and optional catalogue subcategory, signed quantity, its own period, measurement basis and page evidence. |
 | ReviewRevision | Append-only approved value snapshot, property assignments, vendor/kind, reviewer, time, source extraction and correction note. |
 
 A shared invoice has one document and several independently assigned billing sections.
-Usage inherits invoice, property and service through its section. Individual fees have
+Usage inherits invoice and property through its section, and must use its category. Individual fees have
 no normalized rows; their source text remains in the original PDF and extraction evidence.
 
-Waste consumption distinguishes `restavfall` (Restavfall) and `matavfall` (Matavfall).
-An empty subcategory means unspecified waste; other utilities must store an empty
-value. Electricity inherits its subcategory from the section: `electricity_network`
-is Elnät and `electricity_supply` is Elhandel, both under Electricity. Shared waste
-fees remain at the Waste allocation level because printed totals do not split them
-between waste types.
+Migrations `0019`–`0022` introduce the shared classification catalogue, rename
+invoice property rules and move schedule ownership to vendors. Their preflight
+rejects conflicting frequencies, phases, grace policies, enabled overlaps and
+invalid exception scopes before restructuring. Run
+`python manage.py audit_model_restructure` in the Linux container for a read-only
+configuration report before upgrading. Reconcile reported conflicts explicitly.
 
-Waste costs can be classified as `waste_collection` (Waste collection) or
-`tank_emptying` (Tank emptying), under Waste. These cost labels are separate from
-Restavfall/Matavfall consumption labels. Unclassified costs keep an empty subcategory.
-Migration `0013_vendor_billing_schedules` derives cost labels only when retained
-period or consumption evidence explicitly identifies the type. It preserves amounts,
-quantities, original files and immutable extraction/review snapshots; older snapshots
-receive the same labels in memory. Review can correct or classify an allocation.
-
-Migration `0015_property_services` moves earlier vendor schedules into property services
-and dated vendor assignments, combining compatible billing frequencies and anchors.
-It retains vendor history and leaves invoice data and immutable evidence unchanged.
-
-Migration `0009_usage_subcategories` labels existing waste usage when its saved billed
-evidence explicitly starts with Restavfall or Matavfall. Amounts, quantities, periods,
-approval metadata, extraction attempts and approved snapshots are retained. Review
-adapts older snapshots in memory using the same explicit labels; manual or ambiguous
-source text stays unspecified and can be classified during correction.
+Invoice/document/assignment identities, money, signed quantities, units, periods,
+approval metadata, original storage and immutable extraction/review JSON remain
+intact. Compatibility adapters read older classification keys in memory. Earlier
+migrations remain unchanged. Migrated service billing settings are archived
+privately for recovery. A synthetic unchanged-data downgrade restores their values;
+new classifications, independent electricity consumption sources, schedule edits
+or reviewed/vendor-wide annotations that the old schema cannot represent reject
+a lossy downgrade. Restore the verified
+pre-upgrade backup with the previous image in that case.
 
 Money uses signed integer minor units: `100` is one SEK. Quantities use signed integer
 thousandths: `1000` is one kWh, m³ or kg. Floats, booleans and strings are rejected by the
@@ -206,7 +239,7 @@ snapshots retain original evidence.
 
 Approval checks each allocation's net plus VAT against its gross total, then allocation
 totals and rounding against the header. Printed VAT is retained without allocation to
-individual fees. Usage units must match their utility and section service.
+individual fees. Usage must match the allocation category. Electricity uses kWh, Water uses m³ and Waste uses kg; Other can retain any of these supported source units.
 Repeated electricity usage for the same section/period/basis is prohibited; overlapping
 periods with the same property, source service and basis require review. Network and
 supply usage remain distinct. Usage reversals and replacements retain their separate

@@ -11,6 +11,7 @@ from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Service, Usage
 
 SELECTION_REASONS = {
+    "unspecified_source": "The electricity source needs review before consumption selection.",
     "same_source_overlap": "Overlapping consumption from the same source needs review.",
     "network_source_overlap": "Overlapping network consumption prevents source selection.",
     "partial_network_coverage": "Network readings cover only part of this supply period.",
@@ -81,11 +82,11 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             SELECTED_USAGE
             + f"""
             SELECT property_id, property_name, utility, unit,
-                   CASE WHEN utility = 'waste' THEN subcategory ELSE '' END AS subcategory,
+                   CASE WHEN utility = 'electricity' THEN '' ELSE subcategory END AS subcategory,
                    sum(quantity_milli) AS quantity_milli
             FROM selected_usage WHERE {usage_where}
             GROUP BY property_id, property_name, utility, unit,
-                     CASE WHEN utility = 'waste' THEN subcategory ELSE '' END
+                     CASE WHEN utility = 'electricity' THEN '' ELSE subcategory END
             ORDER BY property_name, property_id, utility, subcategory
             """,
             usage_params,

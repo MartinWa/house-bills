@@ -79,4 +79,17 @@ class Candidate:
                 return [encode(item) for item in value]
             return value
 
-        return encode(asdict(self))
+        result = encode(asdict(self))
+        for source, section in zip(self.sections, result["sections"], strict=True):
+            electricity_source = source.service in ("electricity_network", "electricity_supply")
+            section["category"] = "electricity" if electricity_source else source.service
+            if electricity_source and not section["subcategory"]:
+                section["subcategory"] = source.service
+            for usage in section["usages"]:
+                if (
+                    electricity_source
+                    and usage["utility"] == "electricity"
+                    and not usage["subcategory"]
+                ):
+                    usage["subcategory"] = source.service
+        return result

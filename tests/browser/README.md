@@ -32,16 +32,19 @@ of the same PDF. Cancelling an unfinished manual form removes its placeholder, w
 cancelling a correction keeps the saved invoice. Cancellation and deletion also work
 without JavaScript. Invalid date ranges are checked in the browser and through direct URLs.
 Desktop and mobile previews are saved with the synthetic browser artifacts.
-Property service checks cover monthly billing for both properties, quarterly waste
-collection and as-needed tank emptying. Dated vendor changes retain service frequency
-and previous receipts; months without a vendor link directly to service configuration.
-Coverage shows pending shared invoices as
-received needing review, updates after approval, links to invoices and fits a
-320-pixel mobile viewport. Property forms list services, frequency and vendor history.
+Property service checks cover shared monthly billing for both properties, quarterly
+waste collection and occasional tank emptying. Dated billing-frequency changes retain
+earlier schedules; vendor changes retain service identity and previous receipts.
+Months without a vendor link directly to service configuration. Coverage counts a
+combined bill once, shows pending bills needing review, updates after approval, links
+to invoices and fits a 320-pixel mobile viewport. Property forms list services, tracking
+mode and vendor history.
 Waste collection and tank emptying use cost subcategories
 under Waste, separately from Restavfall/Matavfall consumption.
-Marking a missing invoice as **Not sent this month** retains its reason, vendor and
-invoice month in the service configuration and preserves other months and receipts.
+Marking a missing combined bill as **Not sent this month** retains its reason, vendor
+and invoice month and preserves other months and receipts. A received bill missing
+waste collection requires review; its service confirmation includes an explicit review
+checkbox and binds the annotation to the invoice revision.
 Invoice folder checks cover shared-original counts, manual entries, stored filenames,
 PDF downloads, retained filters, keyboard controls without JavaScript and an expanded
 320-pixel mobile layout. Folder previews are saved alongside the other screenshots.

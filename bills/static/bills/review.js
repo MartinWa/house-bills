@@ -7,7 +7,7 @@
     if (row.querySelector('[name$="-DELETE"]').checked) return [];
     const key = row.querySelector('[name$="-section_id"]').value;
     const property = row.querySelector('[name$="-property"]');
-    const service = row.querySelector('[name$="-service"]');
+    const service = row.querySelector('[name$="-category"]');
     const house = property.selectedOptions[0]?.textContent || "Choose property";
     const title = service.selectedOptions[0]?.textContent || "Choose service";
     return [[key, `Allocation ${index + 1} · ${house} · ${title}`]];

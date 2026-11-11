@@ -22,6 +22,7 @@ from bills.models import (
     ServiceVendorAssignment,
     Usage,
     Vendor,
+    VendorBillingSchedule,
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
@@ -560,8 +561,8 @@ def test_waste_subcategories_keep_separate_signed_totals_and_electricity_categor
     assert {
         (row["category"], row["subcategory"], row["subcategory_label"]) for row in report["costs"]
     } == {
-        ("electricity", "electricity_network", "Elnät"),
-        ("electricity", "electricity_supply", "Elhandel"),
+        ("electricity", "electricity_network", "Electricity network (Elnät)"),
+        ("electricity", "electricity_supply", "Electricity supply (Elhandel)"),
         ("waste", "", ""),
     }
     assert {
@@ -718,6 +719,9 @@ def test_documented_sql_examples_preserve_totals_and_periods_in_plain_sqlite(led
         start_month=date(2024, 2, 1),
         end_month=date(2024, 2, 1),
     )
+    VendorBillingSchedule.objects.create(
+        vendor=ledger["vendor"], start_month=date(2024, 2, 1), first_expected_month=date(2024, 2, 1)
+    )
     reason = "Synthetic vendor confirmed no invoice was sent."
     ServiceInvoiceException.objects.create(
         property_service=configured,
@@ -745,10 +749,7 @@ def test_documented_sql_examples_preserve_totals_and_periods_in_plain_sqlite(led
     assert results[8] == [
         {
             "expected_month": "2024-02-01",
-            "property_name": first.name,
             "vendor_name": ledger["vendor"].name,
-            "category": "water",
-            "subcategory": "",
             "exception_reason": reason,
         }
     ]

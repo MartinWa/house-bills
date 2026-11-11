@@ -101,3 +101,11 @@ previously extracted fields; ingestion preserves the original and readable page
 evidence. Vendor recognition, structural matching, duplicate detection and immutable
 attempt persistence are integrated. [Review forms](review.md) support manual correction
 and explicit approval while preserving extraction evidence and earlier approved revisions.
+
+Classification serialization includes each allocation's fixed `category` and
+stable optional catalogue `subcategory` key. Installed parsers can continue to
+produce legacy `service` keys; the adapter maps electricity network/supply to
+Electricity and retains their explicit source distinction. Consumption has its
+own catalogue selection within the allocation category. Older extraction and
+review JSON is adapted in memory and remains immutable in storage. New catalogue
+entries do not create new PDF extraction rules.

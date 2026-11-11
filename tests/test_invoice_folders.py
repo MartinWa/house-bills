@@ -46,7 +46,9 @@ def test_folder_view_follows_published_corrections(configured, client, tmp_path)
     invoice = approved(client, document)
     path, data = review_data(client, document)
     data["sections-1-property"] = str(configured[2][0].pk)
-    data["sections-1-service"] = "electricity_network"
+    data["sections-1-category"] = "electricity"
+    data["sections-1-subcategory"] = "electricity_network"
+    data["usages-1-subcategory"] = "electricity_network"
     data["invoice_date"] = "2025-03-05"
     data["due_date"] = ""
     response = client.post(path, data)

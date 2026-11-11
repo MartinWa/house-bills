@@ -1,12 +1,13 @@
-"""Editable review proposals; approved rows are written only by the review service."""
+"Editable review proposals; approved rows are written only by the review service."
 
 from datetime import date, timedelta
 
 from django import forms
 from django.core.exceptions import ValidationError
 
-from .categories import WASTE_COST_SUBCATEGORIES, WASTE_SUBCATEGORIES
-from .models import Invoice, Property, Service, Usage, Vendor
+from .classification_forms import catalogue_field
+from .configuration import validate_classification
+from .models import Category, Invoice, Property, Service, Usage, Vendor
 from .parsing.compatibility import cost_totals_candidate
 from .parsing.normalization import scaled_integer
 from .parsing.types import Candidate, Evidence, Identifier, Section
@@ -154,7 +155,7 @@ class SectionForm(PeriodMixin, TotalsForm):
     field_order = [
         "section_id",
         "property",
-        "service",
+        "category",
         "subcategory",
         *SECTION_MONEY,
         "start",
@@ -163,12 +164,16 @@ class SectionForm(PeriodMixin, TotalsForm):
     ]
     section_id = forms.CharField(max_length=120, widget=forms.HiddenInput)
     property = forms.ModelChoiceField(queryset=Property.objects.all())
-    service = forms.ChoiceField(choices=Service.choices)
-    subcategory = forms.ChoiceField(
-        label="Waste cost subcategory",
-        choices=[("", "Unspecified"), *WASTE_COST_SUBCATEGORIES],
-        required=False,
-    )
+    category = forms.ChoiceField(choices=Category.choices)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["subcategory"] = catalogue_field(self.initial.get("subcategory"))
+
+    def clean_subcategory(self):
+        value = self.cleaned_data["subcategory"]
+        return value.pk if value else ""
+
     start = date_field("First billed day")
     end = date_field("Last billed day")
     page = forms.IntegerField(label="Source page", min_value=1, initial=1)
@@ -181,20 +186,37 @@ class SectionForm(PeriodMixin, TotalsForm):
 
     def clean(self):
         data = super().clean()
-        if data.get("subcategory") and data.get("service") != Service.WASTE:
-            self.add_error("subcategory", "Choose a cost subcategory only for waste.")
+        if data.get("category"):
+            try:
+                validate_classification(data["category"], data.get("subcategory"))
+            except ValidationError as exc:
+                self.add_error("subcategory", exc.messages)
         return data
 
 
 class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
+    field_order = [
+        "section",
+        "utility",
+        "subcategory",
+        "unit",
+        "quantity_milli",
+        "start",
+        "end",
+        "basis",
+        "page",
+    ]
     section = forms.ChoiceField(label="Allocation", choices=[])
     utility = forms.ChoiceField(choices=Usage.Utility.choices)
-    subcategory = forms.ChoiceField(
-        label="Waste subcategory",
-        choices=[("", "Unspecified"), *WASTE_SUBCATEGORIES],
-        required=False,
-        help_text="For electricity, Elnät or Elhandel comes from the allocation's service.",
-    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["subcategory"] = catalogue_field(self.initial.get("subcategory"))
+
+    def clean_subcategory(self):
+        value = self.cleaned_data["subcategory"]
+        return value.pk if value else ""
+
     unit = forms.ChoiceField(choices=Usage._meta.get_field("unit").choices)
     quantity_milli = ScaledNumberField(label="Quantity", scale=1000, precision=3)
     start = date_field("First billed day")
@@ -205,9 +227,16 @@ class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
     def clean(self):
         data = super().clean()
         units = {"electricity": "kWh", "water": "m3", "waste": "kg"}
-        if data.get("subcategory") and data.get("utility") != "waste":
-            self.add_error("subcategory", "Choose a waste subcategory only for waste consumption.")
-        if "utility" in data and "unit" in data and data["unit"] != units[data["utility"]]:
+        if data.get("utility"):
+            try:
+                validate_classification(data["utility"], data.get("subcategory"))
+            except ValidationError as exc:
+                self.add_error("subcategory", exc.messages)
+        if (
+            data.get("utility") in units
+            and "unit" in data
+            and data["unit"] != units[data["utility"]]
+        ):
             self.add_error("unit", "Choose the unit that matches this utility.")
         if data.get("basis") == "reversal" and data.get("quantity_milli", 0) > 0:
             self.add_error("quantity_milli", "A reversal must have a zero or negative quantity.")
@@ -298,7 +327,7 @@ class ReviewForms:
                     **{field: section.get(field) for field in SECTION_MONEY},
                     "section_id": key,
                     "property": properties.get(key),
-                    "service": section.get("service"),
+                    "category": section.get("category"),
                     "subcategory": section.get("subcategory", ""),
                     "start": section.get("start"),
                     "end": last_billed_day(section.get("end")),
@@ -381,10 +410,10 @@ class ReviewForms:
 
         electricity = []
         utilities = {
-            Service.ELECTRICITY_SUPPLY: "electricity",
-            Service.ELECTRICITY_NETWORK: "electricity",
+            Category.ELECTRICITY: "electricity",
             Service.WATER: "water",
             Service.WASTE: "waste",
+            Service.OTHER: "other",
         }
         for form in self.usages.active_forms:
             data = form.cleaned_data.copy()
@@ -392,11 +421,16 @@ class ReviewForms:
             if section is None:
                 form.add_error("section", "This allocation was removed.")
                 continue
-            service = section.cleaned_data["service"]
+            service = section.cleaned_data["category"]
             if data["utility"] != utilities.get(service):
-                form.add_error("utility", "Consumption must match the allocation's service.")
+                form.add_error("utility", "Consumption must match the allocation's category.")
             if data["utility"] == "electricity":
-                source = (section.cleaned_data["property"].pk, service, data["basis"])
+                source = (
+                    section.cleaned_data["property"].pk,
+                    service,
+                    data.get("subcategory"),
+                    data["basis"],
+                )
                 for other, other_source in electricity:
                     if (
                         source == other_source
@@ -414,7 +448,7 @@ class ReviewForms:
         )
 
     def candidate(self):
-        """Convert a fully checked form into a fresh proposal, retaining unchanged evidence."""
+        "Convert a fully checked form into a fresh proposal, retaining unchanged evidence."
         header = self.header.cleaned_data
         values = self.values
         evidence = dict(values.get("header_evidence", {}))
@@ -453,7 +487,7 @@ class ReviewForms:
             original = originals.get(key, {})
             section = Section(
                 key,
-                data["service"],
+                data["category"],
                 [],
                 subcategory=data["subcategory"],
                 **{f: data[f] for f in SECTION_MONEY},

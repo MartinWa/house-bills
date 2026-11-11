@@ -75,7 +75,7 @@ def usage(section):
 
 @pytest.mark.parametrize("subcategory", ["matavfall", "restavfall", "unknown"])
 def test_usage_subcategory_cannot_be_assigned_to_water(usage, subcategory):
-    usage.subcategory = subcategory
+    usage.subcategory_id = subcategory
     with pytest.raises(ValidationError):
         usage.save()
     with transaction.atomic(), pytest.raises(IntegrityError):
@@ -83,7 +83,7 @@ def test_usage_subcategory_cannot_be_assigned_to_water(usage, subcategory):
 
 
 def test_unknown_waste_subcategory_is_rejected_by_model_and_database(section):
-    section.service = "waste"
+    section.category = "waste"
     section.save()
     row = Usage.objects.create(
         section=section,
@@ -96,7 +96,7 @@ def test_unknown_waste_subcategory_is_rejected_by_model_and_database(section):
         basis="billed_weight",
         subcategory="restavfall",
     )
-    row.subcategory = "unknown"
+    row.subcategory_id = "unknown"
     with pytest.raises(ValidationError):
         row.save()
     with transaction.atomic(), pytest.raises(IntegrityError):
@@ -176,7 +176,7 @@ def test_usage_guards_units_precision_periods_and_reversal_signs(usage):
     usage.refresh_from_db()
     assert usage.quantity_milli == -12000
     usage.utility, usage.unit = "electricity", "kWh"
-    with pytest.raises(ValidationError, match="section's service"):
+    with pytest.raises(ValidationError, match="allocation's category"):
         usage.save()
 
 

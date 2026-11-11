@@ -22,6 +22,12 @@ urlpatterns = [
     path("reports/", views.reports, name="reports"),
     path("invoices/coverage/", views.invoice_coverage, name="invoice_coverage"),
     path(
+        "invoices/coverage/vendor/<int:vendor_id>/<str:month>/not-sent/",
+        views.invoice_not_sent,
+        {"property_service_id": None},
+        name="vendor_invoice_not_sent",
+    ),
+    path(
         "invoices/coverage/<int:property_service_id>/<int:vendor_id>/<str:month>/not-sent/",
         views.invoice_not_sent,
         name="invoice_not_sent",
