@@ -1,12 +1,11 @@
 """HTTP contract checks use invented records and disposable original storage."""
 
 import hashlib
-import json
 import re
 from datetime import timedelta
 
 import pytest
-from django.contrib.admin.models import LogEntry
+from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
 from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -21,7 +20,7 @@ from bills.models import (
     Document,
 )
 
-from .helpers import BASE, created
+from .helpers import BASE, created, send
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -53,11 +52,22 @@ def test_audit_entries_distinguish_tokens_owned_by_the_same_user(api_client):
         [(client, first), (Client(HTTP_AUTHORIZATION=f"Bearer {secret}"), second)]
     ):
         obj = created(actor, "/properties", {"name": f"House {number}", "slug": f"house-{number}"})
-        entry = LogEntry.objects.get(object_id=str(obj["id"]), content_type__model="property")
-        assert entry.user_id == owner.pk
-        assert {"api_token": {"id": token.pk, "name": token.name}} in json.loads(
-            entry.change_message
+        assert (
+            send(actor, "patch", f"/properties/{obj['id']}", {"name": "Updated house"}).status_code
+            == 200
         )
+        assert send(actor, "delete", f"/properties/{obj['id']}").status_code == 204
+        for flag, message in (
+            (ADDITION, "API configuration change"),
+            (CHANGE, "API configuration change"),
+            (DELETION, "API configuration deletion"),
+        ):
+            entry = LogEntry.objects.get(
+                object_id=str(obj["id"]), content_type__model="property", action_flag=flag
+            )
+            assert entry.user_id == owner.pk
+            assert entry.get_change_message().startswith(message)
+            assert f"token {token.name!r}, id {token.pk}" in entry.get_change_message()
 
 
 def test_token_authentication_profiles_schema_and_session_boundary(api_client):

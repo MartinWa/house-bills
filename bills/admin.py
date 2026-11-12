@@ -238,6 +238,13 @@ class ConfigurationAdmin(admin.ModelAdmin):
             else:
                 self.log_change(request, obj, "Ended period through dated configuration change.")
                 self.log_addition(request, replacement, "Created replacement dated period.")
+                successor = getattr(replacement, "replacement_period", None)
+                if successor is not None:
+                    self.log_change(
+                        request,
+                        successor,
+                        f"Reconnected predecessor from period {obj.pk} to period {replacement.pk}.",
+                    )
                 self.message_user(request, "Configuration history saved.")
                 return HttpResponseRedirect(
                     reverse(

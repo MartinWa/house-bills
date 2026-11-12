@@ -5,10 +5,12 @@ from django.contrib.admin.models import LogEntry
 
 def log_change(request, obj, flag, message):
     actor = {"api_token": {"id": request.auth.pk, "name": request.auth.name}}
+    # Sentences must stay strings: Django interprets JSON fields as field edits
+    # and ignores custom metadata when rendering the admin history.
     message = (
         [*message, actor]
         if isinstance(message, list)
-        else [{"changed": {"fields": [message]}}, actor]
+        else f"{message} (token {request.auth.name!r}, id {request.auth.pk})"
     )
     LogEntry.objects.log_actions(
         user_id=request.user.pk,

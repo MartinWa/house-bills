@@ -77,7 +77,7 @@
           "source": "url",
           "parser": "backend",
           "format": "timeseries",
-          "url": "http://app:8000/api/v1/reports/costs?mode=invoice_month&$__combineValues(property_id=,,&,${property:csv})&date_from=${__from:date:YYYY-MM-DD}&date_to=${__to:date:YYYY-MM-DD}",
+          "url": "http://app:8000/api/v1/reports/costs?mode=invoice_month&$__combineValues(property_id=,,&,${property:csv})&date_from=${__timeFrom:date:YYYY-MM-DD}&date_to=${__timeTo:date:YYYY-MM-DD}",
           "root_selector": "$count(groups) = 0 ? [] : ($grouped := groups{$string(property_id) & \":\" & $string(invoice_month_time) & \":\" & currency: {\"invoice_month_time\": $min(invoice_month_time), \"property\": (property_name)[0] & \" (#\" & $string($min(property_id)) & \")\", \"currency\": (currency)[0], \"value\": $sum(gross_minor) / 100}}; $each($grouped, function($row) { $row })^(invoice_month_time, property, currency))",
           "columns": [
             {
@@ -149,7 +149,7 @@
           "source": "url",
           "parser": "backend",
           "format": "timeseries",
-          "url": "http://app:8000/api/v1/reports/consumption?mode=billed_period&category=water&$__combineValues(property_id=,,&,${property:csv})&date_from=${__from:date:YYYY-MM-DD}&date_to=${__to:date:YYYY-MM-DD}",
+          "url": "http://app:8000/api/v1/reports/consumption?mode=billed_period&category=water&$__combineValues(property_id=,,&,${property:csv})&date_from=${__timeFrom:date:YYYY-MM-DD}&date_to=${__timeTo:date:YYYY-MM-DD}",
           "root_selector": "$count(groups) = 0 ? [] : ($grouped := groups{$string(property_id) & \":\" & $string(period_end_time) & \":\" & unit: {\"period_end_time\": $min(period_end_time), \"property\": (property_name)[0] & \" (#\" & $string($min(property_id)) & \")\", \"unit\": (unit)[0], \"value\": $sum(quantity_milli) / 1000}}; $each($grouped, function($row) { $row })^(period_end_time, property, unit))",
           "columns": [
             {

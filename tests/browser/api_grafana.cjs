@@ -12,10 +12,12 @@ async function main() {
   await page.locator('input[name="password"]').fill("synthetic-grafana-check");
   await page.getByRole("button", { name: "Log in", exact: true }).click();
   await page.waitForURL(url => !url.pathname.endsWith("/login"));
-  for (const [query, expected] of [
-    ["var-property=1", 551 * 125],
-    ["var-property=1&var-property=2", 551 * 125 + 550 * 250],
-    ["var-property=$__all", 551 * 125 + 550 * 250],
+  for (const [query, expectedCosts, expectedUsage] of [
+    ["var-property=1", 551 * 125, 551 * 123],
+    ["var-property=1&var-property=2", 551 * 125 + 550 * 250, 551 * 123 + 550 * 246],
+    ["var-property=$__all", 551 * 125 + 550 * 250, 551 * 123 + 550 * 246],
+    // January ends at 23:59:59 UTC, which is already February 1 in Stockholm.
+    ["var-property=$__all&from=1767225600000&to=1769903999000", 551 * 125, 551 * 123 + 550 * 246],
   ]) {
     const responses = [];
     const collect = async response => {
@@ -45,14 +47,14 @@ async function main() {
           }
         });
       }
-      const total = costs ? expected / 100 : expected / 125 * 123 / 1000;
+      const total = costs ? expectedCosts / 100 : expectedUsage / 1000;
       assert.ok(Math.abs(sum - total) < 0.000001, `${target.url}: ${sum} != ${total}`);
     }
     await page.getByText("Approved costs by invoice month (SEK)", { exact: true }).waitFor();
     await page.getByText("Billed water by period end (m³)", { exact: true }).waitFor();
   }
   await browser.close();
-  console.log("Grafana panels: exact costs/consumption, single/multiple/all-property selectors and UTC dates in a Stockholm browser passed.");
+  console.log("Grafana panels: exact costs/consumption, single/multiple/all-property selectors and UTC dates/range boundaries in a Stockholm browser passed.");
 }
 
 main().catch(error => { console.error(error); process.exit(1); });

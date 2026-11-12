@@ -13,6 +13,24 @@ from .configuration import (
 from .models import ServiceVendorAssignment, VendorBillingSchedule
 
 
+def _save_replacement(old, replacement):
+    validate_configuration(proposed_configuration([old, replacement]))
+    # Assigning replacement.predecessor overwrites old's reverse relation cache.
+    # Read the saved successor so a historical insertion retains the entire chain.
+    successor = type(old).objects.filter(predecessor_id=old.pk).first()
+    with staged_configuration():
+        if successor is not None:
+            # Release the unique predecessor link until the inserted period exists.
+            successor.predecessor = None
+            successor.save(update_fields=["predecessor"])
+        old.save()
+        replacement.save()
+        if successor is not None:
+            successor.predecessor = replacement
+            successor.save(update_fields=["predecessor"])
+    return replacement
+
+
 @transaction.atomic
 def change_vendor(assignment_id, *, month, vendor, transition_month=False):
     old = ServiceVendorAssignment.objects.get(pk=assignment_id)
@@ -28,11 +46,7 @@ def change_vendor(assignment_id, *, month, vendor, transition_month=False):
         end_month=old.end_month,
     )
     old.end_month = month if transition_month else add_months(month, -1)
-    validate_configuration(proposed_configuration([old, replacement]))
-    with staged_configuration():
-        old.save()
-        replacement.save()
-    return replacement
+    return _save_replacement(old, replacement)
 
 
 @transaction.atomic
@@ -52,8 +66,4 @@ def change_billing_frequency(
         grace_days=grace_days,
     )
     old.end_month = add_months(month, -1)
-    validate_configuration(proposed_configuration([old, replacement]))
-    with staged_configuration():
-        old.save()
-        replacement.save()
-    return replacement
+    return _save_replacement(old, replacement)

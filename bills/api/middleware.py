@@ -8,7 +8,7 @@ from django.core.exceptions import RequestDataTooBig
 from django.db import OperationalError
 from django.utils.deprecation import MiddlewareMixin
 
-from .auth import verify_credential
+from .auth import PREFIX, verify_credential
 from .errors import ApiError, database_error_response, error_response
 
 JSON_LIMIT = 512 * 1024
@@ -16,7 +16,7 @@ JSON_LIMIT = 512 * 1024
 
 class ApiLoginRequiredMiddleware(LoginRequiredMiddleware):
     def process_view(self, request, view_func, view_args, view_kwargs):
-        if request.path.startswith("/api/v1/"):
+        if request.path.startswith(f"{PREFIX}/"):
             return None
         return super().process_view(request, view_func, view_args, view_kwargs)
 
@@ -45,9 +45,9 @@ class BoundedStream:
 
 class ApiContractMiddleware(MiddlewareMixin):
     def process_view(self, request, view_func, view_args, view_kwargs):
-        if not request.path.startswith("/api/v1/"):
+        if not request.path.startswith(f"{PREFIX}/"):
             return None
-        if request.path in ("/api/v1/docs", "/api/v1/openapi.json"):
+        if request.path in (f"{PREFIX}/docs", f"{PREFIX}/openapi.json"):
             return None
         try:
             verify_credential(request)
@@ -59,7 +59,7 @@ class ApiContractMiddleware(MiddlewareMixin):
             except ValueError:
                 raise ApiError(400, "malformed_request", "Invalid request length.") from None
             if request.method in ("POST", "PUT", "PATCH"):
-                upload = request.path == "/api/v1/documents" and request.method == "POST"
+                upload = request.path == f"{PREFIX}/documents" and request.method == "POST"
                 media = request.content_type
                 if upload:
                     if media != "multipart/form-data" or not request.content_params.get("boundary"):
@@ -82,7 +82,7 @@ class ApiContractMiddleware(MiddlewareMixin):
         return None
 
     def process_response(self, request, response):
-        if not request.path.startswith("/api/v1/"):
+        if not request.path.startswith(f"{PREFIX}/"):
             return response
         if response.status_code in (400, 401, 403, 404, 405, 413, 415, 500) and (
             not response.get("Content-Type", "").startswith("application/json")

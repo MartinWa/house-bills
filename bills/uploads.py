@@ -6,6 +6,7 @@ from django.core.files.uploadhandler import FileUploadHandler, StopUpload
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from .api.auth import PREFIX
 from .api.errors import ApiError, error_response
 from .api.middleware import BoundedStream
 
@@ -36,7 +37,7 @@ class BoundedPdfUploadHandler(FileUploadHandler):
 
 class BoundedUploadMiddleware(MiddlewareMixin):
     def process_view(self, request, view_func, view_args, view_kwargs):
-        api_upload = request.path == "/api/v1/documents" and request.method == "POST"
+        api_upload = request.path == f"{PREFIX}/documents" and request.method == "POST"
         if (
             request.resolver_match.view_name != "bills:upload" and not api_upload
         ) or request.method != "POST":
@@ -61,7 +62,7 @@ class BoundedUploadMiddleware(MiddlewareMixin):
 
     def process_response(self, request, response):
         if getattr(request, "upload_error", ""):
-            if request.path.startswith("/api/v1/"):
+            if request.path.startswith(f"{PREFIX}/"):
                 return error_response(
                     ApiError(413, "body_too_large", "Upload one PDF within the size limit.")
                 )

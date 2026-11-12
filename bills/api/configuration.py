@@ -540,6 +540,8 @@ def register_collection(spec):
 
 
 def named_path_parameters(view, aliases):
+    # Keep generic owner_id/key handlers while publishing resource-specific names
+    # in Ninja's inspected signature, request binding and generated OpenAPI schema.
     @wraps(view)
     def named(request, *args, **kwargs):
         return view(
@@ -650,11 +652,21 @@ def replace_period(request, response, model, key, payload):
             result["dry_run"] = True
         else:
             old.refresh_from_db()
+            # Relationships drive current lineage; these IDs retain the historical
+            # replacement event even after a later split or configuration deletion.
             relation = {
                 "api_replacement": {"predecessor_id": old.pk, "replacement_id": replacement.pk}
             }
             log_change(request, old, CHANGE, [{"changed": {"fields": ["end_month"]}}, relation])
             log_change(request, replacement, ADDITION, [{"added": {}}, relation])
+            successor = getattr(replacement, "replacement_period", None)
+            if successor is not None:
+                log_change(
+                    request,
+                    successor,
+                    CHANGE,
+                    f"API replacement predecessor changed from {old.pk} to {replacement.pk}",
+                )
             result = representation(replacement)
     if preview:
         return Status(200, result)
@@ -758,10 +770,10 @@ def formats(request):
     )
 
 
-@router.get("/invoice-formats/{key}", response=s.FormatOut)
-def invoice_format(request, key: str):
+@router.get("/invoice-formats/{format_key}", response=s.FormatOut)
+def invoice_format(request, format_key: str):
     query_values(request, [])
-    return format_representation(key)
+    return format_representation(format_key)
 
 
 @router.get("/vendors/{vendor_id}/invoice-formats", response=s.Page[s.FormatOut])
@@ -780,27 +792,30 @@ def vendor_formats(request, vendor_id: int):
     )
 
 
-@router.get("/vendors/{vendor_id}/invoice-formats/{key}", response=s.FormatOut)
-def vendor_format(request, vendor_id: int, key: str):
+@router.get("/vendors/{vendor_id}/invoice-formats/{format_key}", response=s.FormatOut)
+def vendor_format(request, vendor_id: int, format_key: str):
     query_values(request, [])
     require_model(request, VendorLayoutFamily, "view")
     get_record(Vendor, vendor_id)
-    if not VendorLayoutFamily.objects.filter(vendor_id=vendor_id, family=key).exists():
+    if not VendorLayoutFamily.objects.filter(vendor_id=vendor_id, family=format_key).exists():
         raise ApiError(404, "not_found", "Format selection not found.")
-    return format_representation(key, vendor_id)
+    return format_representation(format_key, vendor_id)
 
 
 @router.put(
-    "/vendors/{vendor_id}/invoice-formats/{key}", response={200: s.FormatOut, 201: s.FormatOut}
+    "/vendors/{vendor_id}/invoice-formats/{format_key}",
+    response={200: s.FormatOut, 201: s.FormatOut},
 )
 @documented_query("dry_run")
-def select_format(request, response: HttpResponse, vendor_id: int, key: str):
+def select_format(request, response: HttpResponse, vendor_id: int, format_key: str):
     preview = dry_run(request)
     require_model(request, VendorLayoutFamily, "add")
-    result = format_representation(key, vendor_id)
+    result = format_representation(format_key, vendor_id)
     with transaction.atomic():
         get_record(Vendor, vendor_id)
-        obj, created = VendorLayoutFamily.objects.get_or_create(vendor_id=vendor_id, family=key)
+        obj, created = VendorLayoutFamily.objects.get_or_create(
+            vendor_id=vendor_id, family=format_key
+        )
         if preview:
             transaction.set_rollback(True)
             result["dry_run"] = True
@@ -812,15 +827,17 @@ def select_format(request, response: HttpResponse, vendor_id: int, key: str):
     return Status(200, result)
 
 
-@router.delete("/vendors/{vendor_id}/invoice-formats/{key}", response={200: s.FormatOut, 204: None})
+@router.delete(
+    "/vendors/{vendor_id}/invoice-formats/{format_key}", response={200: s.FormatOut, 204: None}
+)
 @documented_query("dry_run")
-def unselect_format(request, vendor_id: int, key: str):
+def unselect_format(request, vendor_id: int, format_key: str):
     preview = dry_run(request)
     require_model(request, VendorLayoutFamily, "delete")
-    result = format_representation(key, vendor_id)
+    result = format_representation(format_key, vendor_id)
     with transaction.atomic():
         get_record(Vendor, vendor_id)
-        obj = VendorLayoutFamily.objects.filter(vendor_id=vendor_id, family=key).first()
+        obj = VendorLayoutFamily.objects.filter(vendor_id=vendor_id, family=format_key).first()
         if obj:
             deletion_allowed(request, obj)
             if not preview:

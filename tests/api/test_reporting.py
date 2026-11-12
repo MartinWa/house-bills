@@ -144,8 +144,8 @@ def test_water_dashboard_excludes_other_utility_units(api_client, ledger):  # no
     url = panel["targets"][0]["url"]
     url = (
         url.replace("$__combineValues(property_id=,,&,${property:csv})", f"property_id={house.pk}")
-        .replace("${__from:date:YYYY-MM-DD}", "2026-01-01")
-        .replace("${__to:date:YYYY-MM-DD}", "2026-02-02")
+        .replace("${__timeFrom:date:YYYY-MM-DD}", "2026-01-01")
+        .replace("${__timeTo:date:YYYY-MM-DD}", "2026-02-02")
     )
     parsed = urlsplit(url)
     response = client.get(parsed.path + "?" + parsed.query)

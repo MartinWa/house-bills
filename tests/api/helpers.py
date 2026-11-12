@@ -5,11 +5,10 @@ import json
 import pytest
 from django.test import Client
 
-from bills.models import (
-    ApiToken,
-)
+from bills.api.auth import PREFIX
+from bills.models import ApiToken
 
-BASE = "/api/v1"
+BASE = PREFIX
 
 
 @pytest.fixture

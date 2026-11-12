@@ -4,17 +4,19 @@ from functools import wraps
 
 from django.db import connections
 
+from .auth import PREFIX
+
 
 def consistent_reads(view):
     @wraps(view)
     def read(request, *args, **kwargs):
         # File downloads must read the current path after acquiring the storage lock.
-        source_download = request.path.startswith("/api/v1/documents/") and request.path.endswith(
+        source_download = request.path.startswith(f"{PREFIX}/documents/") and request.path.endswith(
             "/source"
         )
         if (
             request.method != "GET"
-            or request.path.startswith("/api/v1/reports/")
+            or request.path.startswith(f"{PREFIX}/reports/")
             or source_download
         ):
             return view(request, *args, **kwargs)

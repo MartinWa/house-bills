@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission
+from django.core.exceptions import ValidationError
 from django.db.backends.utils import CursorWrapper
 from django.test import Client
 
@@ -16,6 +17,7 @@ from bills.models import (
     ServiceInvoiceException,
     ServiceVendorAssignment,
     Vendor,
+    VendorBillingSchedule,
     VendorIssuerIdentifier,
 )
 
@@ -122,6 +124,90 @@ def test_replacement_links_survive_audit_deletion_and_preview_rollbacks(api_clie
     )
     assert send(client, "delete", f"/billing-schedules/{first['id']}").status_code == 204
     assert "predecessor" not in client.get(second["links"]["self"]).json()["links"]
+
+
+@pytest.mark.parametrize("period", ["assignment", "schedule"])
+def test_historical_split_reconnects_successor_and_rolls_back_failed_writes(
+    api_client, monkeypatch, period
+):
+    client, _, _, _ = api_client
+    house, vendor = setup(client)
+    if period == "assignment":
+        model = ServiceVendorAssignment
+        service = created(
+            client,
+            f"/properties/{house['id']}/services",
+            {"category": "water", "start_month": "2026-01-01"},
+        )
+        first = created(
+            client,
+            f"/services/{service['id']}/vendor-assignments",
+            {"vendor_id": vendor["id"], "start_month": "2026-01-01"},
+        )
+        later_vendor = created(client, "/vendors", {"name": "Later vendor", "slug": "later"})
+        middle_vendor = created(client, "/vendors", {"name": "Middle vendor", "slug": "middle"})
+        later_payload = {"vendor_id": later_vendor["id"]}
+        middle_payload = {"vendor_id": middle_vendor["id"]}
+    else:
+        model = VendorBillingSchedule
+        first = created(
+            client,
+            f"/vendors/{vendor['id']}/billing-schedules",
+            {"start_month": "2026-01-01", "first_expected_month": "2026-01-01"},
+        )
+        later_payload = {
+            "first_expected_month": "2026-07-01",
+            "frequency_months": 3,
+            "grace_days": 4,
+        }
+        middle_payload = {
+            "first_expected_month": "2026-04-01",
+            "frequency_months": 2,
+            "grace_days": 1,
+        }
+    path = first["links"]["self"].removeprefix(BASE) + "/replacement"
+    later = created(
+        client,
+        path,
+        {**later_payload, "start_month": "2026-07-01", "expected_end_month": None},
+    )
+    payload = {**middle_payload, "start_month": "2026-04-01", "expected_end_month": "2026-06-01"}
+    first_before = client.get(first["links"]["self"]).json()
+    later_before = client.get(later["links"]["self"]).json()
+    audit_count = LogEntry.objects.count()
+    preview = send(client, "post", path + "?dry_run=true", payload)
+    assert preview.status_code == 200 and preview.json()["dry_run"], preview.content
+    assert client.get(first["links"]["self"]).json() == first_before
+    assert client.get(later["links"]["self"]).json() == later_before
+    assert model.objects.count() == 2 and LogEntry.objects.count() == audit_count
+
+    original_save = model.save
+
+    def fail_insert(obj, *args, **kwargs):
+        if obj._state.adding and obj.start_month == date(2026, 4, 1):
+            raise ValidationError("Synthetic failure after the successor link was released.")
+        return original_save(obj, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(model, "save", fail_insert)
+        failed = send(client, "post", path, payload)
+    assert failed.status_code == 409, failed.content
+    assert client.get(first["links"]["self"]).json() == first_before
+    assert client.get(later["links"]["self"]).json() == later_before
+    assert model.objects.count() == 2 and LogEntry.objects.count() == audit_count
+
+    middle = created(client, path, payload)
+    first_after = client.get(first["links"]["self"]).json()
+    later_after = client.get(later["links"]["self"]).json()
+    assert first_after["end_month"] == "2026-03-01"
+    assert middle["start_month"] == "2026-04-01" and middle["end_month"] == "2026-06-01"
+    assert first_after["links"]["replacement"] == middle["links"]["self"]
+    assert middle["links"]["predecessor"] == first["links"]["self"]
+    assert middle["links"]["replacement"] == later["links"]["self"]
+    assert later_after["links"]["predecessor"] == middle["links"]["self"]
+    for field in ("id", "start_month", "end_month", "vendor_id", "enabled"):
+        assert later_after[field] == later_before[field]
+    assert model.objects.count() == 3
 
 
 @pytest.mark.parametrize(

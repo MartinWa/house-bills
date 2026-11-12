@@ -7660,16 +7660,16 @@
         ]
       }
     },
-    "/api/v1/invoice-formats/{key}": {
+    "/api/v1/invoice-formats/{format_key}": {
       "get": {
         "operationId": "bills_api_configuration_invoice_format",
         "summary": "Invoice Format",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "format_key",
             "schema": {
-              "title": "Key",
+              "title": "Format Key",
               "type": "string"
             },
             "required": true
@@ -7970,7 +7970,7 @@
         ]
       }
     },
-    "/api/v1/vendors/{vendor_id}/invoice-formats/{key}": {
+    "/api/v1/vendors/{vendor_id}/invoice-formats/{format_key}": {
       "get": {
         "operationId": "bills_api_configuration_vendor_format",
         "summary": "Vendor Format",
@@ -7986,9 +7986,9 @@
           },
           {
             "in": "path",
-            "name": "key",
+            "name": "format_key",
             "schema": {
-              "title": "Key",
+              "title": "Format Key",
               "type": "string"
             },
             "required": true
@@ -8130,9 +8130,9 @@
           },
           {
             "in": "path",
-            "name": "key",
+            "name": "format_key",
             "schema": {
-              "title": "Key",
+              "title": "Format Key",
               "type": "string"
             },
             "required": true
@@ -8294,9 +8294,9 @@
           },
           {
             "in": "path",
-            "name": "key",
+            "name": "format_key",
             "schema": {
-              "title": "Key",
+              "title": "Format Key",
               "type": "string"
             },
             "required": true

@@ -127,6 +127,9 @@ Retries cannot create another overlapping replacement. Ordinary period POST neve
 closes a predecessor. Canonical reads retain predecessor/replacement links through
 database relationships, independently of the audit trail. Inspect current state after
 an ambiguous timeout.
+Splitting an earlier period reconnects its existing successor to the inserted period.
+Deleting a predecessor clears the surviving replacement's predecessor link (`SET_NULL`)
+without deleting that replacement.
 
 ## Documents and reviews
 
@@ -228,6 +231,10 @@ The [synthetic dashboard](api/grafana-dashboard.json) sums cost groups per prope
 invoice month and currency, and signed water consumption per property, period end
 and unit before plotting. Property IDs distinguish identical display names, and
 points are sorted by UTC timestamp. It has property selection and date filters.
+The date filters use Infinity's backend `${__timeFrom:date:YYYY-MM-DD}` and
+`${__timeTo:date:YYYY-MM-DD}` macros so UTC boundaries stay independent of browser
+timezones. Grafana's custom `${__from:date:YYYY-MM-DD}` formatting uses browser time
+even when the dashboard timezone is UTC.
 It is a transport verification example, not a deployment-specific dashboard.
 For real use replace its URL and property options using `/reports/selectors`;
 create an Infinity datasource
