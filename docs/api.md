@@ -229,6 +229,10 @@ Build the development and browser images, then run the disposable integration:
 uv run --no-project --python 3.14 tools/check_api_grafana.py
 ```
 
+The driver keeps disposable API tokens in memory and passes only their SHA-256 digests
+to the API container. The sequential client receives its token through standard input;
+Grafana stores its reporting token in encrypted `secureJsonData`.
+
 It starts [isolated Compose services](../compose.api-check.yaml), seeds 1,101 invented
 approved invoices, checks Infinity backend totals for single/multiple/all-property
 selections, UTC month/period endpoints, live approvals/corrections, the sequential

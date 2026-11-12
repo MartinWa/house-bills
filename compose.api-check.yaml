@@ -8,6 +8,8 @@ services:
     environment:
       HOUSE_BILLS_DATA_DIR: /state/api-check
       HOUSE_BILLS_UPDATE_CHECK: "false"
+      HOUSE_BILLS_CHECK_REPORTING_TOKEN_DIGEST: ${HOUSE_BILLS_CHECK_REPORTING_TOKEN_DIGEST:?Run tools/check_api_grafana.py}
+      HOUSE_BILLS_CHECK_AUTOMATION_TOKEN_DIGEST: ${HOUSE_BILLS_CHECK_AUTOMATION_TOKEN_DIGEST:?Run tools/check_api_grafana.py}
     ports:
       - "127.0.0.1:8002:8000"
     volumes:

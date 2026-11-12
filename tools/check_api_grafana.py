@@ -1,7 +1,10 @@
 """Verify Infinity backend queries using HTTP only, with disposable Compose state."""
 
 import base64
+import hashlib
 import json
+import os
+import secrets
 import subprocess
 import time
 from http.client import HTTPException
@@ -66,20 +69,16 @@ def query(kind, mode, property_ids=(), *, date_from="2026-01-01", date_to="2026-
     return status, result
 
 
-def check_live_updates():
-    secret = subprocess.run(
-        [*COMPOSE, "exec", "-T", "app", "cat", "/state/api-check/automation-token"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-
+def check_live_updates(credential):
     def call(method, path, body=None):
         with urlopen(
             Request(
                 "http://127.0.0.1:8002" + path,
                 method=method,
-                headers={"Authorization": f"Bearer {secret}", "Content-Type": "application/json"},
+                headers={
+                    "Authorization": f"Bearer {credential}",
+                    "Content-Type": "application/json",
+                },
                 data=json.dumps(body).encode() if body is not None else None,
             ),
             timeout=20,
@@ -161,7 +160,7 @@ def check_live_updates():
     check_totals(2)
 
 
-def check_sequential_example():
+def check_sequential_example(credential, environment):
     script = """
 import os
 import subprocess
@@ -175,17 +174,23 @@ pages[0] = [next((line.replace(old, new) for old, new in replacements.items() if
                  line) for line in pages[0]]
 pages[0].append('VAT-nr SE000000999901')
 pdf = write_pdf(Path('/state/api-check/example.pdf'), pages)
-os.environ['HOUSE_BILLS_API_TOKEN'] = Path('/state/api-check/automation-token').read_text()
+os.environ['HOUSE_BILLS_API_TOKEN'] = sys.stdin.readline().strip()
 result = subprocess.run([sys.executable, 'docs/api/example.py',
                          '--base-url', 'http://localhost:8000/api/v1', '--pdf', str(pdf)],
                         input='APPROVE\\n', text=True, capture_output=True)
 assert result.returncode == 0, result.stdout + result.stderr
 print('Documented sequential setup, upload, approval, correction and reports passed.')
 """
-    subprocess.run([*COMPOSE, "exec", "-T", "app", "python", "-c", script], check=True)
+    subprocess.run(
+        [*COMPOSE, "exec", "-T", "app", "python", "-c", script],
+        input=credential + "\n",
+        env=environment,
+        text=True,
+        check=True,
+    )
 
 
-def check():
+def check(credentials, environment):
     deadline = time.monotonic() + 55
     while True:
         try:
@@ -197,12 +202,6 @@ def check():
         if time.monotonic() >= deadline:
             raise RuntimeError("Grafana did not become ready.")
         time.sleep(0.5)
-    token = subprocess.run(
-        [*COMPOSE, "exec", "-T", "app", "cat", "/state/api-check/reporting-token"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
     status, _ = request(
         "/api/datasources",
         {
@@ -211,7 +210,7 @@ def check():
             "type": PLUGIN,
             "access": "proxy",
             "jsonData": {"auth_method": "bearerToken", "allowedHosts": ["http://app:8000"]},
-            "secureJsonData": {"bearerToken": token},
+            "secureJsonData": {"bearerToken": credentials["reporting"]},
         },
     )
     assert status == 200, "Datasource creation failed."
@@ -260,8 +259,8 @@ def check():
         ],
         check=True,
     )
-    check_live_updates()
-    check_sequential_example()
+    check_live_updates(credentials["automation"])
+    check_sequential_example(credentials["automation"], environment)
     print(
         "Grafana 13.2.4 / Infinity 4.1.6: complete totals, property filters, "
         "UTC billing endpoints, live approvals/corrections and visible filter limits passed."
@@ -269,12 +268,20 @@ def check():
 
 
 def main():
-    subprocess.run([*COMPOSE, "up", "-d"], check=True)
+    credentials = {profile: secrets.token_urlsafe(32) for profile in ("reporting", "automation")}
+    # Docker metadata may persist environment values: send only digests to Compose.
+    environment = os.environ | {
+        f"HOUSE_BILLS_CHECK_{profile.upper()}_TOKEN_DIGEST": hashlib.sha256(
+            credential.encode("ascii")
+        ).hexdigest()
+        for profile, credential in credentials.items()
+    }
     try:
-        check()
+        subprocess.run([*COMPOSE, "up", "-d"], env=environment, check=True)
+        check(credentials, environment)
     finally:
         # Only the explicitly named check project's containers and volume are removed.
-        subprocess.run([*COMPOSE, "down", "--volumes"], check=True)
+        subprocess.run([*COMPOSE, "down", "--volumes"], env=environment, check=True)
 
 
 if __name__ == "__main__":

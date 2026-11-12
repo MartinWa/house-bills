@@ -2,7 +2,6 @@
 
 import os
 from datetime import date
-from pathlib import Path
 
 
 def seed():
@@ -19,10 +18,12 @@ def seed():
             "synthetic-api", password="synthetic-only"
         )
         for profile in ("reporting", "automation"):
-            _, secret = ApiToken.issue(name=f"Synthetic {profile}", owner=owner, profile=profile)
-            token_file = Path(os.environ["HOUSE_BILLS_DATA_DIR"]) / f"{profile}-token"
-            token_file.write_text(secret, encoding="ascii")
-            token_file.chmod(0o600)
+            ApiToken.objects.create(
+                name=f"Synthetic {profile}",
+                owner=owner,
+                profile=profile,
+                digest=os.environ[f"HOUSE_BILLS_CHECK_{profile.upper()}_TOKEN_DIGEST"],
+            )
         houses = [
             Property.objects.create(name=f"Example house {i}", slug=f"example-house-{i}")
             for i in (1, 2)
