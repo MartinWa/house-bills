@@ -136,6 +136,12 @@ class VendorIssuerIdentifier(ValidatedModel):
             ),
         ]
 
+    def clean_fields(self, exclude=None):
+        # Unicode normalization can expand text; validate the length after normalization.
+        if "value" not in (exclude or ()) and isinstance(self.value, str):
+            self.value = normalize_identifier(self.kind, self.value)
+        super().clean_fields(exclude=exclude)
+
     def clean(self):
         self.value = normalize_identifier(self.kind, self.value)
         if not self.value:
@@ -187,6 +193,12 @@ class InvoicePropertyRule(ValidatedModel):
                 name="property_identifier_specific",
             ),
         ]
+
+    def clean_fields(self, exclude=None):
+        # Unicode normalization can expand text; validate the length after normalization.
+        if "value" not in (exclude or ()) and isinstance(self.value, str):
+            self.value = normalize_identifier(self.kind, self.value)
+        super().clean_fields(exclude=exclude)
 
     def clean(self):
         self.value = normalize_identifier(self.kind, self.value)

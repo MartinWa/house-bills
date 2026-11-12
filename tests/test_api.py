@@ -27,12 +27,14 @@ from bills.models import (
     BillingSection,
     Document,
     Invoice,
+    InvoicePropertyRule,
     Property,
     PropertyService,
     ReviewRevision,
     ServiceInvoiceException,
     Usage,
     Vendor,
+    VendorIssuerIdentifier,
 )
 from bills.review_edits import ReviewEdits, build_review
 from bills.review_forms import ReviewForms
@@ -396,6 +398,68 @@ def test_expired_inactive_and_immutable_tokens(api_client):
     owner.is_active = False
     owner.save()
     assert client.get(BASE + "/me").status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("collection", "model", "kind", "maximum", "normalized_pair"),
+    [
+        ("identifiers", VendorIssuerIdentifier, "vat", 160, "SS"),
+        ("property-rules", InvoicePropertyRule, "delivery_address", 200, "ss"),
+    ],
+)
+def test_configuration_validates_normalized_identifier_length(
+    api_client, collection, model, kind, maximum, normalized_pair
+):
+    client, _, _, _ = api_client
+    house, vendor = setup(client)
+    path = f"/vendors/{vendor['id']}/{collection}"
+    body = {"kind": kind, "value": "ß" * (maximum // 2)}
+    if collection == "property-rules":
+        body["property_id"] = house["id"]
+    resource = created(client, path, body)
+    expected = normalized_pair * (maximum // 2)
+    assert resource["value"] == expected
+    before = LogEntry.objects.count()
+    oversized = "ß" * maximum
+    for method, target, payload in (
+        ("post", path, {**body, "value": oversized}),
+        ("patch", resource["links"]["self"].removeprefix(BASE), {"value": oversized}),
+    ):
+        for suffix in ("", "?dry_run=true"):
+            response = send(client, method, target + suffix, payload)
+            assert response.status_code == 422, response.content
+            error = response.json()["error"]
+            assert error["code"] == "validation_error"
+            assert any(
+                detail["path"] == "value" and detail["code"] == "max_length"
+                for detail in error["details"]
+            )
+            assert model.objects.count() == 1
+            assert model.objects.get(pk=resource["id"]).value == expected
+            assert LogEntry.objects.count() == before
+    assert client.get(resource["links"]["self"]).json()["value"] == expected
+    page = client.get(BASE + path)
+    assert page.status_code == 200, page.content
+    assert page.json()["count"] == 1 and page.json()["items"][0]["value"] == expected
+
+
+@pytest.mark.parametrize("kind", ["installation", "delivery_address"])
+def test_property_rule_kind_change_revalidates_normalized_length(api_client, kind):
+    client, _, _, _ = api_client
+    house, vendor = setup(client)
+    resource = created(
+        client,
+        f"/vendors/{vendor['id']}/property-rules",
+        {"kind": "contract", "value": "ß" * 200, "property_id": house["id"]},
+    )
+    before = LogEntry.objects.count()
+    for suffix in ("", "?dry_run=true"):
+        response = send(
+            client, "patch", resource["links"]["self"].removeprefix(BASE) + suffix, {"kind": kind}
+        )
+        assert response.status_code == 422, response.content
+        assert LogEntry.objects.count() == before
+        assert client.get(resource["links"]["self"]).json() == resource
 
 
 def test_fresh_configuration_patch_dry_run_filters_and_replacements(api_client):
