@@ -14,7 +14,7 @@ from pydantic import (
     create_model,
 )
 
-from bills.review_edits import REVIEW_LIMITS
+from bills.review_edits import REVIEW_IDENTIFIER_MAX_LENGTH, REVIEW_LIMITS
 
 Integer = Annotated[StrictInt, Field(ge=-(2**63), le=2**63 - 1)]
 Id = Annotated[StrictInt, Field(ge=1, le=2**63 - 1)]
@@ -308,7 +308,7 @@ class ReviewIdentifier(Input):
         "organization",
         "vat",
     ]
-    value: Annotated[str, Field(min_length=1, max_length=200)]
+    value: Annotated[str, Field(min_length=1, max_length=REVIEW_IDENTIFIER_MAX_LENGTH)]
     source_page: SourcePage = 1
     source_index: SourceIndex | None = None
 

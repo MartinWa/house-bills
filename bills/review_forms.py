@@ -14,13 +14,14 @@ from .presentation import scaled_value
 from .review_edits import (
     HEADER_MONEY,
     INVOICE_SCOPE,
+    REVIEW_IDENTIFIER_MAX_LENGTH,
     REVIEW_LIMITS,
     SECTION_MONEY,
     ReviewEdits,
     build_review,
     evidence_page,
+    normalize_review_identifier,
 )
-from .validators import normalize_identifier
 
 IDENTIFIER_KINDS = [
     ("customer_account", "Customer account"),
@@ -244,7 +245,7 @@ class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
 class ReviewIdentifierForm(forms.Form):
     scope = forms.ChoiceField(label="Applies to", choices=[], initial=INVOICE_SCOPE)
     kind = forms.ChoiceField(label="Identifier type", choices=IDENTIFIER_KINDS)
-    value = forms.CharField(max_length=200)
+    value = forms.CharField(max_length=REVIEW_IDENTIFIER_MAX_LENGTH)
     page = forms.IntegerField(label="Source page", min_value=1, initial=1)
 
     def __init__(self, *args, section_choices=(), **kwargs):
@@ -252,7 +253,9 @@ class ReviewIdentifierForm(forms.Form):
         self.fields["scope"].choices = [(INVOICE_SCOPE, "Invoice"), *section_choices]
 
     def clean_value(self):
-        return normalize_identifier(self.cleaned_data.get("kind", ""), self.cleaned_data["value"])
+        return normalize_review_identifier(
+            self.cleaned_data.get("kind", ""), self.cleaned_data["value"]
+        )
 
 
 class ReviewFormSet(forms.BaseFormSet):

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxLengthValidator
 
 from .configuration import validate_classification
 from .models import Property, Vendor
@@ -13,6 +14,7 @@ from .parsing.types import Usage as CandidateUsage
 from .validators import normalize_identifier
 
 REVIEW_LIMITS = {"sections": 20, "usages": 60, "identifiers": 60}
+REVIEW_IDENTIFIER_MAX_LENGTH = 200
 SECTION_MONEY = ("net_minor", "vat_minor", "gross_minor")
 HEADER_MONEY = (
     "net_minor",
@@ -22,6 +24,15 @@ HEADER_MONEY = (
     "amount_due_minor",
 )
 INVOICE_SCOPE = "invoice"
+
+
+def normalize_review_identifier(kind, value):
+    """Validate the persisted value after Unicode case conversion can expand it."""
+    value = normalize_identifier(kind, value)
+    if not value:
+        raise ValidationError("An identifier value is required.")
+    MaxLengthValidator(REVIEW_IDENTIFIER_MAX_LENGTH)(value)
+    return value
 
 
 @dataclass(frozen=True)
@@ -170,9 +181,10 @@ def build_review(edits, *, values, warnings=()):
             )
         index = data["source_index"]
         original = raw_identifiers[index] if index is not None else {}
-        normalized = normalize_identifier(data["kind"], data["value"])
-        if not normalized:
-            raise ValidationError({"identifiers": "An identifier value is required."})
+        try:
+            normalized = normalize_review_identifier(data["kind"], data["value"])
+        except ValidationError as exc:
+            raise ValidationError({"identifiers": exc}) from exc
         unchanged = all(
             data[field] == original.get(field) for field in ("kind", "scope")
         ) and normalized == normalize_identifier(data["kind"], original.get("value", ""))

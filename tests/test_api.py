@@ -134,6 +134,58 @@ def test_largest_unicode_review_fits_body_limit_and_preserves_all_rows(api_clien
     assert result.json()["note"] == edits["note"]
 
 
+@pytest.mark.parametrize("kind", ["delivery_address", "installation", "organization", "vat"])
+@pytest.mark.parametrize(("character", "expansion"), [("ß", "ss"), ("ﬃ", "ffi")])
+@pytest.mark.parametrize("scope", ["invoice", "water"])
+def test_review_validates_normalized_identifier_length_and_keeps_corrections_usable(
+    api_client, kind, character, expansion, scope
+):
+    client, _, _, _ = api_client
+    house, vendor = setup(client)
+    document = send(client, "post", "/manual-invoices", {}).json()["document"]
+    source = client.get(document["links"]["review"]).json()
+    value = "a" * (200 - len(expansion)) + character
+    expected = "a" * (200 - len(expansion)) + expansion
+    if kind != "delivery_address":
+        expected = expected.upper()
+    edits = manual_body(house, vendor)
+    edits["identifiers"] = [{"scope": scope, "kind": kind, "value": value}]
+    result = send(
+        client,
+        "post",
+        f"/documents/{document['id']}/reviews",
+        {"review_token": source["review_token"], "edits": edits},
+    )
+    assert result.status_code == 201, result.content
+    source = client.get(document["links"]["review"]).json()
+    assert source["edits"]["identifiers"][0]["value"] == expected
+    source["edits"]["note"] = "Correction with the normalized identifier retained."
+    correction = send(
+        client,
+        "post",
+        f"/documents/{document['id']}/reviews",
+        {"review_token": source["review_token"], "edits": source["edits"]},
+    )
+    assert correction.status_code == 201, correction.content
+    snapshot = correction.json()["snapshot"]
+    source = client.get(document["links"]["review"]).json()
+    source["edits"]["identifiers"][0]["value"] = value + "a"
+    rejected = send(
+        client,
+        "post",
+        f"/documents/{document['id']}/reviews",
+        {"review_token": source["review_token"], "edits": source["edits"]},
+    )
+    assert rejected.status_code == 422, rejected.content
+    assert any(
+        detail["path"] == "identifiers" and detail["code"] == "max_length"
+        for detail in rejected.json()["error"]["details"]
+    )
+    invoice = Invoice.objects.get(document_id=document["id"])
+    assert invoice.review_revision == 2 and invoice.reviews.count() == 2
+    assert invoice.reviews.get(revision=2).snapshot == snapshot
+
+
 def test_review_retains_late_source_evidence_when_large_extraction_is_trimmed(api_client):
     from dataclasses import replace
 
