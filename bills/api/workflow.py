@@ -9,7 +9,7 @@ from django.http import FileResponse, HttpResponse
 from ninja import File, Router, Status
 from ninja.files import UploadedFile
 
-from bills.deleting import delete_document, deletion_token
+from bills.deleting import StaleDeletionError, delete_document, deletion_token
 from bills.invoice_coverage import mark_invoice_not_sent
 from bills.manual_entries import create_manual_entry
 from bills.models import (
@@ -157,11 +157,9 @@ def remove_document(request, key: int):
     token = request.headers.get("Deletion-Token", "")
     try:
         cleaned = delete_document(key, token=token)
-    except ValidationError as exc:
-        from bills.deleting import StaleDeletionError
-
-        if isinstance(exc, StaleDeletionError):
-            raise
+    except StaleDeletionError:
+        raise
+    except ValidationError:
         raise ApiError(400, "invalid_token", "Invalid deletion token.") from None
     return {"document_id": key, "deleted": True, "cleanup_pending": not cleaned}
 

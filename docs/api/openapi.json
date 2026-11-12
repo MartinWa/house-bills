@@ -600,16 +600,16 @@
         ]
       }
     },
-    "/api/v1/properties/{key}": {
+    "/api/v1/properties/{property_id}": {
       "get": {
         "operationId": "get_property_read_record",
         "summary": "Read record: property",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "property_id",
             "schema": {
-              "title": "Key",
+              "title": "Property Id",
               "type": "integer"
             },
             "required": true
@@ -742,9 +742,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "property_id",
             "schema": {
-              "title": "Key",
+              "title": "Property Id",
               "type": "integer"
             },
             "required": true
@@ -897,9 +897,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "property_id",
             "schema": {
-              "title": "Key",
+              "title": "Property Id",
               "type": "integer"
             },
             "required": true
@@ -1391,16 +1391,16 @@
         ]
       }
     },
-    "/api/v1/vendors/{key}": {
+    "/api/v1/vendors/{vendor_id}": {
       "get": {
         "operationId": "get_vendor_read_record",
         "summary": "Read record: vendor",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "vendor_id",
             "schema": {
-              "title": "Key",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -1533,9 +1533,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "vendor_id",
             "schema": {
-              "title": "Key",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -1688,9 +1688,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "vendor_id",
             "schema": {
-              "title": "Key",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -1831,16 +1831,16 @@
         ]
       }
     },
-    "/api/v1/vendors/{owner_id}/identifiers": {
+    "/api/v1/vendors/{vendor_id}/identifiers": {
       "get": {
         "operationId": "get_vendorissueridentifier_list_records",
         "summary": "List records: vendorissueridentifier",
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "vendor_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -2029,9 +2029,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "vendor_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -2189,16 +2189,16 @@
         ]
       }
     },
-    "/api/v1/vendor-identifiers/{key}": {
+    "/api/v1/vendor-identifiers/{identifier_id}": {
       "get": {
         "operationId": "get_vendorissueridentifier_read_record",
         "summary": "Read record: vendorissueridentifier",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "identifier_id",
             "schema": {
-              "title": "Key",
+              "title": "Identifier Id",
               "type": "integer"
             },
             "required": true
@@ -2331,9 +2331,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "identifier_id",
             "schema": {
-              "title": "Key",
+              "title": "Identifier Id",
               "type": "integer"
             },
             "required": true
@@ -2486,9 +2486,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "identifier_id",
             "schema": {
-              "title": "Key",
+              "title": "Identifier Id",
               "type": "integer"
             },
             "required": true
@@ -2629,16 +2629,16 @@
         ]
       }
     },
-    "/api/v1/vendors/{owner_id}/property-rules": {
+    "/api/v1/vendors/{vendor_id}/property-rules": {
       "get": {
         "operationId": "get_invoicepropertyrule_list_records",
         "summary": "List records: invoicepropertyrule",
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "vendor_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -2828,9 +2828,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "vendor_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -2988,16 +2988,16 @@
         ]
       }
     },
-    "/api/v1/property-rules/{key}": {
+    "/api/v1/property-rules/{rule_id}": {
       "get": {
         "operationId": "get_invoicepropertyrule_read_record",
         "summary": "Read record: invoicepropertyrule",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "rule_id",
             "schema": {
-              "title": "Key",
+              "title": "Rule Id",
               "type": "integer"
             },
             "required": true
@@ -3130,9 +3130,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "rule_id",
             "schema": {
-              "title": "Key",
+              "title": "Rule Id",
               "type": "integer"
             },
             "required": true
@@ -3285,9 +3285,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "rule_id",
             "schema": {
-              "title": "Key",
+              "title": "Rule Id",
               "type": "integer"
             },
             "required": true
@@ -3778,16 +3778,16 @@
         ]
       }
     },
-    "/api/v1/subcategories/{key}": {
+    "/api/v1/subcategories/{subcategory_key}": {
       "get": {
         "operationId": "get_subcategory_read_record",
         "summary": "Read record: subcategory",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "subcategory_key",
             "schema": {
-              "title": "Key",
+              "title": "Subcategory Key",
               "type": "string"
             },
             "required": true
@@ -3920,9 +3920,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "subcategory_key",
             "schema": {
-              "title": "Key",
+              "title": "Subcategory Key",
               "type": "string"
             },
             "required": true
@@ -4075,9 +4075,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "subcategory_key",
             "schema": {
-              "title": "Key",
+              "title": "Subcategory Key",
               "type": "string"
             },
             "required": true
@@ -4218,16 +4218,16 @@
         ]
       }
     },
-    "/api/v1/properties/{owner_id}/services": {
+    "/api/v1/properties/{property_id}/services": {
       "get": {
         "operationId": "get_propertyservice_list_records",
         "summary": "List records: propertyservice",
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "property_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Property Id",
               "type": "integer"
             },
             "required": true
@@ -4436,9 +4436,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "property_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Property Id",
               "type": "integer"
             },
             "required": true
@@ -4596,16 +4596,16 @@
         ]
       }
     },
-    "/api/v1/services/{key}": {
+    "/api/v1/services/{service_id}": {
       "get": {
         "operationId": "get_propertyservice_read_record",
         "summary": "Read record: propertyservice",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "service_id",
             "schema": {
-              "title": "Key",
+              "title": "Service Id",
               "type": "integer"
             },
             "required": true
@@ -4738,9 +4738,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "service_id",
             "schema": {
-              "title": "Key",
+              "title": "Service Id",
               "type": "integer"
             },
             "required": true
@@ -4893,9 +4893,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "service_id",
             "schema": {
-              "title": "Key",
+              "title": "Service Id",
               "type": "integer"
             },
             "required": true
@@ -5036,16 +5036,16 @@
         ]
       }
     },
-    "/api/v1/services/{owner_id}/vendor-assignments": {
+    "/api/v1/services/{service_id}/vendor-assignments": {
       "get": {
         "operationId": "get_servicevendorassignment_list_records",
         "summary": "List records: servicevendorassignment",
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "service_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Service Id",
               "type": "integer"
             },
             "required": true
@@ -5246,9 +5246,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "service_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Service Id",
               "type": "integer"
             },
             "required": true
@@ -5406,16 +5406,16 @@
         ]
       }
     },
-    "/api/v1/vendor-assignments/{key}": {
+    "/api/v1/vendor-assignments/{assignment_id}": {
       "get": {
         "operationId": "get_servicevendorassignment_read_record",
         "summary": "Read record: servicevendorassignment",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "assignment_id",
             "schema": {
-              "title": "Key",
+              "title": "Assignment Id",
               "type": "integer"
             },
             "required": true
@@ -5548,9 +5548,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "assignment_id",
             "schema": {
-              "title": "Key",
+              "title": "Assignment Id",
               "type": "integer"
             },
             "required": true
@@ -5703,9 +5703,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "assignment_id",
             "schema": {
-              "title": "Key",
+              "title": "Assignment Id",
               "type": "integer"
             },
             "required": true
@@ -5846,16 +5846,16 @@
         ]
       }
     },
-    "/api/v1/vendors/{owner_id}/billing-schedules": {
+    "/api/v1/vendors/{vendor_id}/billing-schedules": {
       "get": {
         "operationId": "get_vendorbillingschedule_list_records",
         "summary": "List records: vendorbillingschedule",
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "vendor_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -6045,9 +6045,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "owner_id",
+            "name": "vendor_id",
             "schema": {
-              "title": "Owner Id",
+              "title": "Vendor Id",
               "type": "integer"
             },
             "required": true
@@ -6205,16 +6205,16 @@
         ]
       }
     },
-    "/api/v1/billing-schedules/{key}": {
+    "/api/v1/billing-schedules/{schedule_id}": {
       "get": {
         "operationId": "get_vendorbillingschedule_read_record",
         "summary": "Read record: vendorbillingschedule",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "schedule_id",
             "schema": {
-              "title": "Key",
+              "title": "Schedule Id",
               "type": "integer"
             },
             "required": true
@@ -6347,9 +6347,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "schedule_id",
             "schema": {
-              "title": "Key",
+              "title": "Schedule Id",
               "type": "integer"
             },
             "required": true
@@ -6502,9 +6502,9 @@
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "schedule_id",
             "schema": {
-              "title": "Key",
+              "title": "Schedule Id",
               "type": "integer"
             },
             "required": true
@@ -6861,16 +6861,16 @@
         ]
       }
     },
-    "/api/v1/vendor-assignments/{key}/replacement": {
+    "/api/v1/vendor-assignments/{assignment_id}/replacement": {
       "post": {
         "operationId": "bills_api_configuration_replace_assignment",
         "summary": "Replace Assignment",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "assignment_id",
             "schema": {
-              "title": "Key",
+              "title": "Assignment Id",
               "type": "integer"
             },
             "required": true
@@ -7028,16 +7028,16 @@
         ]
       }
     },
-    "/api/v1/billing-schedules/{key}/replacement": {
+    "/api/v1/billing-schedules/{schedule_id}/replacement": {
       "post": {
         "operationId": "bills_api_configuration_replace_schedule",
         "summary": "Replace Schedule",
         "parameters": [
           {
             "in": "path",
-            "name": "key",
+            "name": "schedule_id",
             "schema": {
-              "title": "Key",
+              "title": "Schedule Id",
               "type": "integer"
             },
             "required": true

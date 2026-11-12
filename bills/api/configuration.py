@@ -1,15 +1,16 @@
 """Owner-scoped configuration routes using validated models and dated services."""
 
 import inspect
-import json
 from dataclasses import dataclass
+from functools import wraps
 
 from django.contrib import admin
-from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
+from django.contrib.admin.models import ADDITION, CHANGE, DELETION
 from django.contrib.admin.utils import get_deleted_objects
-from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from ninja import Router, Status
 
@@ -32,15 +33,64 @@ from bills.parsing.registry import LAYOUTS, layout_family_choices
 from . import schemas as s
 from .audit import log_change
 from .auth import PREFIX, require_model
-from .collections import boolean, filter_collection, page_response, query_values
+from .collections import boolean, filter_collection, page_response, pagination, query_values
 from .contract import documented_query, query_parameters
-from .errors import ApiError
+from .errors import ApiError, invalid_parameter
 
 router = Router(tags=["Configuration"])
 
 
 def resource_path(segment, key):
     return f"{PREFIX}/{segment}/{key}" if key is not None else None
+
+
+def configuration_queryset(model):
+    relations = {
+        Vendor: ("default_property",),
+        VendorIssuerIdentifier: ("vendor",),
+        InvoicePropertyRule: ("vendor", "property"),
+        PropertyService: ("property", "subcategory"),
+        ServiceVendorAssignment: (
+            "vendor",
+            "property_service__property",
+            "property_service__subcategory",
+            "replacement_period",
+        ),
+        VendorBillingSchedule: ("vendor", "replacement_period"),
+        ServiceInvoiceException: ("vendor",),
+    }
+    counts = {
+        Property: ("services",),
+        Vendor: (
+            "issuer_identifiers",
+            "layout_families",
+            "property_identifiers",
+            "billing_schedules",
+            "service_assignments",
+        ),
+        PropertyService: ("vendor_assignments",),
+    }
+    queryset = model.objects.all()
+    if model in relations:
+        queryset = queryset.select_related(*relations[model])
+    for name in counts.get(model, ()):
+        relation = model._meta.get_field(name)
+        related_counts = (
+            relation.related_model.objects.filter(**{relation.field.name: OuterRef("pk")})
+            .order_by()
+            .values(relation.field.name)
+            .annotate(total=Count("pk"))
+            .values("total")
+        )
+        queryset = queryset.annotate(**{f"{name}_count": Coalesce(Subquery(related_counts), 0)})
+    return queryset
+
+
+def relation_count(obj, name):
+    if not obj.pk:
+        return 0
+    count = getattr(obj, f"{name}_count", None)
+    return count if count is not None else getattr(obj, name).count()
 
 
 def representation(obj):
@@ -50,7 +100,7 @@ def representation(obj):
         segment = "properties"
         fields = {"name": obj.name, "slug": obj.slug}
         links["services"] = {
-            "count": obj.services.count() if obj.pk else 0,
+            "count": relation_count(obj, "services"),
             "href": f"{PREFIX}/properties/{obj.pk}/services",
         }
     elif isinstance(obj, Vendor):
@@ -71,7 +121,7 @@ def representation(obj):
             "vendor-assignments": "service_assignments",
         }.items():
             links[name.replace("-", "_")] = {
-                "count": getattr(obj, relation).count() if obj.pk else 0,
+                "count": relation_count(obj, relation),
                 "href": f"{PREFIX}/vendors/{obj.pk}/{name}",
             }
     elif isinstance(obj, VendorIssuerIdentifier):
@@ -129,7 +179,7 @@ def representation(obj):
             subcategory=resource_path("subcategories", obj.subcategory_id),
         )
         links["vendor_assignments"] = {
-            "count": obj.vendor_assignments.count() if obj.pk else 0,
+            "count": relation_count(obj, "vendor_assignments"),
             "href": f"{PREFIX}/services/{obj.pk}/vendor-assignments",
         }
     elif isinstance(obj, ServiceVendorAssignment):
@@ -196,30 +246,12 @@ def representation(obj):
     if isinstance(obj, (PropertyService, ServiceVendorAssignment, VendorBillingSchedule)):
         fields.update(start_month=obj.start_month, end_month=obj.end_month, enabled=obj.is_active)
     if isinstance(obj, (ServiceVendorAssignment, VendorBillingSchedule)) and obj.pk:
-        entries = LogEntry.objects.filter(
-            content_type=ContentType.objects.get_for_model(type(obj)),
-            object_id=str(obj.pk),
-            change_message__contains='"api_replacement"',
-        ).order_by("-action_time", "-pk")
-        # A middle period has both its original predecessor and a later replacement.
-        # Each direction has its own audit action; ordinary edits do not hide either.
-        for action in (ADDITION, CHANGE):
-            entry = entries.filter(action_flag=action).first()
-            if entry is None:
-                continue
-            actions = json.loads(entry.change_message)
-            relation = next(
-                item["api_replacement"] for item in actions if "api_replacement" in item
-            )
-            if obj.pk == relation["replacement_id"]:
-                target = relation["predecessor_id"]
-                if type(obj).objects.filter(pk=target).exists():
-                    links["predecessor"] = resource_path(segment, target)
-            else:
-                target = relation["replacement_id"]
-                if type(obj).objects.filter(pk=target).exists():
-                    links["replace_period"] = links.get("replacement")
-                    links["replacement"] = resource_path(segment, target)
+        if obj.predecessor_id:
+            links["predecessor"] = resource_path(segment, obj.predecessor_id)
+        replacement = getattr(obj, "replacement_period", None)
+        if replacement is not None:
+            links["replace_period"] = links.get("replacement")
+            links["replacement"] = resource_path(segment, replacement.pk)
     if not isinstance(obj, Subcategory):
         fields["id"] = obj.pk
     links["self"] = resource_path(segment, obj.pk)
@@ -233,7 +265,7 @@ def dry_run(request):
 
 def get_record(model, key):
     try:
-        return model.objects.get(pk=key)
+        return configuration_queryset(model).get(pk=key)
     except model.DoesNotExist:
         raise ApiError(404, "not_found", "Resource not found.") from None
 
@@ -406,14 +438,15 @@ def register_collection(spec):
     # This table only wires identical HTTP operations; all validation stays in models.
     def list_records(request, owner_id: int | None = None):
         require_model(request, spec.model, "view")
-        queryset = spec.model.objects.all()
+        queryset = configuration_queryset(spec.model)
         if spec.owner:
             get_record(spec.owner[0], owner_id)
             queryset = queryset.filter(**{spec.owner[1]: owner_id})
         choices = {"category": Category.values, "mode": PropertyService.Mode.values}
         if "kind" in spec.filters:
             choices["kind"] = spec.model.Kind.values
-        choices["subcategory"] = list(Subcategory.objects.values_list("key", flat=True))
+        if "subcategory" in spec.filters and "subcategory" in request.GET:
+            choices["subcategory"] = list(Subcategory.objects.values_list("key", flat=True))
         queryset, (limit, offset) = filter_collection(
             queryset,
             request,
@@ -478,12 +511,52 @@ def register_collection(spec):
         ("patch", spec.detail, patch_record, {200: spec.output}),
         ("delete", spec.detail, delete_record, {200: spec.output, 204: None}),
     ):
+        aliases = {}
+        if "{owner_id}" in path:
+            owner_name = "service_id" if spec.owner[0] is PropertyService else spec.owner[1]
+            aliases[owner_name] = "owner_id"
+        if "{key}" in path:
+            key_name = {
+                Property: "property_id",
+                Vendor: "vendor_id",
+                VendorIssuerIdentifier: "identifier_id",
+                InvoicePropertyRule: "rule_id",
+                Subcategory: "subcategory_key",
+                PropertyService: "service_id",
+                ServiceVendorAssignment: "assignment_id",
+                VendorBillingSchedule: "schedule_id",
+            }[spec.model]
+            aliases[key_name] = "key"
+        for public, internal in aliases.items():
+            path = path.replace("{" + internal + "}", "{" + public + "}")
+        if aliases:
+            fn = named_path_parameters(fn, aliases)
         getattr(router, method)(
             path,
             response=result,
             operation_id=f"{method}_{name}_{fn.__name__}",
             summary=f"{fn.__name__.replace('_', ' ').capitalize()}: {name}",
         )(fn)
+
+
+def named_path_parameters(view, aliases):
+    @wraps(view)
+    def named(request, *args, **kwargs):
+        return view(
+            request, *args, **{aliases.get(key, key): value for key, value in kwargs.items()}
+        )
+
+    public_names = {internal: public for public, internal in aliases.items()}
+    named.__signature__ = inspect.signature(view).replace(
+        parameters=[
+            param.replace(name=public_names.get(param.name, param.name))
+            for param in inspect.signature(view).parameters.values()
+        ]
+    )
+    named.__annotations__ = {
+        public_names.get(name, name): value for name, value in view.__annotations__.items()
+    }
+    return named
 
 
 for collection in COLLECTIONS:
@@ -505,7 +578,7 @@ def vendor_assignments(request, vendor_id: int):
     require_model(request, ServiceVendorAssignment, "view")
     get_record(Vendor, vendor_id)
     queryset, (limit, offset) = filter_collection(
-        ServiceVendorAssignment.objects.filter(vendor_id=vendor_id),
+        configuration_queryset(ServiceVendorAssignment).filter(vendor_id=vendor_id),
         request,
         {
             "service_id": "property_service_id",
@@ -590,19 +663,25 @@ def replace_period(request, response, model, key, payload):
 
 
 @router.post(
-    "/vendor-assignments/{key}/replacement", response={200: s.AssignmentOut, 201: s.AssignmentOut}
+    "/vendor-assignments/{assignment_id}/replacement",
+    response={200: s.AssignmentOut, 201: s.AssignmentOut},
 )
 @documented_query("dry_run")
-def replace_assignment(request, response: HttpResponse, key: int, payload: s.AssignmentReplacement):
-    return replace_period(request, response, ServiceVendorAssignment, key, payload)
+def replace_assignment(
+    request, response: HttpResponse, assignment_id: int, payload: s.AssignmentReplacement
+):
+    return replace_period(request, response, ServiceVendorAssignment, assignment_id, payload)
 
 
 @router.post(
-    "/billing-schedules/{key}/replacement", response={200: s.ScheduleOut, 201: s.ScheduleOut}
+    "/billing-schedules/{schedule_id}/replacement",
+    response={200: s.ScheduleOut, 201: s.ScheduleOut},
 )
 @documented_query("dry_run")
-def replace_schedule(request, response: HttpResponse, key: int, payload: s.ScheduleReplacement):
-    return replace_period(request, response, VendorBillingSchedule, key, payload)
+def replace_schedule(
+    request, response: HttpResponse, schedule_id: int, payload: s.ScheduleReplacement
+):
+    return replace_period(request, response, VendorBillingSchedule, schedule_id, payload)
 
 
 def format_representation(key, vendor_id=None):
@@ -632,14 +711,10 @@ def format_representation(key, vendor_id=None):
 
 def catalogue_page(request, rows, *, sort_keys, default):
     values = query_values(request, ["limit", "offset", "sort"])
-    from .collections import pagination
-
     limit, offset = pagination(request, values)
     order = values.get("sort", default).split(",")
     for key in reversed([*order, default]):
         if key.lstrip("-") not in sort_keys:
-            from .errors import invalid_parameter
-
             invalid_parameter("sort")
         rows.sort(key=lambda row: row[key.lstrip("-")], reverse=key.startswith("-"))
     return page_response(request, rows[offset : offset + limit], len(rows), limit, offset)

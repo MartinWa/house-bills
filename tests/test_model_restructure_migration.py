@@ -384,7 +384,9 @@ from django.db.migrations.executor import MigrationExecutor
 
 auth = ("auth", "0012_alter_user_first_name_max_length")
 old = [("bills", "0018_expected_invoice_month_labels"), auth]
-new = [("bills", "0022_restructured_reporting"), auth]
+# This probe uses live models after the historical upgrade, so apply the latest
+# schema before invoking them rather than pinning that phase to migration 0022.
+new = MigrationExecutor(connection).loader.graph.leaf_nodes("bills") + [auth]
 MigrationExecutor(connection).migrate(old)
 apps = MigrationExecutor(connection).loader.project_state(old).apps
 house = apps.get_model("bills", "Property").objects.create(name="Synthetic House", slug="house")
@@ -434,8 +436,8 @@ else:
         assert "Changed service modes" in str(exc), str(exc)
     else:
         raise AssertionError("Downgrade must refuse to lose a changed service mode")
-    assert list(PropertyService.objects.order_by("pk").values()) == services_before
-    assert list(VendorBillingSchedule.objects.order_by("pk").values()) == schedules_before
+    # A failed downgrade can already have reversed later migrations. Restore the
+    # live schema before querying with current models, then verify row preservation.
     MigrationExecutor(connection).migrate(new)
     assert list(PropertyService.objects.order_by("pk").values()) == services_before
     assert list(VendorBillingSchedule.objects.order_by("pk").values()) == schedules_before

@@ -3,9 +3,11 @@
 from django.conf import settings
 from django.contrib.auth.views import redirect_to_login
 from django.core.files.uploadhandler import FileUploadHandler, StopUpload
-from django.db import OperationalError
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
+
+from .api.errors import ApiError, error_response
+from .api.middleware import BoundedStream
 
 
 class BoundedPdfUploadHandler(FileUploadHandler):
@@ -39,16 +41,6 @@ class BoundedUploadMiddleware(MiddlewareMixin):
             request.resolver_match.view_name != "bills:upload" and not api_upload
         ) or request.method != "POST":
             return None
-        if api_upload:
-            from .api.auth import verify_credential
-            from .api.errors import ApiError, database_error_response, error_response
-
-            try:
-                verify_credential(request)
-            except ApiError as exc:
-                return error_response(exc)
-            except OperationalError as exc:
-                return database_error_response(exc)
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         length = request.META.get("CONTENT_LENGTH")
@@ -63,8 +55,6 @@ class BoundedUploadMiddleware(MiddlewareMixin):
                 )
             return HttpResponse("The upload exceeds the request size limit.", status=413)
         if api_upload:
-            from .api.middleware import BoundedStream
-
             request._stream = BoundedStream(request._stream, settings.MAX_UPLOAD_REQUEST_BYTES)
         request.upload_handlers.insert(0, BoundedPdfUploadHandler(request))
         return None
@@ -72,8 +62,6 @@ class BoundedUploadMiddleware(MiddlewareMixin):
     def process_response(self, request, response):
         if getattr(request, "upload_error", ""):
             if request.path.startswith("/api/v1/"):
-                from .api.errors import ApiError, error_response
-
                 return error_response(
                     ApiError(413, "body_too_large", "Upload one PDF within the size limit.")
                 )

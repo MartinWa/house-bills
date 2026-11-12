@@ -21,6 +21,7 @@ def change_vendor(assignment_id, *, month, vendor, transition_month=False):
             "Choose a different vendor and a month within the enabled assignment."
         )
     replacement = ServiceVendorAssignment(
+        predecessor=old,
         property_service=old.property_service,
         vendor=vendor,
         start_month=month,
@@ -42,6 +43,7 @@ def change_billing_frequency(
     if not old.is_active or month <= old.start_month or not contains(old, month):
         raise ValidationError("Choose a later effective month within the enabled schedule.")
     replacement = VendorBillingSchedule(
+        predecessor=old,
         vendor=old.vendor,
         start_month=month,
         end_month=old.end_month,

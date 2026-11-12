@@ -49,11 +49,12 @@ def verify_credential(request, *, check_profile=True):
 
 class BearerAuth(HttpBearer):
     def __call__(self, request):
-        # HttpBearer's default parser logs malformed headers in DEBUG. Use our parser.
-        return verify_credential(request)
+        # Middleware has already parsed and verified the header before reading bodies.
+        return self.authenticate(request, None)
 
     def authenticate(self, request, token):
-        return verify_credential(request)
+        credential = getattr(request, "auth", None)
+        return credential if isinstance(credential, ApiToken) else None
 
 
 def require_model(request, model, action):

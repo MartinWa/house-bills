@@ -589,6 +589,14 @@ class PropertyService(ClassificationMixin, ConfigurationModel):
 
 
 class ServiceVendorAssignment(ConfigurationModel):
+    predecessor = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replacement_period",
+        editable=False,
+    )
     property_service = models.ForeignKey(
         PropertyService, on_delete=models.CASCADE, related_name="vendor_assignments"
     )
@@ -622,6 +630,15 @@ class ServiceVendorAssignment(ConfigurationModel):
 
 
 class VendorBillingSchedule(ConfigurationModel):
+    predecessor = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replacement_period",
+        editable=False,
+    )
+
     class Frequency(models.IntegerChoices):
         AS_NEEDED = 0, "As needed"
         MONTHLY = 1, "Monthly"

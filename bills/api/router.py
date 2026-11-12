@@ -106,12 +106,9 @@ def domain_error(request, exc):
         exc, "error_dict", {"__all__": exc.error_list if hasattr(exc, "error_list") else []}
     )
     conflict = any(
-        error.code in ("unique", "unique_together") for items in errors.values() for error in items
-    )
-    # Graph conflicts have no field/code in the existing domain validators.
-    conflict = conflict or any(
-        "overlap" in message.lower() or "already uses" in message.lower()
-        for message in exc.messages
+        error.code in ("unique", "unique_together", "configuration_conflict")
+        for items in errors.values()
+        for error in items
     )
     details = []
     for name, items in errors.items():

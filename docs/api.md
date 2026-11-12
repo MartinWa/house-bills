@@ -103,7 +103,7 @@ survive, null clears nullable fields, and undeclared/owner/read-only fields fail
 The complete resulting model and configuration graph are validated. The last
 committed write to a supplied field wins. Configuration creates return 201 with
 `Location`; ordinary deletes return 204. Configuration changes and admin audit
-entries commit together.
+entries commit together. API audit entries include the token ID and name.
 
 Configuration writes accept `?dry_run=true`: they perform the same permissions,
 model/graph and cascade/protection checks, then roll back without audit entries.
@@ -125,7 +125,8 @@ The old end and new period commit atomically; assignment transitions may share t
 transition month. A changed observed end returns 409 `stale_configuration`.
 Retries cannot create another overlapping replacement. Ordinary period POST never
 closes a predecessor. Canonical reads retain predecessor/replacement links through
-the existing admin audit trail. Inspect current state after an ambiguous timeout.
+database relationships, independently of the audit trail. Inspect current state after
+an ambiguous timeout.
 
 ## Documents and reviews
 
