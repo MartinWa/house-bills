@@ -1,6 +1,7 @@
 """Exercise real Waitress startup on disposable storage in the production image."""
 
 import importlib.util
+import json
 import os
 import sqlite3
 import subprocess
@@ -355,10 +356,86 @@ def check_ingestion_http():
     assert fresh.invoices.get().review_revision == 0
     confirm_delete(fresh_location)
     assert Document.objects.count() == 2 and Invoice.objects.count() == 2
+    check_api_http(user, document, original, multipart(csrf=False))
     print(
         "Production upload, manual entry, approval, correction, stale review, "
         "re-parsing, duplicates, deletion and re-upload, reporting, CSRF "
         "and private source checks passed."
+    )
+
+
+def check_api_http(user, document, original, upload_body):
+    """Drive bearer JSON and multipart through Waitress's production proxy settings."""
+    from bills.models import ApiToken
+
+    token, secret = ApiToken.issue(
+        name="Synthetic production automation", owner=user, profile="automation"
+    )
+
+    def request(method, path, body=None, *, credential=secret, multipart=False, deletion=None):
+        headers = {"Host": "ci.invalid", "X-Forwarded-Proto": "https"}
+        if credential:
+            headers["Authorization"] = f"Bearer {credential}"
+        if body is not None:
+            headers["Content-Type"] = (
+                "multipart/form-data; boundary=synthetic-boundary"
+                if multipart
+                else "application/json"
+            )
+        if deletion:
+            headers["Deletion-Token"] = deletion
+        payload = body if multipart else json.dumps(body).encode() if body is not None else None
+        try:
+            return build_opener(NoRedirect).open(
+                Request(
+                    f"http://127.0.0.1:8000{path}", method=method, data=payload, headers=headers
+                ),
+                timeout=10,
+            )
+        except HTTPError as response:
+            return response
+
+    with request("GET", "/api/v1/me", credential=None) as response:
+        assert response.status == 401 and response.headers["WWW-Authenticate"] == "Bearer"
+        assert json.load(response)["error"]["code"] == "unauthenticated"
+    with request("GET", "/api/v1/openapi.json") as response:
+        assert response.status == 200 and "/api/v1/documents" in json.load(response)["paths"]
+    with request("POST", "/api/v1/documents", upload_body, multipart=True) as response:
+        assert response.status == 200 and json.load(response)["duplicate"]
+    with request("GET", f"/api/v1/documents/{document.pk}/source") as response:
+        assert response.status == 200 and response.read() == original
+        assert response.headers["Cache-Control"] == "private, no-store"
+    with request("GET", f"/api/v1/documents/{document.pk}/review") as response:
+        source = json.load(response)
+    with request(
+        "POST",
+        f"/api/v1/documents/{document.pk}/reviews",
+        {"review_token": source["review_token"], "edits": source["edits"]},
+    ) as response:
+        assert response.status == 201, response.read()
+        saved_location = response.headers["Location"]
+    with request("GET", saved_location) as response:
+        assert response.status == 200 and json.load(response)["revision"] >= 2
+    with request("GET", "/api/v1/reports/costs?mode=totals") as response:
+        report = json.load(response)
+        assert response.status == 200 and report["group_count"] > 0 and "next" not in report
+    with request(
+        "POST", "/api/v1/manual-invoices", {"idempotency_key": "synthetic-production-api"}
+    ) as response:
+        assert response.status == 201
+        manual = json.load(response)["document"]
+    with request(
+        "POST", "/api/v1/manual-invoices", {"idempotency_key": "synthetic-production-api"}
+    ) as response:
+        assert response.status == 200 and json.load(response)["duplicate"]
+    with request("DELETE", manual["links"]["self"], deletion=manual["deletion_token"]) as response:
+        assert response.status == 200 and json.load(response)["deleted"]
+    token.delete()
+    with request("GET", "/api/v1/me") as response:
+        assert response.status == 401
+    print(
+        "Production bearer authentication, schema, upload, review/history, "
+        "reports and revision-bound deletion passed."
     )
 
 

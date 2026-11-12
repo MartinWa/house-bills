@@ -86,11 +86,9 @@ def upload(request):
 @require_POST
 def manual_invoice(request):
     "Create a reviewable invoice with no original PDF, for older paper or ledger data."
-    document = Document.objects.create(
-        source=Document.Source.MANUAL,
-        state=Document.State.REVIEW,
-        processing_message="Manual entry; no original PDF.",
-    )
+    from .manual_entries import create_manual_entry
+
+    document, _ = create_manual_entry()
     messages.info(request, "Enter the invoice values from the paper or ledger.")
     return redirect("bills:review", pk=document.pk)
 
@@ -507,7 +505,9 @@ def _add_form_error(form, error):
 
 
 def _added_row(data, group):
-    limits = {"sections": 20, "usages": 60, "identifiers": 60}
+    from .review_edits import REVIEW_LIMITS
+
+    limits = REVIEW_LIMITS
     if group not in limits:
         raise ValidationError("Choose a valid row to add.")
     try:

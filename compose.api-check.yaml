@@ -1,0 +1,28 @@
+# Disposable HTTP/Grafana transport check; it never uses development installation data.
+name: house-bills-api-check
+services:
+  app:
+    image: house-bills:development
+    init: true
+    command: ["python", "-m", "tools.api_check_server"]
+    environment:
+      HOUSE_BILLS_DATA_DIR: /state/api-check
+      HOUSE_BILLS_UPDATE_CHECK: "false"
+    ports:
+      - "127.0.0.1:8002:8000"
+    volumes:
+      - .:/app:ro
+      - api-check-state:/state
+  grafana:
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    init: true
+    environment:
+      GF_SECURITY_ADMIN_USER: synthetic
+      GF_SECURITY_ADMIN_PASSWORD: synthetic-grafana-check
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.6
+    ports:
+      - "127.0.0.1:3002:3000"
+volumes:
+  api-check-state:

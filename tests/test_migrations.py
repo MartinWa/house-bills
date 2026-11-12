@@ -5,6 +5,60 @@ import subprocess
 import sys
 
 
+def test_api_migration_preserves_documents_and_reporting_views_in_both_directions(tmp_path):
+    data = tmp_path / "api-migration-data"
+    data.mkdir()
+    script = r"""
+import django
+django.setup()
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+
+old = [('bills', '0022_restructured_reporting')]
+new = [('bills', '0023_document_idempotency_key_apitoken')]
+executor = MigrationExecutor(connection)
+executor.migrate(old)
+apps = executor.loader.project_state(old).apps
+doc = apps.get_model('bills', 'Document').objects.create(
+    original_filename='synthetic.pdf', sha256='a' * 64, source='upload',
+    state='review', storage_state='inbox', original_path='inbox/synthetic.pdf')
+with connection.cursor() as cursor:
+    before = cursor.execute('SELECT * FROM bills_document').fetchall()
+    columns = [row[1] for row in cursor.execute('PRAGMA table_info(bills_document)').fetchall()]
+    views = dict(cursor.execute("SELECT name, sql FROM sqlite_master WHERE type='view'").fetchall())
+for targets in (new, old, new):
+    MigrationExecutor(connection).migrate(targets)
+    with connection.cursor() as cursor:
+        sql = f"SELECT {', '.join(columns)} FROM bills_document"
+        assert cursor.execute(sql).fetchall() == before
+        assert dict(cursor.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='view'").fetchall()) == views
+        assert cursor.execute('PRAGMA integrity_check').fetchone() == ('ok',)
+        assert cursor.execute('PRAGMA foreign_key_check').fetchall() == []
+        for name in views:
+            cursor.execute(f'SELECT * FROM {name} LIMIT 1').fetchall()
+        if targets == new:
+            keys = cursor.execute('SELECT idempotency_key FROM bills_document').fetchall()
+            assert keys == [(None,)]
+            cursor.execute('UPDATE bills_document SET idempotency_key=%s WHERE id=%s',
+                           ['synthetic', doc.pk])
+print('API migration, reverse table rebuild and reporting views verified.')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
+            "HOUSE_BILLS_DATA_DIR": str(data),
+            "HOUSE_BILLS_STATE_DIR": str(tmp_path / "api-migration-state"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_billing_schedule_migration_preserves_rows_and_supports_native_sqlite_and_reversal(
     tmp_path,
 ):

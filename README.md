@@ -30,6 +30,7 @@ extraction service or runtime CDN dependencies.
 - Report approved costs and consumption with independent totals, network-first
   electricity selection and visible exclusions for ambiguous coverage.
 - Create verified database/original backups and restore into a new instance.
+- Automate configuration, ingestion, review and approved reports through a versioned HTTP API.
 - Show the application version and GitHub/release links in the footer, with an
   update indicator when a newer stable release is available.
 
@@ -92,6 +93,7 @@ billed consumption periods, without calendar-month proration. Individual fee row
 stay in the original PDF. Folder import, historical OCR, Grafana access transport
 and loading parser plugins from a mounted directory are not implemented.
 
+- [HTTP API and automation](docs/api.md), [OpenAPI schema](docs/api/openapi.json)
 - [Configuration and data model](docs/data-model.md)
 - [Uploads, originals and recovery](docs/ingestion.md)
 - [Review, approval and correction](docs/review.md)

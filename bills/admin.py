@@ -23,6 +23,7 @@ from .forms import (
     VendorIssuerIdentifierForm,
 )
 from .models import (
+    ApiToken,
     InvoicePropertyRule,
     Property,
     PropertyService,
@@ -34,6 +35,70 @@ from .models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
+
+
+@admin.register(ApiToken)
+class ApiTokenAdmin(admin.ModelAdmin):
+    list_display = ["name", "owner", "profile", "expires_at", "created_at"]
+    fields = ["name", "owner", "profile", "expires_at"]
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        return queryset if request.user.is_superuser else queryset.filter(owner=request.user)
+
+    def get_fields(self, request, obj=None):
+        fields = list(self.fields)
+        if not request.user.is_superuser and obj is None:
+            fields.remove("owner")
+        return fields
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.get_fields(request, obj) if obj else []
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_view_permission(self, request, obj=None):
+        return super().has_view_permission(request, obj) and (
+            obj is None or request.user.is_superuser or obj.owner_id == request.user.pk
+        )
+
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and (
+            obj is None or request.user.is_superuser or obj.owner_id == request.user.pk
+        )
+
+    def save_model(self, request, obj, form, change):
+        import hashlib
+        import secrets
+
+        if change:
+            raise PermissionDenied
+        if not request.user.is_superuser:
+            obj.owner = request.user
+        secret = secrets.token_urlsafe(32)
+        obj.digest = hashlib.sha256(secret.encode("ascii")).hexdigest()
+        obj.save()
+        request.issued_api_secret = secret
+
+    def response_add(self, request, obj, post_url_continue=None):
+        response = TemplateResponse(
+            request,
+            "admin/bills/apitoken/issued.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "API token issued",
+                "token_name": obj.name,
+                "secret": request.issued_api_secret,
+            },
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+    def delete_queryset(self, request, queryset):
+        if not request.user.is_superuser and queryset.exclude(owner=request.user).exists():
+            raise PermissionDenied
+        return super().delete_queryset(request, queryset)
 
 
 class PropertySelectorMixin:

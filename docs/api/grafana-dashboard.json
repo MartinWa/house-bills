@@ -1,0 +1,174 @@
+{
+  "uid": "house-bills-api-check",
+  "title": "House Bills approved costs and consumption",
+  "schemaVersion": 41,
+  "version": 1,
+  "timezone": "utc",
+  "time": {
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2026-02-02T00:00:00Z"
+  },
+  "refresh": "",
+  "tags": [
+    "house-bills",
+    "synthetic"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "property",
+        "label": "Property",
+        "type": "custom",
+        "query": "Example house 1 : 1, Example house 2 : 2",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Approved costs by invoice month (SEK)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "house-bills-api"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencySEK",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "house-bills-api"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "timeseries",
+          "url": "http://app:8000/api/v1/reports/costs?mode=invoice_month&$__combineValues(property_id=,,&,${property:csv})&date_from=${__from:date:YYYY-MM-DD}&date_to=${__to:date:YYYY-MM-DD}",
+          "root_selector": "$map(groups, function($r) { $merge([$r, {\"value\": $r.gross_minor / 100}]) })",
+          "columns": [
+            {
+              "selector": "invoice_month_time",
+              "text": "Time",
+              "type": "timestamp_epoch_s",
+              "timestampFormat": "unix_s"
+            },
+            {
+              "selector": "property_name",
+              "text": "Property",
+              "type": "string"
+            },
+            {
+              "selector": "value",
+              "text": "Cost including VAT",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Billed water by period end (m³)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "house-bills-api"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: m³",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "house-bills-api"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "timeseries",
+          "url": "http://app:8000/api/v1/reports/consumption?mode=billed_period&$__combineValues(property_id=,,&,${property:csv})&date_from=${__from:date:YYYY-MM-DD}&date_to=${__to:date:YYYY-MM-DD}",
+          "root_selector": "$map(groups, function($r) { $merge([$r, {\"value\": $r.quantity_milli / 1000}]) })",
+          "columns": [
+            {
+              "selector": "period_end_time",
+              "text": "Time",
+              "type": "timestamp_epoch_s",
+              "timestampFormat": "unix_s"
+            },
+            {
+              "selector": "property_name",
+              "text": "Property",
+              "type": "string"
+            },
+            {
+              "selector": "value",
+              "text": "Billed consumption",
+              "type": "number"
+            }
+          ],
+          "url_options": {
+            "method": "GET"
+          }
+        }
+      ]
+    }
+  ]
+}
