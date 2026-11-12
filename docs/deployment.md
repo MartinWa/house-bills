@@ -126,6 +126,9 @@ separate restored instance with the same tested image before normal real-data us
 Houses, vendors, invoice formats and identifier mappings are database
 records, configured through the authenticated admin; they persist in `/data` across
 restarts and image updates. See [configuration and the data model](data-model.md).
+API token hashes also persist in that database, so clients can keep the same token
+across image updates. A Grafana client must retain its own database and encryption key
+across Grafana updates; see [Grafana setup](api.md#approved-reporting-and-grafana).
 Originals live in `/data/invoices`, with authenticated downloads and resumable staging
 and publication. See [uploads and private originals](ingestion.md) for recovery and
 the shared-lock contract used by operational backups.

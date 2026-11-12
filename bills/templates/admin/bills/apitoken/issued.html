@@ -1,0 +1,7 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Token <strong>{{ token_name }}</strong> was issued. Copy this secret now; it will not be shown again.</p>
+<pre>{{ secret }}</pre>
+<p>Use <code>Authorization: Bearer &lt;secret&gt;</code>. Delete the token in admin to revoke it.</p>
+<p><a href="{% url 'admin:bills_apitoken_changelist' %}">Return to API tokens</a></p>
+{% endblock %}

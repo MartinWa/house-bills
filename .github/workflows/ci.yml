@@ -60,12 +60,13 @@ jobs:
           github-token: ""
       - name: Lint and check formatting
         run: |
-          docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools manage.py
-          docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools manage.py
+          docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py manage.py
+          docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py manage.py
       - name: Check Django and migration drift
         run: |
           docker compose -f compose.development.yaml run --rm app python manage.py check --database default
           docker compose -f compose.development.yaml run --rm app python manage.py makemigrations --check --dry-run
+          docker compose -f compose.development.yaml run --rm app python manage.py export_api_schema --check
       - name: Check clean development startup
         run: |
           docker compose -f compose.development.yaml up -d --no-build app

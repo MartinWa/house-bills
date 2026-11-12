@@ -6,6 +6,10 @@ from django.core.files.uploadhandler import FileUploadHandler, StopUpload
 from django.http import HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from .api.auth import PREFIX
+from .api.errors import ApiError, error_response
+from .api.middleware import BoundedStream
+
 
 class BoundedPdfUploadHandler(FileUploadHandler):
     def __init__(self, request):
@@ -33,7 +37,10 @@ class BoundedPdfUploadHandler(FileUploadHandler):
 
 class BoundedUploadMiddleware(MiddlewareMixin):
     def process_view(self, request, view_func, view_args, view_kwargs):
-        if request.resolver_match.view_name != "bills:upload" or request.method != "POST":
+        api_upload = request.path == f"{PREFIX}/documents" and request.method == "POST"
+        if (
+            request.resolver_match.view_name != "bills:upload" and not api_upload
+        ) or request.method != "POST":
             return None
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
@@ -43,11 +50,21 @@ class BoundedUploadMiddleware(MiddlewareMixin):
         except ValueError:
             return HttpResponse("Invalid request length.", status=400)
         if oversized:
+            if api_upload:
+                return error_response(
+                    ApiError(413, "body_too_large", "The upload exceeds the request size limit.")
+                )
             return HttpResponse("The upload exceeds the request size limit.", status=413)
+        if api_upload:
+            request._stream = BoundedStream(request._stream, settings.MAX_UPLOAD_REQUEST_BYTES)
         request.upload_handlers.insert(0, BoundedPdfUploadHandler(request))
         return None
 
     def process_response(self, request, response):
         if getattr(request, "upload_error", ""):
+            if request.path.startswith(f"{PREFIX}/"):
+                return error_response(
+                    ApiError(413, "body_too_large", "Upload one PDF within the size limit.")
+                )
             return HttpResponse(request.upload_error, status=413)
         return response

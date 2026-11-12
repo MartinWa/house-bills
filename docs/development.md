@@ -67,10 +67,11 @@ Build the development target before running the same application checks as CI:
 
 ```sh
 docker compose -f compose.development.yaml build app
-docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools manage.py
-docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools manage.py
+docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py manage.py
+docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py manage.py
 docker compose -f compose.development.yaml run --rm app python manage.py check --database default
 docker compose -f compose.development.yaml run --rm app python manage.py makemigrations --check --dry-run
+docker compose -f compose.development.yaml run --rm app python manage.py export_api_schema --check
 docker compose -f compose.development.yaml run --rm app pytest -q
 docker compose -f compose.development.yaml exec -T app python -m tools.check_http
 docker compose -f compose.development.yaml exec -T app python manage.py migrate --check

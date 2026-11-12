@@ -1,5 +1,7 @@
 """Configuration, private proposals and exact approved invoice allocations."""
 
+import hashlib
+import secrets
 from builtins import property as computed_property
 
 from django.conf import settings
@@ -38,6 +40,34 @@ class ValidatedModel(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class ApiToken(ValidatedModel):
+    class Profile(models.TextChoices):
+        AUTOMATION = "automation", "Automation"
+        REPORTING = "reporting", "Reporting only"
+
+    name = models.CharField(max_length=120)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    profile = models.CharField(max_length=20, choices=Profile)
+    digest = models.CharField(max_length=64, unique=True, editable=False)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @classmethod
+    def issue(cls, **fields):
+        secret = secrets.token_urlsafe(32)
+        token = cls(digest=hashlib.sha256(secret.encode("ascii")).hexdigest(), **fields)
+        token.save()
+        return token, secret
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValidationError("Tokens are immutable; revoke and issue a new token.")
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
 
 
 class Property(ValidatedModel):
@@ -106,6 +136,12 @@ class VendorIssuerIdentifier(ValidatedModel):
             ),
         ]
 
+    def clean_fields(self, exclude=None):
+        # Unicode normalization can expand text; validate the length after normalization.
+        if "value" not in (exclude or ()) and isinstance(self.value, str):
+            self.value = normalize_identifier(self.kind, self.value)
+        super().clean_fields(exclude=exclude)
+
     def clean(self):
         self.value = normalize_identifier(self.kind, self.value)
         if not self.value:
@@ -158,6 +194,12 @@ class InvoicePropertyRule(ValidatedModel):
             ),
         ]
 
+    def clean_fields(self, exclude=None):
+        # Unicode normalization can expand text; validate the length after normalization.
+        if "value" not in (exclude or ()) and isinstance(self.value, str):
+            self.value = normalize_identifier(self.kind, self.value)
+        super().clean_fields(exclude=exclude)
+
     def clean(self):
         self.value = normalize_identifier(self.kind, self.value)
         if not self.value:
@@ -188,6 +230,7 @@ class Document(ValidatedModel):
         READY = "ready", "Done"
 
     source = models.CharField(max_length=20, choices=Source, default=Source.UPLOAD)
+    idempotency_key = models.CharField(max_length=200, null=True, blank=True, unique=True)
     sha256 = models.CharField(max_length=64, blank=True, validators=[sha256_validator])
     original_filename = models.CharField(max_length=255, blank=True)
     original_path = models.CharField(max_length=500, blank=True, validators=[validate_storage_path])
@@ -546,6 +589,14 @@ class PropertyService(ClassificationMixin, ConfigurationModel):
 
 
 class ServiceVendorAssignment(ConfigurationModel):
+    predecessor = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replacement_period",
+        editable=False,
+    )
     property_service = models.ForeignKey(
         PropertyService, on_delete=models.CASCADE, related_name="vendor_assignments"
     )
@@ -579,6 +630,15 @@ class ServiceVendorAssignment(ConfigurationModel):
 
 
 class VendorBillingSchedule(ConfigurationModel):
+    predecessor = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replacement_period",
+        editable=False,
+    )
+
     class Frequency(models.IntegerChoices):
         AS_NEEDED = 0, "As needed"
         MONTHLY = 1, "Monthly"

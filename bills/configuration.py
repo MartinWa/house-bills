@@ -147,7 +147,9 @@ def validate_configuration(graph):
                 continue
             for other in rows[:index]:
                 if other.is_active and key(row) == key(other) and overlaps(row, other):
-                    raise ValidationError(f"Enabled {label} must not overlap.")
+                    raise ValidationError(
+                        f"Enabled {label} must not overlap.", code="configuration_conflict"
+                    )
 
     def service_key(row):
         return row.pk if row.pk is not None else id(row)

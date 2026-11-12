@@ -207,7 +207,12 @@ def approve_document_review(
         .exists()
     ):
         raise ValidationError(
-            {"reference": "An approved invoice already uses this vendor, reference and type."}
+            {
+                "reference": ValidationError(
+                    "An approved invoice already uses this vendor, reference and type.",
+                    code="configuration_conflict",
+                )
+            }
         )
     return approve_review(invoice.pk, expected_revision=expected_revision, **review)
 

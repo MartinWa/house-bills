@@ -10,20 +10,19 @@ from .configuration import validate_classification
 from .models import Category, Invoice, Property, Service, Usage, Vendor
 from .parsing.compatibility import cost_totals_candidate
 from .parsing.normalization import scaled_integer
-from .parsing.types import Candidate, Evidence, Identifier, Section
-from .parsing.types import Usage as CandidateUsage
 from .presentation import scaled_value
-from .validators import normalize_identifier
-
-SECTION_MONEY = ("net_minor", "vat_minor", "gross_minor")
-HEADER_MONEY = (
-    "net_minor",
-    "vat_minor",
-    "rounding_minor",
-    "invoice_total_minor",
-    "amount_due_minor",
+from .review_edits import (
+    HEADER_MONEY,
+    INVOICE_SCOPE,
+    REVIEW_IDENTIFIER_MAX_LENGTH,
+    REVIEW_LIMITS,
+    SECTION_MONEY,
+    ReviewEdits,
+    build_review,
+    evidence_page,
+    normalize_review_identifier,
 )
-INVOICE_SCOPE = "invoice"
+
 IDENTIFIER_KINDS = [
     ("customer_account", "Customer account"),
     ("installation", "Installation"),
@@ -246,7 +245,7 @@ class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
 class ReviewIdentifierForm(forms.Form):
     scope = forms.ChoiceField(label="Applies to", choices=[], initial=INVOICE_SCOPE)
     kind = forms.ChoiceField(label="Identifier type", choices=IDENTIFIER_KINDS)
-    value = forms.CharField(max_length=200)
+    value = forms.CharField(max_length=REVIEW_IDENTIFIER_MAX_LENGTH)
     page = forms.IntegerField(label="Source page", min_value=1, initial=1)
 
     def __init__(self, *args, section_choices=(), **kwargs):
@@ -254,7 +253,9 @@ class ReviewIdentifierForm(forms.Form):
         self.fields["scope"].choices = [(INVOICE_SCOPE, "Invoice"), *section_choices]
 
     def clean_value(self):
-        return normalize_identifier(self.cleaned_data.get("kind", ""), self.cleaned_data["value"])
+        return normalize_review_identifier(
+            self.cleaned_data.get("kind", ""), self.cleaned_data["value"]
+        )
 
 
 class ReviewFormSet(forms.BaseFormSet):
@@ -288,13 +289,9 @@ def formset(form, limit):
     )
 
 
-SectionFormSet = formset(SectionForm, 20)
-UsageFormSet = formset(UsageForm, 60)
-IdentifierFormSet = formset(ReviewIdentifierForm, 60)
-
-
-def evidence_page(evidence):
-    return evidence.get("page", 1) if isinstance(evidence, dict) else 1
+SectionFormSet = formset(SectionForm, REVIEW_LIMITS["sections"])
+UsageFormSet = formset(UsageForm, REVIEW_LIMITS["usages"])
+IdentifierFormSet = formset(ReviewIdentifierForm, REVIEW_LIMITS["identifiers"])
 
 
 def last_billed_day(value):
@@ -302,12 +299,6 @@ def last_billed_day(value):
         return date.fromisoformat(value) - timedelta(days=1)
     except ValueError, TypeError:
         return value
-
-
-def reviewed_evidence(original, *, page, unchanged, label):
-    if unchanged and original and evidence_page(original) == page:
-        return Evidence(original["page"], original["text"], tuple(original["bbox"]))
-    return Evidence(page, f"Manually reviewed: {label}", (0, 0, 0, 0))
 
 
 class ReviewForms:
@@ -447,120 +438,73 @@ class ReviewForms:
             not form.errors for _, _, group in self.groups for form in group.active_forms
         )
 
-    def candidate(self):
-        "Convert a fully checked form into a fresh proposal, retaining unchanged evidence."
+    def edits(self):
         header = self.header.cleaned_data
-        values = self.values
-        evidence = dict(values.get("header_evidence", {}))
-        aliases = {
-            "net_minor": "net",
-            "vat_minor": "vat",
-            "rounding_minor": "rounding",
-            "amount_due_minor": "amount_due",
-        }
-        for field in ("reference", "invoice_date", "due_date", "currency", *HEADER_MONEY):
-            value = header[field]
-            comparison = value.isoformat() if isinstance(value, date) else value
-            key = aliases.get(field, field)
-            evidence[key] = reviewed_evidence(
-                values.get("header_evidence", {}).get(key),
-                page=header["page"],
-                unchanged=comparison == values.get(field),
-                label=field,
+        normalized_header = {
+            field: header[field]
+            for field in (
+                "reference",
+                "kind",
+                "invoice_date",
+                "due_date",
+                "currency",
+                *HEADER_MONEY,
             )
-        candidate = Candidate(
-            layout_family=values.get("layout_family") or "manual",
-            layout_version=values.get("layout_version") or "",
-            parser_revision=values.get("parser_revision") or "",
-            reference=header["reference"],
-            invoice_date=header["invoice_date"],
-            due_date=header["due_date"],
-            currency=header["currency"],
-            **{field: header[field] for field in HEADER_MONEY},
-            header_evidence=evidence,
-        )
-        originals = {section["section_id"]: section for section in values.get("sections", [])}
-        sections, properties = {}, {}
+        }
+        normalized_header.update(vendor_id=header["vendor"].pk, source_page=header["page"])
+        sections = []
         for form in self.sections.active_forms:
             data = form.cleaned_data
-            key = data["section_id"]
-            original = originals.get(key, {})
-            section = Section(
-                key,
-                data["category"],
-                [],
-                subcategory=data["subcategory"],
-                **{f: data[f] for f in SECTION_MONEY},
-                start=data["start"],
-                end=data["end"] + timedelta(days=1),
+            sections.append(
+                {
+                    **{
+                        field: data[field]
+                        for field in ("section_id", "category", "subcategory", *SECTION_MONEY)
+                    },
+                    "property_id": data["property"].pk,
+                    "period_start": data["start"],
+                    "period_end": data["end"] + timedelta(days=1),
+                    "source_page": data["page"],
+                }
             )
-            section.period_evidence = reviewed_evidence(
-                original.get("period_evidence"),
-                page=data["page"],
-                unchanged=(section.start.isoformat(), section.end.isoformat())
-                == (original.get("start"), original.get("end")),
-                label="billing period",
+        usages, identifiers = [], []
+        for index, form in enumerate(self.usages):
+            data = form.cleaned_data
+            if data.get("DELETE"):
+                continue
+            usages.append(
+                {
+                    **{
+                        field: data[field]
+                        for field in ("utility", "subcategory", "unit", "quantity_milli", "basis")
+                    },
+                    "section_id": data["section"],
+                    "period_start": data["start"],
+                    "period_end": data["end"] + timedelta(days=1),
+                    "source_page": data["page"],
+                    "source_index": index if index < len(self.originals["usages"]) else None,
+                }
             )
-            for field in ("tax_evidence", "total_evidence"):
-                unchanged = all(data[f] == original.get(f) for f in SECTION_MONEY)
-                setattr(
-                    section,
-                    field,
-                    reviewed_evidence(
-                        original.get(field), page=data["page"], unchanged=unchanged, label=field
-                    ),
-                )
-            candidate.sections.append(section)
-            sections[key], properties[key] = section, data["property"]
-        for group_name, cls, fields in (
-            (
-                "usages",
-                CandidateUsage,
-                ("utility", "subcategory", "unit", "quantity_milli", "basis"),
-            ),
-        ):
-            for index, form in enumerate(getattr(self, group_name)):
-                data = form.cleaned_data
-                if data.get("DELETE"):
-                    continue
-                raw = self.originals[group_name]
-                original = raw[index] if index < len(raw) else {}
-                row = {field: data[field] for field in fields}
-                row.update(start=data["start"], end=data["end"] + timedelta(days=1))
-                unchanged = data["section"] == original.get("section") and all(
-                    (value.isoformat() if isinstance(value, date) else value) == original.get(field)
-                    for field, value in row.items()
-                )
-                row["evidence"] = reviewed_evidence(
-                    original.get("evidence"),
-                    page=data["page"],
-                    unchanged=unchanged,
-                    label=group_name,
-                )
-                getattr(sections[data["section"]], group_name).append(cls(**row))
         for index, form in enumerate(self.identifiers):
             data = form.cleaned_data
             if data.get("DELETE"):
                 continue
-            raw = self.originals["identifiers"]
-            original = raw[index] if index < len(raw) else {}
-            unchanged = all(data[field] == original.get(field) for field in ("kind", "scope")) and (
-                data["value"] == normalize_identifier(data["kind"], original.get("value", ""))
+            identifiers.append(
+                {
+                    **{field: data[field] for field in ("scope", "kind", "value")},
+                    "source_page": data["page"],
+                    "source_index": index if index < len(self.originals["identifiers"]) else None,
+                }
             )
-            identifier = Identifier(
-                data["kind"],
-                data["value"],
-                reviewed_evidence(
-                    original.get("evidence"),
-                    page=data["page"],
-                    unchanged=unchanged,
-                    label="identifier",
-                ),
-            )
-            destination = (
-                candidate.identifiers
-                if data["scope"] == INVOICE_SCOPE
-                else sections[data["scope"]].identifiers
-            )
-            destination.append(identifier)
-        return candidate, properties
+        return ReviewEdits(
+            normalized_header,
+            sections,
+            usages,
+            identifiers,
+            amount_due_confirmed=header["amount_due_confirmed"],
+            warnings_confirmed=header.get("warnings_confirmed", False),
+            note=header["note"],
+        )
+
+    def candidate(self):
+        return build_review(self.edits(), values=self.values)

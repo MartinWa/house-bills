@@ -304,6 +304,49 @@ def manual_fields(data, vendor, house):
     }
 
 
+@pytest.mark.parametrize("kind", ["delivery_address", "installation", "organization", "vat"])
+@pytest.mark.parametrize(("character", "expansion"), [("ß", "ss"), ("ﬃ", "ffi")])
+def test_html_review_rejects_expanded_identifier_lengths_and_retains_entries(
+    configured, client, kind, character, expansion
+):
+    _, vendor, houses = configured
+    document = Document.objects.create(source="manual", state="review")
+    path, initial = review_data(client, document)
+    value = "a" * (200 - len(expansion)) + character
+    data = manual_fields(initial, vendor, houses[0])
+    data.update(
+        {
+            "identifiers-TOTAL_FORMS": "1",
+            "identifiers-0-scope": "manual-1",
+            "identifiers-0-kind": kind,
+            "identifiers-0-value": value + "a",
+            "identifiers-0-page": "1",
+        }
+    )
+    rejected = client.post(path, data)
+    assert rejected.status_code == 400, rejected.content
+    errors = rejected.context["review"].identifiers[0].errors.as_data()
+    assert errors["value"][0].code == "max_length"
+    assert posted_fields(rejected)["identifiers-0-value"] == value + "a"
+    assert not document.invoices.exists()
+    data["identifiers-0-value"] = value
+    accepted = client.post(path, data)
+    assert accepted.status_code == 302, accepted.content
+    invoice = document.invoices.get()
+    snapshot = copy.deepcopy(invoice.reviews.get().snapshot)
+    _, correction = review_data(client, document)
+    assert len(correction["identifiers-0-value"]) == 200
+    assert client.post(path, correction).status_code == 302
+    _, correction = review_data(client, document)
+    correction["identifiers-0-value"] = value + "a"
+    rejected = client.post(path, correction)
+    assert rejected.status_code == 400, rejected.content
+    assert posted_fields(rejected)["identifiers-0-value"] == value + "a"
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2 and invoice.reviews.count() == 2
+    assert invoice.reviews.get(revision=2).snapshot == snapshot
+
+
 def full_review_fields(data, vendor, house):
     data = manual_fields(data, vendor, house)
     data.update({"reference": "🧾" * 120, "note": "🧾" * 2000, "csrfmiddlewaretoken": "x" * 64})
