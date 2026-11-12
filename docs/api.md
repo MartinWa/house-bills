@@ -13,6 +13,11 @@ admin reads contain no secret. Delete a token to revoke it. Staff need the token
 model's add/view/delete permissions and can manage their own tokens; only a superuser
 can issue or manage another account's tokens. Tokens are immutable.
 
+Keep the same token in client configuration across container restarts and image
+upgrades. Its hash remains in the application database on the persistent `/data`
+mount. Follow the [upgrade procedure](deployment.md#manual-upgrades) while retaining
+that database. Expired or revoked tokens and inactive accounts no longer grant access.
+
 Send `Authorization: Bearer <secret>` on every business request. Session cookies
 cannot authenticate the API. Profiles restrict an account's existing access:
 configuration additionally requires staff status and the corresponding model
@@ -143,7 +148,9 @@ Edits include the complete header, allocations, usage and identifier lists,
 confirmation booleans and a note of at most 2,000 characters. Limits are 20
 allocations, 60 usages and 60 identifiers. Omitted rows are removed. Keep each
 retained usage/identifier's `source_index` from the observed template; it identifies
-evidence in the immutable source regardless of submitted ordering. New rows use
+evidence in the immutable source regardless of submitted ordering. Indexes refer
+to the complete observed source, including rows beyond the submission limits;
+trim unwanted rows while retaining each kept row's original index. New rows use
 null indexes. Section keys are distinct. Only source page numbers are editable
 evidence; layout provenance, source text/boxes, actors and approval state are server-owned.
 Warnings and amount-due differences require explicit confirmation. Both HTML and
@@ -216,12 +223,22 @@ Configure Infinity's backend parser against `groups`, its time columns as
 **Time (UNIX s)**, and the dashboard timezone as UTC. Supply ISO date filters.
 Scale money by 100 and usage by 1,000 only for presentation.
 
-The [synthetic dashboard](api/grafana-dashboard.json) has only approved cost and
-water-consumption panels, property selection and date filters. It is a transport
-verification example, not a deployment-specific dashboard. For real use replace
-its URL and property options using `/reports/selectors`; create an Infinity datasource
+The [synthetic dashboard](api/grafana-dashboard.json) sums cost groups per property,
+invoice month and currency, and signed water consumption per property, period end
+and unit before plotting. Property IDs distinguish identical display names, and
+points are sorted by UTC timestamp. It has property selection and date filters.
+It is a transport verification example, not a deployment-specific dashboard.
+For real use replace its URL and property options using `/reports/selectors`;
+create an Infinity datasource
 with `auth_method: bearerToken`, an allowlisted application host and the reporting
 secret in `secureJsonData.bearerToken`. Grafana needs HTTP access only.
+
+For regular Grafana image updates, retain its database and configured encryption key
+(`GF_SECURITY_SECRET_KEY` when using the default encryption provider). With the default
+SQLite database, mount persistent storage at `/var/lib/grafana`; see
+[Grafana's Docker storage guide](https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/).
+Save the reporting token in the datasource once. It remains usable after either
+container is replaced when both applications retain their state.
 
 Build the development and browser images, then run the disposable integration:
 

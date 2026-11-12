@@ -248,7 +248,12 @@ SchedulePatch = partial_schema(ScheduleIn)
 
 
 SourcePage = Annotated[StrictInt, Field(ge=1, le=2**63 - 1)]
-SourceIndex = Annotated[StrictInt, Field(ge=0, le=59)]
+SourceIndex = Annotated[
+    StrictInt,
+    Field(
+        ge=0, description="Index in the observed source, validated against its original row count."
+    ),
+]
 
 
 class ReviewHeader(Input):

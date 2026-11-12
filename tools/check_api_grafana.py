@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import math
 import os
 import secrets
 import subprocess
@@ -67,6 +68,91 @@ def query(kind, mode, property_ids=(), *, date_from="2026-01-01", date_to="2026-
         "/api/ds/query", {"queries": [target], "from": "1767225600000", "to": "1772323200000"}
     )
     return status, result
+
+
+def check_dashboard_group_totals(dashboard):
+    """Exercise the actual panel expressions and Infinity time-series conversion."""
+    january, february = 1767225600, 1769904000
+    source_rows = [
+        (1, february, 100),
+        (2, january, 500),
+        (1, january, 100),
+        (1, january, 200),
+        (1, january, -25),
+        (2, february, 750),
+    ]
+    for panel in dashboard["panels"]:
+        target = panel["targets"][0]
+        costs = "/reports/costs" in target["url"]
+        time_name = "invoice_month_time" if costs else "period_end_time"
+        amount_name = "gross_minor" if costs else "quantity_milli"
+        scale = 100 if costs else 1000
+        groups = [
+            {
+                "property_id": property_id,
+                "property_name": "Shared house",
+                time_name: at,
+                amount_name: amount,
+                "currency": "SEK",
+                "category": "water",
+                "subcategory": "",
+                "unit": "m3",
+                "basis": "billed",
+                "period_start": "2025-12-01" if at == january else "2026-01-01",
+            }
+            for property_id, at, amount in source_rows
+        ]
+        if costs:
+            groups[2].update(category="electricity", subcategory="electricity_network")
+            groups[4].update(category="electricity", subcategory="electricity_supply")
+        else:
+            groups[2]["basis"] = "estimated"
+            groups[4].update(basis="reversal", period_start="2025-11-01")
+        expected_points = {
+            ("Shared house (#1)", january * 1000): 275 / scale,
+            ("Shared house (#1)", february * 1000): 100 / scale,
+            ("Shared house (#2)", january * 1000): 500 / scale,
+            ("Shared house (#2)", february * 1000): 750 / scale,
+        }
+        for rows, expected in (
+            (groups, expected_points),
+            (groups[:1], {("Shared house (#1)", february * 1000): 100 / scale}),
+            ([], {}),
+        ):
+            inline = {**target, "source": "inline", "data": json.dumps({"groups": rows})}
+            inline.pop("url")
+            inline.pop("url_options")
+            status, result = request(
+                "/api/ds/query",
+                {"queries": [inline], "from": "1767225600000", "to": "1772323200000"},
+            )
+            assert status == 200 and not result["results"]["A"].get("error"), result
+            points = {}
+            for frame in result["results"]["A"]["frames"]:
+                fields, values = frame["schema"]["fields"], frame["data"]["values"]
+                if not any(values):
+                    continue
+                time_index = next(i for i, field in enumerate(fields) if field["type"] == "time")
+                assert values[time_index] == sorted(values[time_index]), result
+                for index, field in enumerate(fields):
+                    if field["type"] != "number":
+                        continue
+                    assert "Property" in field.get("labels", {}), result
+                    for at, amount in zip(values[time_index], values[index], strict=True):
+                        if amount is None:
+                            continue
+                        key = (field["labels"]["Property"], at)
+                        assert key not in points, "Dashboard points must be distinct per property."
+                        points[key] = amount
+            assert points.keys() == expected.keys(), (points, expected, result)
+            assert all(
+                math.isclose(value, expected[key], rel_tol=0, abs_tol=1e-9)
+                for key, value in points.items()
+            ), (points, expected, result)
+    print(
+        "Grafana panel regressions: complete signed groups, identical property names, "
+        "ascending UTC timestamps and single/empty results passed."
+    )
 
 
 def check_live_updates(credential):
@@ -240,6 +326,7 @@ def check(credentials, environment):
     status, result = query("costs", "totals", date_from="1900-01-01")
     assert status != 200 or result["results"]["A"].get("error"), "Broad filters must fail visibly."
     dashboard = json.loads(Path("docs/api/grafana-dashboard.json").read_text(encoding="utf-8"))
+    check_dashboard_group_totals(dashboard)
     status, _ = request("/api/dashboards/db", {"dashboard": dashboard, "overwrite": True})
     assert status == 200, "Dashboard creation failed."
     assert dashboard["timezone"] == "utc" and len(dashboard["panels"]) == 2

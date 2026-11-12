@@ -443,9 +443,9 @@ def invoices(request):
         conditions[lookup] = value
     queryset = queryset.filter(**conditions).distinct()
     sort = params.get("sort", "-invoice_date,id").split(",")
-    if any(key.lstrip("-") not in ("invoice_date", "id") for key in sort):
+    if any(key.removeprefix("-") not in ("invoice_date", "id") for key in sort):
         invalid_parameter("sort")
-    if not any(key.lstrip("-") == "id" for key in sort):
+    if not any(key.removeprefix("-") == "id" for key in sort):
         sort.append("id")
     queryset = queryset.order_by(*sort)
     limit, offset = pagination(request, params)

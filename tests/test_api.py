@@ -4,8 +4,10 @@ import copy
 import hashlib
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from django.contrib.admin.models import LogEntry
@@ -35,6 +37,7 @@ from bills.models import (
 from bills.review_edits import ReviewEdits, build_review
 from bills.review_forms import ReviewForms
 from bills.reviewing import current_review_context
+from bills.storage import private_path, publish_original
 
 from .synthetic import shared_supply, write_pdf
 from .test_reporting import allocation, ledger, usage  # noqa: F401
@@ -129,7 +132,85 @@ def test_largest_unicode_review_fits_body_limit_and_preserves_all_rows(api_clien
     assert result.json()["note"] == edits["note"]
 
 
-@pytest.mark.parametrize("indexes", [[0, 0], [59], [-1], [True]])
+def test_review_retains_late_source_evidence_when_large_extraction_is_trimmed(api_client):
+    from dataclasses import replace
+
+    from bills.parsing.types import Evidence, Identifier
+    from bills.services import record_extraction
+
+    client, _, _, _ = api_client
+    house, vendor = setup(client)
+    candidate, properties = build_review(
+        ReviewEdits(**ReviewEditsIn.model_validate(manual_body(house, vendor)).model_dump()),
+        values={},
+    )
+    candidate.layout_family, candidate.layout_version, candidate.parser_revision = (
+        "layout_01",
+        "v2",
+        "synthetic",
+    )
+    source_count = 64
+    original_usage = candidate.sections[0].usages[0]
+    candidate.sections[0].usages = [
+        replace(original_usage, evidence=Evidence(1, f"Observed usage {index}", (1, 2, 3, 4)))
+        for index in range(source_count)
+    ]
+    candidate.identifiers = [
+        Identifier(
+            "contract",
+            f"CONTRACT-{index}",
+            Evidence(1, f"Observed identifier {index}", (2, 3, 4, 5)),
+        )
+        for index in range(source_count)
+    ]
+    document = Document.objects.create(
+        original_filename="synthetic.pdf", sha256="a" * 64, state=Document.State.REVIEW
+    )
+    attempt = record_extraction(
+        document.pk,
+        candidate,
+        vendor=Vendor.objects.get(pk=vendor["id"]),
+        routing={
+            "vendor_id": vendor["id"],
+            "section_properties": {key: value.pk for key, value in properties.items()},
+        },
+    )
+    source = client.get(BASE + f"/documents/{document.pk}/review").json()
+    edits = source["edits"]
+    edits["usages"] = [edits["usages"][63], edits["usages"][60]]
+    edits["identifiers"] = [edits["identifiers"][62], edits["identifiers"][60]]
+    for group in ("usages", "identifiers"):
+        invalid = copy.deepcopy(edits)
+        invalid[group][0]["source_index"] = source_count
+        result = send(
+            client,
+            "post",
+            f"/documents/{document.pk}/reviews",
+            {"review_token": source["review_token"], "edits": invalid},
+        )
+        assert result.status_code == 422, result.content
+        assert not ReviewRevision.objects.exists()
+    result = send(
+        client,
+        "post",
+        f"/documents/{document.pk}/reviews",
+        {"review_token": source["review_token"], "edits": edits},
+    )
+    assert result.status_code == 201, result.content
+    values = result.json()["snapshot"]["values"]
+    assert [row["evidence"] for row in values["sections"][0]["usages"]] == [
+        attempt.candidate["sections"][0]["usages"][index]["evidence"] for index in (63, 60)
+    ]
+    assert [row["evidence"] for row in values["identifiers"]] == [
+        attempt.candidate["identifiers"][index]["evidence"] for index in (62, 60)
+    ]
+    assert Usage.objects.count() == 2
+    original = copy.deepcopy(attempt.candidate)
+    attempt.refresh_from_db()
+    assert attempt.candidate == original
+
+
+@pytest.mark.parametrize("indexes", [[0, 0], [59], [-1], [True], ["0"], [0.0]])
 def test_invalid_review_source_indexes_do_not_change_approved_rows(api_client, indexes):
     client, _, _, _ = api_client
     house, vendor = setup(client)
@@ -591,6 +672,68 @@ def test_schema_artifact_matches_live_contract(api_client):
     assert schema == json.loads(Path("docs/api/openapi.json").read_text())
 
 
+@pytest.mark.parametrize("sort", ["--id", "--invoice_date", "id,--invoice_date"])
+def test_invoice_sort_rejects_repeated_minus_signs(api_client, sort):
+    client, _, _, _ = api_client
+    client.raise_request_exception = False
+    response = client.get(BASE + "/invoices", {"sort": sort})
+    assert response.status_code == 422, response.content
+    assert response.json()["error"]["code"] == "invalid_parameter"
+    assert response.json()["error"]["details"][0]["path"] == "sort"
+
+
+def test_original_download_uses_current_path_after_concurrent_publication(
+    api_client, tmp_path, monkeypatch
+):
+    import bills.api.workflow as workflow
+    import bills.services as services
+
+    client, _, _, _ = api_client
+    house, vendor = setup(client)
+    pdf = write_pdf(tmp_path / "synthetic.pdf", [["Wholly synthetic original"]]).read_bytes()
+    uploaded = client.post(BASE + "/documents", {"pdf": SimpleUploadedFile("synthetic.pdf", pdf)})
+    assert uploaded.status_code == 201, uploaded.content
+    document = uploaded.json()["document"]
+    source = client.get(document["links"]["review"]).json()
+    edits = manual_body(house, vendor)
+    edits["warnings_confirmed"] = True
+    # Keep approval committed while original publication is still pending.
+    with monkeypatch.context() as patch:
+        patch.setattr(services, "publish_original", lambda key: None)
+        approved = send(
+            client,
+            "post",
+            f"/documents/{document['id']}/reviews",
+            {"review_token": source["review_token"], "edits": edits},
+        )
+    assert approved.status_code == 201, approved.content
+    old_path = Document.objects.get(pk=document["id"]).original_path
+    assert old_path.startswith("inbox/")
+    open_current_original = workflow.open_original
+
+    def publish_from_other_connection():
+        try:
+            published = publish_original(document["id"])
+            assert published.storage_state == Document.StorageState.APPROVED
+            assert published.original_path != old_path
+            assert not private_path(old_path).exists()
+            assert private_path(published.original_path).read_bytes() == pdf
+        finally:
+            connections.close_all()
+
+    def open_after_publication(key):
+        # Publish after the endpoint's first document read, before it opens the file.
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            executor.submit(publish_from_other_connection).result(timeout=10)
+        return open_current_original(key)
+
+    monkeypatch.setattr(workflow, "open_original", open_after_publication)
+    response = client.get(document["links"]["source"])
+    assert response.status_code == 200, response.content
+    assert response["Cache-Control"] == "private, no-store"
+    assert b"".join(response.streaming_content) == pdf
+
+
 def test_upload_review_evidence_equivalence_reordering_and_reparse(api_client, tmp_path):
     client, owner, _, _ = api_client
     house, vendor = setup(client)
@@ -778,6 +921,56 @@ def test_complete_aggregates_are_independent_of_record_pages(api_client):
         )
     finally:
         reporting.MAX_GROUPS = 10000
+
+
+def test_water_dashboard_excludes_other_utility_units(api_client, ledger):  # noqa: F811
+    client, _, _, _ = api_client
+    house = ledger["houses"][0]
+    start, end = date(2026, 1, 1), date(2026, 2, 1)
+    for service, utility, basis, quantity in (
+        ("water", "water", "billed", 12345),
+        ("waste", "waste", "billed_weight", 57000),
+        ("electricity_network", "electricity", "measured", 99000),
+    ):
+        ledger["make"](
+            [
+                allocation(
+                    house,
+                    service=service,
+                    usages=[
+                        usage(
+                            quantity,
+                            utility=utility,
+                            basis=basis,
+                            subcategory=service if utility == "electricity" else "",
+                            start=start,
+                            end=end,
+                        )
+                    ],
+                    start=start,
+                    end=end,
+                )
+            ],
+            invoice_date=date(2026, 1, 31),
+        )
+    unfiltered = client.get(BASE + "/reports/consumption?mode=billed_period").json()
+    assert {row["unit"] for row in unfiltered["groups"]} == {"m3", "kg", "kWh"}
+
+    dashboard = json.loads(Path("docs/api/grafana-dashboard.json").read_text())
+    panel = next(panel for panel in dashboard["panels"] if "Billed water" in panel["title"])
+    url = panel["targets"][0]["url"]
+    url = (
+        url.replace("$__combineValues(property_id=,,&,${property:csv})", f"property_id={house.pk}")
+        .replace("${__from:date:YYYY-MM-DD}", "2026-01-01")
+        .replace("${__to:date:YYYY-MM-DD}", "2026-02-02")
+    )
+    parsed = urlsplit(url)
+    response = client.get(parsed.path + "?" + parsed.query)
+    assert response.status_code == 200, response.content
+    groups = response.json()["groups"]
+    assert len(groups) == 1
+    assert groups[0]["utility"] == "water" and groups[0]["unit"] == "m3"
+    assert groups[0]["quantity_milli"] == 12345
 
 
 def test_electricity_selection_precedes_vendor_subcategory_filters(api_client, ledger):  # noqa: F811

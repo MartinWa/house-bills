@@ -15624,7 +15624,7 @@
           "source_index": {
             "anyOf": [
               {
-                "maximum": 59,
+                "description": "Index in the observed source, validated against its original row count.",
                 "minimum": 0,
                 "type": "integer"
               },
@@ -15828,7 +15828,7 @@
           "source_index": {
             "anyOf": [
               {
-                "maximum": 59,
+                "description": "Index in the observed source, validated against its original row count.",
                 "minimum": 0,
                 "type": "integer"
               },
