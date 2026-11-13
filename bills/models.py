@@ -6,7 +6,7 @@ from builtins import property as computed_property
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import F, Q
 from django.db.models.functions import Coalesce, Length, Substr
@@ -18,6 +18,7 @@ from .configuration import (
     validate_configuration_delete,
     validate_configuration_write,
     validate_months,
+    validate_selected_classification,
 )
 from .fields import ScaledIntegerField, integer_constraint
 from .parsing.registry import layout_family_choices
@@ -426,6 +427,7 @@ class Subcategory(ValidatedModel):
     category = models.CharField(max_length=20, choices=Category)
     name = models.CharField(max_length=120)
     is_active = models.BooleanField("enabled", default=True)
+    is_waste_fraction = models.BooleanField("waste fraction", default=False)
 
     class Meta:
         ordering = ["category", "name", "pk"]
@@ -434,25 +436,44 @@ class Subcategory(ValidatedModel):
             models.CheckConstraint(
                 condition=Q(category__in=Category.values) & ~Q(name="") & ~Q(key=""),
                 name="subcategory_valid",
-            )
+            ),
+            models.CheckConstraint(
+                condition=Q(is_waste_fraction=False)
+                | Q(category="waste") & ~Q(key__in=["waste_collection", "tank_emptying"]),
+                name="subcategory_fraction_valid",
+            ),
         ]
 
     def clean(self):
         self.name = self.name.strip()
         if getattr(self, "_saved_key", self.key) != self.key:
             raise ValidationError({"key": "A saved subcategory key cannot be changed."})
+        if self.is_waste_fraction and (
+            self.category != Category.WASTE or self.key in ("waste_collection", "tank_emptying")
+        ):
+            raise ValidationError(
+                {"is_waste_fraction": "Choose a waste fraction, not a service key."}
+            )
         if not self._state.adding:
             old = type(self).objects.filter(pk=self.pk).first()
             if (
                 old
-                and old.category != self.category
+                and (
+                    old.category != self.category or old.is_waste_fraction != self.is_waste_fraction
+                )
                 and any(
                     getattr(self, relation).exists()
                     for relation in ("property_services", "billing_sections", "usages")
                 )
             ):
                 raise ValidationError(
-                    {"category": "A referenced subcategory cannot change category."}
+                    {
+                        "category"
+                        if old.category != self.category
+                        else "is_waste_fraction": "A referenced subcategory cannot change category."
+                        if old.category != self.category
+                        else "A referenced subcategory cannot change fraction classification."
+                    }
                 )
 
     @classmethod
@@ -549,10 +570,25 @@ class PropertyService(ClassificationMixin, ConfigurationModel):
         db_column="subcategory",
     )
     mode = models.CharField(max_length=12, choices=Mode, default=Mode.REGULAR)
+    service_group = models.SlugField(max_length=64, blank=True, default="")
     is_active = models.BooleanField("enabled", default=True)
     start_month = models.DateField("first tracking month")
     end_month = models.DateField("last tracking month", null=True, blank=True)
     legacy_billing_configuration = models.JSONField(default=dict, blank=True, editable=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Ordinary construction also supports bulk inserts. Database/deferred
+        # loading uses positional fields and must retain the saved grouping.
+        if not args and not self.service_group:
+            self.service_group = self.default_service_group()
+
+    def default_service_group(self):
+        return (
+            "waste_collection"
+            if self.category == Category.WASTE and self.subcategory_id != "tank_emptying"
+            else self.subcategory_id or self.category
+        )
 
     class Meta:
         ordering = ["property__name", "category", "subcategory", "start_month", "pk"]
@@ -562,6 +598,9 @@ class PropertyService(ClassificationMixin, ConfigurationModel):
             ),
             models.CheckConstraint(
                 condition=Q(mode__in=["regular", "occasional"]), name="property_service_mode_valid"
+            ),
+            models.CheckConstraint(
+                condition=~Q(service_group=""), name="property_service_group_set"
             ),
             models.CheckConstraint(
                 condition=Exact(Substr("start_month", 9, 2), models.Value("01"))
@@ -575,11 +614,20 @@ class PropertyService(ClassificationMixin, ConfigurationModel):
         ]
 
     def clean(self):
-        validate_classification(self.category, self.subcategory_id)
+        old = (
+            type(self)
+            .objects.filter(pk=self.pk)
+            .values("subcategory_id", "legacy_billing_configuration")
+            .first()
+            if self.pk
+            else None
+        )
+        validate_selected_classification(
+            self.category, self.subcategory_id, current=old["subcategory_id"] if old else None
+        )
+        if not self.service_group:
+            self.service_group = self.default_service_group()
         if self.pk:
-            old = (
-                type(self).objects.filter(pk=self.pk).values("legacy_billing_configuration").first()
-            )
             if old and old["legacy_billing_configuration"] != self.legacy_billing_configuration:
                 raise ValidationError("Legacy billing configuration is immutable.")
         super().clean()
@@ -682,6 +730,119 @@ class VendorBillingSchedule(ConfigurationModel):
 
     def __str__(self):
         return f"{self.vendor}: {self.start_month:%Y-%m}, {self.get_frequency_months_display()}"
+
+
+class ServiceCostSchedule(ConfigurationModel):
+    """Which shared vendor invoices should contain this service's cost."""
+
+    Frequency = VendorBillingSchedule.Frequency
+
+    service_vendor_assignment = models.ForeignKey(
+        ServiceVendorAssignment, on_delete=models.CASCADE, related_name="cost_schedules"
+    )
+    predecessor = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replacement_period",
+        editable=False,
+    )
+    start_month = models.DateField("effective first month")
+    end_month = models.DateField("effective last month", null=True, blank=True)
+    frequency_months = models.PositiveSmallIntegerField(
+        "cost frequency", choices=Frequency, default=1
+    )
+    first_expected_month = models.DateField("first expected cost month", null=True, blank=True)
+    season_start_month = models.PositiveSmallIntegerField(
+        "first billing season month",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+    )
+    season_end_month = models.PositiveSmallIntegerField(
+        "last billing season month",
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(12)],
+    )
+    is_active = models.BooleanField("enabled", default=True)
+
+    class Meta:
+        ordering = [
+            "service_vendor_assignment__property_service__property__name",
+            "start_month",
+            "pk",
+        ]
+        verbose_name = "service cost pattern"
+        verbose_name_plural = "service cost patterns"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(frequency_months__in=[0, 1, 2, 3, 6, 12]),
+                name="cost_schedule_frequency_valid",
+            ),
+            models.CheckConstraint(
+                condition=Exact(Substr("start_month", 9, 2), models.Value("01"))
+                & (
+                    Q(end_month__isnull=True)
+                    | Exact(Substr("end_month", 9, 2), models.Value("01"))
+                    & Q(end_month__gte=F("start_month"))
+                )
+                & (
+                    Q(frequency_months=0, first_expected_month__isnull=True)
+                    | Q(frequency_months__gt=0, first_expected_month__isnull=False)
+                    & Exact(Substr("first_expected_month", 9, 2), models.Value("01"))
+                    & Q(first_expected_month__gte=F("start_month"))
+                ),
+                name="cost_schedule_months_valid",
+            ),
+            models.CheckConstraint(
+                condition=Q(season_start_month__isnull=True, season_end_month__isnull=True)
+                | Q(
+                    frequency_months__gt=0,
+                    season_start_month__range=(1, 12),
+                    season_end_month__range=(1, 12),
+                    season_start_month__isnull=False,
+                    season_end_month__isnull=False,
+                ),
+                name="cost_schedule_season_valid",
+            ),
+        ]
+
+    def clean(self):
+        errors = {}
+        if self.frequency_months == 0:
+            if self.first_expected_month is not None:
+                errors["first_expected_month"] = "As-needed costs have no periodic anchor."
+            if self.season_start_month is not None or self.season_end_month is not None:
+                errors["season_start_month"] = "As-needed costs have no billing season."
+        elif self.first_expected_month is None:
+            errors["first_expected_month"] = "Enter the first expected cost month."
+        if (self.season_start_month is None) != (self.season_end_month is None):
+            errors["season_end_month"] = "Set both billing season months, or neither."
+        if self.predecessor_id:
+            predecessor = self.predecessor
+            if (
+                predecessor.service_vendor_assignment_id != self.service_vendor_assignment_id
+                or self.start_month
+                and predecessor.start_month >= self.start_month
+                or predecessor.pk == self.pk
+            ):
+                errors["predecessor"] = (
+                    "The predecessor must be an earlier pattern for this assignment."
+                )
+        if errors:
+            raise ValidationError(errors)
+        super().clean()
+
+    def __str__(self):
+        return f"{self.service_vendor_assignment}: {self.get_frequency_months_display()}"
+
+    @computed_property
+    def pattern_label(self):
+        from .configuration import cost_pattern_label
+
+        return cost_pattern_label(self)
 
 
 class ServiceInvoiceException(ConfigurationModel):

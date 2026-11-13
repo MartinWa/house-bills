@@ -9,6 +9,7 @@ from django.db import connection
 
 from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Service, Usage
+from .waste_reporting import read_waste_details, read_waste_report
 
 SELECTION_REASONS = {
     "unspecified_source": "The electricity source needs review before consumption selection.",
@@ -65,6 +66,17 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
     cost_where, cost_params = _filters(property_id, date_from, date_to)
     usage_where, usage_params = _filters(property_id, date_from, date_to, usage=True)
     with reporting_reader() as reader:
+        waste = read_waste_report(
+            reader,
+            cost_where,
+            cost_params,
+            filters={
+                "property_id": [property_id] if property_id is not None else [],
+                "date_from": date_from,
+                "date_to": date_to,
+            },
+        )
+        waste.update(read_waste_details(reader, cost_where, cost_params))
         costs = _rows(
             reader,
             f"""
@@ -160,7 +172,12 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         row["reason"] = SELECTION_REASONS[row["selection_reason"]]
         row["period_start"] = date.fromisoformat(row["period_start"])
         row["period_end"] = date.fromisoformat(row["period_end"])
+    for row in waste["waste_details"]:
+        for source in (row, *row["weights"]):
+            for field in ("invoice_date", "period_start", "period_end"):
+                source[field] = date.fromisoformat(source[field]) if source[field] else None
     return {
+        **waste,
         "costs": costs,
         "consumption": consumption,
         "breakdown": breakdown,

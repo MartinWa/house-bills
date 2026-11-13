@@ -6,7 +6,7 @@ from datetime import date
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxLengthValidator
 
-from .configuration import validate_classification
+from .configuration import validate_selected_classification
 from .models import Property, Vendor
 from .parsing.compatibility import cost_totals_candidate
 from .parsing.types import Candidate, Evidence, Identifier, Section
@@ -124,8 +124,10 @@ def build_review(edits, *, values, warnings=()):
         key = data["section_id"]
         if key in sections or key == INVOICE_SCOPE:
             raise ValidationError({"sections": "Each allocation must be distinct."})
-        validate_classification(data["category"], data["subcategory"])
         original = originals.get(key, {})
+        validate_selected_classification(
+            data["category"], data["subcategory"], current=original.get("subcategory")
+        )
         section = Section(
             key,
             data["category"],
@@ -160,6 +162,9 @@ def build_review(edits, *, values, warnings=()):
             raise ValidationError({"usages": "Consumption must refer to a retained allocation."})
         index = data["source_index"]
         original = raw_usages[index] if index is not None else {}
+        validate_selected_classification(
+            data["utility"], data["subcategory"], current=original.get("subcategory")
+        )
         row = {
             field: data[field]
             for field in ("utility", "subcategory", "unit", "quantity_milli", "basis")

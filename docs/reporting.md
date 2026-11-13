@@ -9,9 +9,9 @@ splits them into PDF and manual sources. Counts cover invoices represented in th
 filtered costs, selected consumption or consumption issues; shared allocations do
 not count an invoice more than once.
 
-Report amounts and consumption display whole numbers, rounded after summing exact
-stored units, with halves rounded away from zero. Invoice and review pages retain
-the original precision, and the SQL views remain exact.
+Cost totals and the Consumption table display whole numbers, rounded after summing
+exact stored units, with halves rounded away from zero. Waste weights and invoice
+details retain the reported precision, as do invoice/review pages and SQL views.
 
 Costs use invoice dates. Consumption filters include the complete billed intervals
 that overlap the chosen dates; selecting one day inside a monthly interval includes
@@ -77,7 +77,9 @@ shows Elnät and Elhandel. Group raw waste queries by `subcategory` when compari
 | `reporting_usage` | One signed billed consumption interval, retaining every source and basis. |
 | `reporting_electricity_selection` | One raw electricity interval with its selection and reason. |
 | `reporting_electricity_usage` | One electricity interval selected for combined consumption reporting. |
-| `reporting_invoice_coverage` | One recurring property-service expectation and assigned vendor in an invoice month, or an unassigned expectation, with receipt counts and status. |
+| `reporting_waste_costs` | One approved waste cost, with catalogue fraction kind and label. |
+| `reporting_waste_usage` | One invoice-reported waste weight, with its own classification and basis. |
+| `reporting_invoice_coverage` | One shared vendor/month invoice expectation, or an unassigned service, with receipt counts and status. |
 
 The views contain invoice/document IDs, references, vendor IDs/names/slugs, invoice
 kind/date, review revision and approval time. Cost and usage rows also identify the
@@ -87,10 +89,12 @@ snapshots and user account details. The application database still contains priv
 configuration and login tables; these views do not create an external access boundary.
 
 `reporting_invoice_coverage` exposes one combined vendor/month expectation with
-schedule policy, required/received service counts, approved/pending receipt counts,
+schedule policy, required/received service counts, optional cost counts, approved/pending receipt counts,
 representative invoice/document IDs and status. `reporting_service_coverage`
 provides the property, category, subcategory and assignment detail behind each
-bill, including retained scoped annotations. Unassigned rows retain their service
+bill, including service group, effective cost-pattern ID, `cost_required` and
+retained scoped annotations. Optional absent costs have status `not_due`.
+Unassigned rows retain their service
 ID; unscheduled assignments remain visible. Native views include months through
 the current UTC month and use UTC status dates. The application can also inspect
 explicit future month ranges without changing configured records.
@@ -124,6 +128,39 @@ do not append their rows to a historical total using those changing IDs.
 - Periods are start-inclusive and end-exclusive. Screens display the inclusive last
   billed day. Consumption time series should retain both endpoints; a start marker
   does not turn a billed interval into an instantaneous measurement.
+
+### Waste costs and reported weights
+
+Reports show total approved waste cost and each property's total. The breakdown
+contains separately billed fraction costs, general/combined/unspecified costs and
+tank emptying. Every cost contributes once; the breakdown is already included in
+the total. Tank emptying is part of the waste total and remains a separate line.
+Unspecified and unfamiliar catalogue keys remain visible. Disabled historical
+fractions continue to appear when referenced by approved facts.
+
+Costs and weights are independent. A combined 200 SEK charge with Matavfall 12 kg
+and Restavfall 8 kg stays combined. A separate 50 SEK garden charge increases the
+waste total to 250 SEK without generating a weight. Fraction cost is `null` when
+not separately reported; absent weights are `[]`. Printed zero costs and zero
+weights remain zero. Quantities retain their signed values and bases; different
+bases are displayed separately. Configured active fractions can show “Not reported”.
+
+The Waste table's weights come from the same cost sections/invoices selected by
+**invoice date**, including their independent billed periods. The existing
+Consumption table continues to use **usage-period overlap**. Neither prorates
+quantities. Monetary subcategory filters select costs; selecting Matavfall cost
+does not split a combined waste cost or select its attached Matavfall weight.
+
+Waste invoice details show the latest 50 matching cost records, their source
+invoice, exact costs, independent weights and periods. Aggregate totals use all
+matching records. API cost source pages also include attached `weights` with
+invoice, section/usage, property, vendor, currency and period identifiers.
+
+Service cost patterns affect completeness checks only. Missing weights never make
+an invoice incomplete. An optional cost is accepted and reported when present;
+a printed zero-cost section satisfies an expected cost. A fraction weight on a
+combined section cannot satisfy a missing separately billed fraction cost. The
+vendor's bill remains expected when all costs on a particular month are optional.
 
 ### Consumption and electricity selection
 

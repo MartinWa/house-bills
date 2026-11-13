@@ -1,0 +1,7 @@
+{% load bill_values %}
+{% for row in rows %}<tr>
+  <td>{{ row.property_name }}</td>
+  <td>{{ row.name }}{% if fraction %}<small>Separately billed cost</small>{% endif %}</td>
+  <td class="amount">{% if row.cost %}{{ row.cost.gross_minor|money_whole }} {{ row.currency }}{% else %}Not reported{% endif %}</td>
+  <td>{% for weight in row.weights %}{{ weight.quantity_milli|quantity }} {{ weight.unit }}<small>{{ weight.basis_label }}</small>{% if not forloop.last %}<br>{% endif %}{% empty %}Not reported{% endfor %}</td>
+</tr>{% endfor %}

@@ -3454,6 +3454,16 @@
             "explode": true
           },
           {
+            "name": "is_waste_fraction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
             "name": "q",
             "in": "query",
             "required": false,
@@ -4244,6 +4254,16 @@
           },
           {
             "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "service_group",
             "in": "query",
             "required": false,
             "schema": {
@@ -5846,6 +5866,805 @@
         ]
       }
     },
+    "/api/v1/vendor-assignments/{assignment_id}/cost-schedules": {
+      "get": {
+        "operationId": "get_servicecostschedule_list_records",
+        "summary": "List records: servicecostschedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "name": "active_month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "enabled",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: start_month, id"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CostScheduleOut_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Configuration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "post_servicecostschedule_create_record",
+        "summary": "Create record: servicecostschedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostScheduleOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostScheduleOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Configuration"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostScheduleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/cost-schedules/{cost_schedule_id}": {
+      "get": {
+        "operationId": "get_servicecostschedule_read_record",
+        "summary": "Read record: servicecostschedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cost_schedule_id",
+            "schema": {
+              "title": "Cost Schedule Id",
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostScheduleOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Configuration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "patch_servicecostschedule_patch_record",
+        "summary": "Patch record: servicecostschedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cost_schedule_id",
+            "schema": {
+              "title": "Cost Schedule Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostScheduleOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Configuration"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostSchedulePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "delete_servicecostschedule_delete_record",
+        "summary": "Delete record: servicecostschedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cost_schedule_id",
+            "schema": {
+              "title": "Cost Schedule Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostScheduleOut"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Configuration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/vendors/{vendor_id}/billing-schedules": {
       "get": {
         "operationId": "get_vendorbillingschedule_list_records",
@@ -7183,6 +8002,173 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ScheduleReplacement"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/cost-schedules/{cost_schedule_id}/replacement": {
+      "post": {
+        "operationId": "bills_api_configuration_replace_cost_schedule",
+        "summary": "Replace Cost Schedule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cost_schedule_id",
+            "schema": {
+              "title": "Cost Schedule Id",
+              "type": "integer"
+            },
+            "required": true
+          },
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostScheduleOut"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostScheduleOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Configuration"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostScheduleReplacement"
               }
             }
           },
@@ -12066,10 +13052,10 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/AggregateOut"
+                      "$ref": "#/components/schemas/CostAggregateOut"
                     },
                     {
-                      "$ref": "#/components/schemas/ReportPage"
+                      "$ref": "#/components/schemas/CostReportPage"
                     }
                   ],
                   "title": "Response"
@@ -13818,6 +14804,11 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "is_waste_fraction": {
+            "default": false,
+            "title": "Is Waste Fraction",
+            "type": "boolean"
+          },
           "category_name": {
             "title": "Category Name",
             "type": "string"
@@ -13862,6 +14853,11 @@
             "default": true,
             "title": "Enabled",
             "type": "boolean"
+          },
+          "is_waste_fraction": {
+            "default": false,
+            "title": "Is Waste Fraction",
+            "type": "boolean"
           }
         },
         "required": [
@@ -13893,6 +14889,10 @@
           },
           "enabled": {
             "title": "Enabled",
+            "type": "boolean"
+          },
+          "is_waste_fraction": {
+            "title": "Is Waste Fraction",
             "type": "boolean"
           }
         },
@@ -13991,6 +14991,13 @@
               }
             ],
             "title": "Subcategory"
+          },
+          "service_group": {
+            "default": "",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Service Group",
+            "type": "string"
           },
           "mode": {
             "default": "regular",
@@ -14099,6 +15106,13 @@
             ],
             "title": "Subcategory"
           },
+          "service_group": {
+            "default": "",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Service Group",
+            "type": "string"
+          },
           "mode": {
             "default": "regular",
             "enum": [
@@ -14165,6 +15179,12 @@
               }
             ],
             "title": "Subcategory"
+          },
+          "service_group": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Service Group",
+            "type": "string"
           },
           "mode": {
             "enum": [
@@ -14449,6 +15469,384 @@
           }
         },
         "title": "AssignmentPatch",
+        "type": "object"
+      },
+      "CostScheduleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "links": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/CollectionLink"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Links",
+            "type": "object"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "start_month": {
+            "description": "First day of a month; end months are inclusive.",
+            "format": "date",
+            "title": "Start Month",
+            "type": "string"
+          },
+          "end_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Month"
+          },
+          "first_expected_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Expected Month"
+          },
+          "frequency_months": {
+            "default": 1,
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              6,
+              12
+            ],
+            "title": "Frequency Months",
+            "type": "integer"
+          },
+          "season_start_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Start Month"
+          },
+          "season_end_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season End Month"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "assignment_id": {
+            "title": "Assignment Id",
+            "type": "integer"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "integer"
+          },
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "integer"
+          },
+          "vendor_name": {
+            "title": "Vendor Name",
+            "type": "string"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          }
+        },
+        "required": [
+          "links",
+          "start_month",
+          "id",
+          "assignment_id",
+          "service_id",
+          "property_id",
+          "property_name",
+          "vendor_id",
+          "vendor_name",
+          "subcategory",
+          "subcategory_name"
+        ],
+        "title": "CostScheduleOut",
+        "type": "object"
+      },
+      "Page_CostScheduleOut_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CostScheduleOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "next",
+          "previous"
+        ],
+        "title": "Page[CostScheduleOut]",
+        "type": "object"
+      },
+      "CostScheduleIn": {
+        "additionalProperties": false,
+        "properties": {
+          "start_month": {
+            "description": "First day of a month; end months are inclusive.",
+            "format": "date",
+            "title": "Start Month",
+            "type": "string"
+          },
+          "end_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Month"
+          },
+          "first_expected_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Expected Month"
+          },
+          "frequency_months": {
+            "default": 1,
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              6,
+              12
+            ],
+            "title": "Frequency Months",
+            "type": "integer"
+          },
+          "season_start_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Start Month"
+          },
+          "season_end_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season End Month"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start_month"
+        ],
+        "title": "CostScheduleIn",
+        "type": "object"
+      },
+      "CostSchedulePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "start_month": {
+            "format": "date",
+            "title": "Start Month",
+            "type": "string"
+          },
+          "end_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Month"
+          },
+          "first_expected_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Expected Month"
+          },
+          "frequency_months": {
+            "title": "Frequency Months",
+            "type": "integer"
+          },
+          "season_start_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Start Month"
+          },
+          "season_end_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season End Month"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "CostSchedulePatch",
         "type": "object"
       },
       "Page_ScheduleOut_": {
@@ -14804,6 +16202,88 @@
           "expected_end_month"
         ],
         "title": "ScheduleReplacement",
+        "type": "object"
+      },
+      "CostScheduleReplacement": {
+        "additionalProperties": false,
+        "properties": {
+          "start_month": {
+            "description": "First day of a month; end months are inclusive.",
+            "format": "date",
+            "title": "Start Month",
+            "type": "string"
+          },
+          "expected_end_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected End Month"
+          },
+          "first_expected_month": {
+            "anyOf": [
+              {
+                "description": "First day of a month; end months are inclusive.",
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Expected Month"
+          },
+          "frequency_months": {
+            "enum": [
+              0,
+              1,
+              2,
+              3,
+              6,
+              12
+            ],
+            "title": "Frequency Months",
+            "type": "integer"
+          },
+          "season_start_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season Start Month"
+          },
+          "season_end_month": {
+            "anyOf": [
+              {
+                "maximum": 12,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Season End Month"
+          }
+        },
+        "required": [
+          "start_month",
+          "expected_end_month",
+          "frequency_months"
+        ],
+        "title": "CostScheduleReplacement",
         "type": "object"
       },
       "CategoryOut": {
@@ -16679,6 +18159,61 @@
               }
             ],
             "title": "Source"
+          },
+          "allocation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Id"
+          },
+          "usage_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
           }
         },
         "required": [
@@ -16690,6 +18225,48 @@
       },
       "SummaryOut": {
         "properties": {
+          "waste_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waste_totals_by_property": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WastePropertyTotal"
+            },
+            "title": "Waste Totals By Property",
+            "type": "array"
+          },
+          "waste_fractions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Fractions",
+            "type": "array"
+          },
+          "waste_general": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste General",
+            "type": "array"
+          },
+          "waste_other_services": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Other Services",
+            "type": "array"
+          },
           "filters": {
             "$ref": "#/components/schemas/ReportFilters"
           },
@@ -16738,6 +18315,872 @@
           "exclusion_count"
         ],
         "title": "SummaryOut",
+        "type": "object"
+      },
+      "WasteEntry": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "subcategory": {
+            "title": "Subcategory",
+            "type": "string"
+          },
+          "fraction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fraction"
+          },
+          "fraction_name": {
+            "title": "Fraction Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "weights": {
+            "items": {
+              "$ref": "#/components/schemas/WasteWeight"
+            },
+            "title": "Weights",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "subcategory",
+          "fraction",
+          "fraction_name",
+          "name",
+          "currency",
+          "cost",
+          "weights",
+          "reason"
+        ],
+        "title": "WasteEntry",
+        "type": "object"
+      },
+      "WasteMoney": {
+        "properties": {
+          "currency": {
+            "default": "SEK",
+            "title": "Currency",
+            "type": "string"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          }
+        },
+        "required": [
+          "net_minor",
+          "vat_minor",
+          "gross_minor"
+        ],
+        "title": "WasteMoney",
+        "type": "object"
+      },
+      "WastePropertyTotal": {
+        "properties": {
+          "currency": {
+            "default": "SEK",
+            "title": "Currency",
+            "type": "string"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "net_minor",
+          "vat_minor",
+          "gross_minor",
+          "property_id",
+          "property_name"
+        ],
+        "title": "WastePropertyTotal",
+        "type": "object"
+      },
+      "WasteWeight": {
+        "properties": {
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "quantity_milli": {
+            "title": "Quantity Milli",
+            "type": "integer"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "basis_label": {
+            "title": "Basis Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "quantity_milli",
+          "basis",
+          "basis_label"
+        ],
+        "title": "WasteWeight",
+        "type": "object"
+      },
+      "CostAggregateOut": {
+        "properties": {
+          "waste_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waste_totals_by_property": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WastePropertyTotal"
+            },
+            "title": "Waste Totals By Property",
+            "type": "array"
+          },
+          "waste_fractions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Fractions",
+            "type": "array"
+          },
+          "waste_general": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste General",
+            "type": "array"
+          },
+          "waste_other_services": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Other Services",
+            "type": "array"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReportFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          },
+          "totals": {
+            "items": {
+              "$ref": "#/components/schemas/ReportRow"
+            },
+            "title": "Totals",
+            "type": "array"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ReportRow"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "filters",
+          "effective_date_bounds",
+          "group_count",
+          "totals",
+          "groups"
+        ],
+        "title": "CostAggregateOut",
+        "type": "object"
+      },
+      "CostReportPage": {
+        "properties": {
+          "waste_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waste_totals_by_property": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WastePropertyTotal"
+            },
+            "title": "Waste Totals By Property",
+            "type": "array"
+          },
+          "waste_fractions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Fractions",
+            "type": "array"
+          },
+          "waste_general": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste General",
+            "type": "array"
+          },
+          "waste_other_services": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Other Services",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CostReportRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReportFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "next",
+          "previous",
+          "mode",
+          "filters",
+          "effective_date_bounds"
+        ],
+        "title": "CostReportPage",
+        "type": "object"
+      },
+      "CostReportRow": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Time"
+          },
+          "invoice_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month"
+          },
+          "invoice_month_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month Time"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "quantity_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Milli"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Time"
+          },
+          "period_end_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End Time"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "source_service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Service"
+          },
+          "source_selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Selection"
+          },
+          "selection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "allocation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Id"
+          },
+          "usage_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "weights": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteWeightSource"
+            },
+            "title": "Weights",
+            "type": "array"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name"
+        ],
+        "title": "CostReportRow",
+        "type": "object"
+      },
+      "WasteWeightSource": {
+        "properties": {
+          "usage_id": {
+            "title": "Usage Id",
+            "type": "integer"
+          },
+          "allocation_id": {
+            "title": "Allocation Id",
+            "type": "integer"
+          },
+          "invoice_id": {
+            "title": "Invoice Id",
+            "type": "integer"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "integer"
+          },
+          "vendor_name": {
+            "title": "Vendor Name",
+            "type": "string"
+          },
+          "invoice_date": {
+            "format": "date",
+            "title": "Invoice Date",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "subcategory": {
+            "title": "Subcategory",
+            "type": "string"
+          },
+          "fraction_name": {
+            "title": "Fraction Name",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "quantity_milli": {
+            "title": "Quantity Milli",
+            "type": "integer"
+          },
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "basis_label": {
+            "title": "Basis Label",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "source_page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Page"
+          }
+        },
+        "required": [
+          "usage_id",
+          "allocation_id",
+          "invoice_id",
+          "document_id",
+          "property_id",
+          "property_name",
+          "vendor_id",
+          "vendor_name",
+          "invoice_date",
+          "currency",
+          "subcategory",
+          "fraction_name",
+          "unit",
+          "quantity_milli",
+          "basis",
+          "basis_label",
+          "period_start",
+          "period_end"
+        ],
+        "title": "WasteWeightSource",
         "type": "object"
       },
       "AggregateOut": {

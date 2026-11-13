@@ -57,7 +57,57 @@ def expected(schedule, month):
         and (month_number(month) - month_number(schedule.first_expected_month))
         % schedule.frequency_months
         == 0
+        and in_billing_season(schedule, month)
     )
+
+
+def in_billing_season(schedule, month):
+    start = getattr(schedule, "season_start_month", None)
+    end = getattr(schedule, "season_end_month", None)
+    if start is None:
+        return True
+    return (
+        start <= month.month <= end if start <= end else month.month >= start or month.month <= end
+    )
+
+
+def cost_pattern(assignment, month, patterns):
+    if assignment is None:
+        return None
+
+    def matches(row):
+        if assignment.id is not None:
+            return row.service_vendor_assignment_id == assignment.id
+        return (
+            row._meta.get_field("service_vendor_assignment").is_cached(row)
+            and row.service_vendor_assignment is assignment
+        )
+
+    return next(
+        (row for row in patterns if row.is_active and matches(row) and contains(row, month)),
+        None,
+    )
+
+
+def cost_is_expected(service, assignment, month, patterns):
+    pattern = cost_pattern(assignment, month, patterns)
+    return expected(pattern, month) if pattern else service.mode == "regular"
+
+
+def tracks_vendor_receipt(service, assignment, month, patterns):
+    pattern = cost_pattern(assignment, month, patterns)
+    return service.mode == "regular" or bool(pattern and pattern.frequency_months > 0)
+
+
+def cost_pattern_label(pattern):
+    from .models import VendorBillingSchedule
+
+    label = VendorBillingSchedule.Frequency(pattern.frequency_months).label
+    if pattern.frequency_months:
+        label += f", first cost {pattern.first_expected_month:%Y-%m}"
+    if pattern.season_start_month is not None:
+        label += f", billing season {pattern.season_start_month}–{pattern.season_end_month}"
+    return label
 
 
 def validate_months(row):
@@ -87,9 +137,21 @@ def validate_classification(category, key):
         raise ValidationError({"subcategory": "The subcategory must belong to this category."})
 
 
+def validate_selected_classification(category, key, *, current=None):
+    """Disabled historical choices remain valid; new choices must be enabled."""
+    from .models import Subcategory
+
+    validate_classification(category, key)
+    if key and key != current and not Subcategory.objects.filter(pk=key, is_active=True).exists():
+        raise ValidationError(
+            {"subcategory": "Enable this subcategory before selecting it for a new record."}
+        )
+
+
 def proposed_configuration(replacements=(), deletions=()):
     from .models import (
         PropertyService,
+        ServiceCostSchedule,
         ServiceInvoiceException,
         ServiceVendorAssignment,
         VendorBillingSchedule,
@@ -99,6 +161,7 @@ def proposed_configuration(replacements=(), deletions=()):
         PropertyService,
         ServiceVendorAssignment,
         VendorBillingSchedule,
+        ServiceCostSchedule,
         ServiceInvoiceException,
     )
     graph = {model: list(model.objects.all()) for model in models}
@@ -108,12 +171,30 @@ def proposed_configuration(replacements=(), deletions=()):
     for row in replacements:
         if type(row) in graph:
             graph[type(row)].append(row)
+    removed_services = {row.pk for row in deletions if isinstance(row, PropertyService)}
+    removed_assignments = {row.pk for row in deletions if isinstance(row, ServiceVendorAssignment)}
+    removed_assignments.update(
+        row.pk
+        for row in graph[ServiceVendorAssignment]
+        if row.property_service_id in removed_services
+    )
+    graph[ServiceVendorAssignment] = [
+        row
+        for row in graph[ServiceVendorAssignment]
+        if row.property_service_id not in removed_services
+    ]
+    graph[ServiceCostSchedule] = [
+        row
+        for row in graph[ServiceCostSchedule]
+        if row.service_vendor_assignment_id not in removed_assignments
+    ]
     return graph
 
 
 def validate_configuration(graph):
     from .models import (
         PropertyService,
+        ServiceCostSchedule,
         ServiceInvoiceException,
         ServiceVendorAssignment,
         VendorBillingSchedule,
@@ -123,6 +204,7 @@ def validate_configuration(graph):
     assignments = graph[ServiceVendorAssignment]
     schedules = graph[VendorBillingSchedule]
     exceptions = graph[ServiceInvoiceException]
+    patterns = graph[ServiceCostSchedule]
     with staged_configuration():
         for rows in graph.values():
             for row in rows:
@@ -140,6 +222,11 @@ def validate_configuration(graph):
         (services, lambda r: (r.property_id, r.category, r.subcategory_id), "property services"),
         (assignments, lambda r: (r.property_service_id, r.vendor_id), "service vendors"),
         (schedules, lambda r: r.vendor_id, "vendor billing schedules"),
+        (
+            patterns,
+            lambda r: r.service_vendor_assignment_id or id(r.service_vendor_assignment),
+            "service cost patterns",
+        ),
     ):
         for index, row in enumerate(rows):
             validate_months(row)
@@ -174,6 +261,51 @@ def validate_configuration(graph):
             and (assignment.end_month is None or assignment.end_month > service.end_month)
         ):
             raise ValidationError("Service vendor dates must be within the service tracking dates.")
+    by_assignment = {service_key(row): row for row in assignments}
+    for pattern in patterns:
+        assignment_id = pattern.service_vendor_assignment_id
+        if assignment_id is None and pattern._meta.get_field("service_vendor_assignment").is_cached(
+            pattern
+        ):
+            assignment_id = service_key(pattern.service_vendor_assignment)
+        assignment = by_assignment.get(assignment_id) or pattern.service_vendor_assignment
+        service = by_service.get(scope_key(assignment)) or assignment.property_service
+        if service.category != "waste":
+            raise ValidationError("Cost patterns are currently available for waste services only.")
+        if pattern.start_month < assignment.start_month or (
+            assignment.end_month
+            and (pattern.end_month is None or pattern.end_month > assignment.end_month)
+        ):
+            raise ValidationError("Cost pattern dates must be within the vendor assignment dates.")
+        if not (
+            pattern.is_active
+            and assignment.is_active
+            and service.is_active
+            and pattern.frequency_months
+        ):
+            continue
+        applicable = [
+            row
+            for row in schedules
+            if row.is_active and row.vendor_id == assignment.vendor_id and overlaps(row, pattern)
+        ]
+        if not applicable:
+            raise ValidationError(
+                "Configure a shared vendor billing schedule before a periodic cost pattern."
+            )
+        for schedule in applicable:
+            if (
+                schedule.frequency_months == 0
+                or pattern.frequency_months % schedule.frequency_months != 0
+                or (
+                    month_number(pattern.first_expected_month)
+                    - month_number(schedule.first_expected_month)
+                )
+                % schedule.frequency_months
+            ):
+                raise ValidationError(
+                    "The cost pattern must align with the shared vendor invoice months."
+                )
     saved_contexts = {
         row[0]: row[1:]
         for row in ServiceInvoiceException.objects.values_list("pk", *EXCEPTION_CONTEXT_FIELDS)
@@ -197,7 +329,6 @@ def validate_configuration(graph):
             row
             for row in services
             if row.is_active
-            and row.mode == PropertyService.Mode.REGULAR
             and contains(row, exception.month)
             and (scope is None or service_key(row) == scope)
         ]
@@ -205,7 +336,15 @@ def validate_configuration(graph):
             assignment.is_active
             and assignment.vendor_id == exception.vendor_id
             and contains(assignment, exception.month)
-            and any(service_key(service) == scope_key(assignment) for service in relevant)
+            and any(
+                service_key(service) == scope_key(assignment)
+                and (
+                    cost_is_expected(service, assignment, exception.month, patterns)
+                    if scope is not None
+                    else tracks_vendor_receipt(service, assignment, exception.month, patterns)
+                )
+                for service in relevant
+            )
             for assignment in assignments
         ):
             raise ValidationError(

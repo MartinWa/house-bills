@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 
 from .configuration import month_number
 from .reporting import reporting_reader
+from .waste_reporting import ReportTooBroad, attach_waste_weights, read_waste_report
 
 MAX_PROPERTIES = 100
 MAX_MONTHS = 600
@@ -18,12 +19,6 @@ WITH selected_usage AS (
     FROM reporting_usage u WHERE utility <> 'electricity'
 )
 """
-
-
-class ReportTooBroad(ValidationError):
-    def __init__(self, limit):
-        self.limit = limit
-        super().__init__(f"Report exceeds {limit}.")
 
 
 def filters_sql(filters, *, usage=False, dates=True):
@@ -150,6 +145,9 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
             "filters": filters,
             "effective_date_bounds": {name: filters.get(name) for name in ("date_from", "date_to")},
         }
+        if kind in ("summary", "costs"):
+            cost_where, cost_params = filters_sql(filters)
+            base.update(read_waste_report(reader, cost_where, cost_params, filters=filters))
         if kind == "summary":
             costs = aggregate(reader, filters, "costs", "totals")
             consumption = aggregate(reader, filters, "consumption", "totals")
@@ -214,17 +212,22 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
             if kind == "costs"
             else "period_start, period_end, invoice_id, usage_id"
         )
-        rows = reader.execute(
-            cte
-            + f"SELECT r.*, d.source FROM {table} r "
-            + "JOIN bills_document d ON d.id=r.document_id "
-            + f"WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
-            [*params, limit, offset],
-        )
+        rows = [
+            dict(row)
+            for row in reader.execute(
+                cte
+                + f"SELECT r.*, d.source FROM {table} r "
+                + "JOIN bills_document d ON d.id=r.document_id "
+                + f"WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            )
+        ]
+        if kind == "costs":
+            attach_waste_weights(reader, rows)
         return {
             **base,
             "mode": "rows",
-            "items": timestamps([dict(row) for row in rows]),
+            "items": timestamps(rows),
             "count": count,
         }
 
@@ -243,7 +246,8 @@ def read_selectors():
             "subcategories": [
                 dict(row)
                 for row in reader.execute(
-                    "SELECT key, name, category FROM bills_subcategory ORDER BY key"
+                    "SELECT key, name, category, is_active, is_waste_fraction "
+                    "FROM bills_subcategory ORDER BY key"
                 )
             ],
         }

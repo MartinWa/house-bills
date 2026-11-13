@@ -63,6 +63,24 @@ when supplied by the source. The original and failed extraction remain preserved
 manual approval. Review forms do not save partial drafts. Validation errors retain the
 submitted fields and approved values; closing or cancelling discards unsaved entries.
 
+For waste, select Matavfall, Restavfall, Trädgårdsavfall, Plast, Kartong or Glas on
+an allocation only when its exact cost is separately reported. Keep combined/base
+charges in general waste. Do not divide a combined cost by weights or derive VAT
+for a split. Each reported fraction weight can belong to a combined allocation;
+a fraction cost can have no weight. Enter only reported weights, including printed
+zeros, and preserve negative reversals. Missing weights never prevent approval.
+Enable future fractions in Subcategories before selecting them for new records.
+Existing references to disabled entries remain reviewable.
+
+The ledger import command also accepts explicit `allocations` in its input rows.
+Each includes category/service, optional subcategory, exact integer
+`net_minor`/`vat_minor`/`gross_minor`, and end-exclusive `start`/`end` dates.
+Optional `usages` use utility, subcategory, unit, integer `quantity_milli`, basis
+and their own dates. This path preserves exact fraction costs and partial/zero
+weights through normal approval, without deriving VAT. Unknown costs/periods need
+review before importing. Legacy `services` amount rows retain their existing
+VAT/period conventions and omit weights because their periods are inferred.
+
 ## Manual invoices without an original
 
 **Invoices** has an **Add manual invoice** form for a bill that exists only on paper or

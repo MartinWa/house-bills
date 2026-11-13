@@ -91,7 +91,7 @@ def filter_collection(queryset, request, filters, default, sortable, *, choices=
                 Q(end_month__isnull=True) | Q(end_month__gte=value)
             )
             continue
-        if name == "enabled":
+        if name in ("enabled", "is_waste_fraction"):
             value = boolean(value, name)
         elif name.endswith("_id"):
             value = integer(value, name)

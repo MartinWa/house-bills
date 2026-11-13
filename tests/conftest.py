@@ -11,8 +11,26 @@ def classification_catalogue(request):
         request.getfixturevalue("db")
         from importlib import import_module
 
+        from bills.migrations._waste_fractions import WASTE_FRACTIONS
         from bills.models import Subcategory
 
         initial = import_module("bills.migrations.0019_shared_classification")
         for key, category, name in initial.INITIAL_SUBCATEGORIES:
-            Subcategory.objects.get_or_create(pk=key, defaults={"category": category, "name": name})
+            Subcategory.objects.get_or_create(
+                pk=key,
+                defaults={
+                    "category": category,
+                    "name": name,
+                    "is_waste_fraction": key in {row[0] for row in WASTE_FRACTIONS},
+                },
+            )
+        for key, name, enabled in WASTE_FRACTIONS:
+            Subcategory.objects.get_or_create(
+                pk=key,
+                defaults={
+                    "category": "waste",
+                    "name": name,
+                    "is_active": enabled,
+                    "is_waste_fraction": True,
+                },
+            )

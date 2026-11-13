@@ -31,8 +31,8 @@ remain review proposals. Dates and filenames never select the newest parser.
 
 | Family/version | Billing structure | Revision |
 | --- | --- | --- |
-| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations, waste collection labels and dated water reversals. | `8` |
-| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units and waste collection labels. | `3` |
+| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations, explicit garden/fraction cost blocks and dated water reversals. | `9` |
+| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units and explicit waste cost labels. | `4` |
 | `layout_02/v1` | Electricity supply; installation details above each specification. | `3` |
 | `layout_02/v2` | Replacement supply structure; service-specific title and inline installation key. | `2` |
 | `layout_03/v1` | Quarterly waste or dated tank emptying; VAT basis and separate payment summary. | `2` |
@@ -57,6 +57,13 @@ network readings retain column order and exact grouped quantities. Network price
 are checked against readings within their own printed periods. When a contract has no
 overall period label, dated fee rows supply its cost period; billed waste weights keep
 their separate collection intervals. Undated water reversals remain review issues.
+Waste extraction keeps combined charges combined, independently of Matavfall and
+Restavfall weight lines. Supported contract/product blocks classify explicit garden
+costs and unambiguous named fraction cost blocks using their own reported totals.
+Annual collections, container volumes and collection counts are not kg usage.
+A cost section needs no weight; reported zero kg is retained. Activating Plast,
+Kartong or Glas only adds review choices. Their future layouts need explicit parser
+support; activation does not divide existing combined costs or generate quantities.
 Network and tax rate changes can use different dates; quantities reconcile between
 boundaries shared by both tables. A printed price-effective date may precede its billed
 period, but dates after the period and invalid dates require review. Dated price tables

@@ -15,7 +15,7 @@ def query_parameters(names, *, repeated=(), sortable=()):
                 schema.update(maximum=200, default=50)
             elif name == "offset":
                 schema["default"] = 0
-        elif name in ("enabled", "dry_run"):
+        elif name in ("enabled", "dry_run", "is_waste_fraction"):
             schema = {"type": "boolean"}
         elif name in ("active_month", "as_of") or name.endswith(("_from", "_to")):
             schema["format"] = "date-time" if name.startswith("created_") else "date"

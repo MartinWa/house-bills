@@ -281,7 +281,9 @@ def test_vendor_wide_exception_is_one_action_and_preserves_existing_scopes(cover
 
 
 def test_catalogue_supports_independent_cost_and_usage_selections_without_splitting_money(coverage):
-    plastic = Subcategory.objects.create(key="plastic", category="waste", name="Plastic")
+    plastic = Subcategory.objects.get(key="plastic")
+    plastic.name, plastic.is_active = "Plastic", True
+    plastic.save()
     candidate, properties = coverage["candidate"](
         [(coverage["houses"][0], "waste", "waste_collection")]
     )

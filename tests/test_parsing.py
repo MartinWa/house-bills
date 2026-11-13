@@ -5,6 +5,7 @@ from datetime import date
 
 import pytest
 
+from bills.categories import waste_cost_subcategory
 from bills.parsing import layout_01, layout_02, layout_02_v2
 from bills.parsing.common import last_money, reconcile
 from bills.parsing.normalization import money, quantity, source_date, source_period
@@ -20,6 +21,63 @@ def parse_synthetic(tmp_path, pages, parser=layout_01):
     candidate = parser.parse(read_pdf(path))
     assert hashlib.sha256(path.read_bytes()).hexdigest() == original_hash
     return candidate
+
+
+def test_waste_costs_and_partial_reported_weights_are_independent(tmp_path):
+    pages = multi_service()
+    pages = [
+        [
+            line.replace(
+                "Restavfall 190L kärl 7,5 kg 4,00 kr/kg 30,00 kr", "Fast restavfallsavgift 30,00 kr"
+            )
+            if isinstance(line, str)
+            else line
+            for line in page
+        ]
+        for page in pages
+    ]
+    candidate = parse_synthetic(tmp_path, pages)
+    assert candidate.issues == []
+    combined, garden = candidate.sections[1:3]
+    assert combined.subcategory == "waste_collection" and combined.gross_minor == 13950
+    assert [(weight.subcategory, weight.quantity_milli) for weight in combined.usages] == [
+        ("matavfall", 12000)
+    ]
+    assert garden.subcategory == "tradgardsavfall" and garden.gross_minor == 10000
+    assert garden.usages == []
+
+
+@pytest.mark.parametrize("fraction", ["Matavfall", "Restavfall"])
+def test_named_waste_block_retains_mixed_fraction_charges_as_combined(tmp_path, fraction):
+    pages = [
+        [
+            line.replace(
+                "Hushållsavfall avtal 9902 Hushållsavfall",
+                f"Hushållsavfall avtal 9902 {fraction}",
+            )
+            if isinstance(line, str)
+            else line
+            for line in page
+        ]
+        for page in multi_service()
+    ]
+    candidate = parse_synthetic(tmp_path, pages)
+    assert candidate.issues == []
+    combined = candidate.sections[1]
+    assert combined.subcategory == "waste_collection" and combined.gross_minor == 13950
+    assert {weight.subcategory for weight in combined.usages} == {"matavfall", "restavfall"}
+
+
+@pytest.mark.parametrize(
+    ("fraction", "key"), [("Matavfall", "matavfall"), ("Restavfall", "restavfall")]
+)
+def test_consistent_named_fraction_cost_block_is_classified_separately(fraction, key):
+    assert (
+        waste_cost_subcategory(
+            [f"Hushållsavfall avtal 9902 {fraction}", f"Tömning {fraction} 1 st 30,00 kr"]
+        )
+        == key
+    )
 
 
 def test_multi_service_pdf_preserves_contracts_costs_and_billed_usage(tmp_path):
@@ -85,7 +143,7 @@ def test_network_readings_keep_billed_intervals_without_repeating_price_quantiti
     assert all(row.evidence.page == 4 for row in network.usages)
     assert all(row.evidence.text.startswith("Avläsning") for row in network.usages)
     assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
-    assert candidate.parser_revision == "8" and candidate.requires_review
+    assert candidate.parser_revision == "9" and candidate.requires_review
 
 
 @pytest.mark.parametrize("correction", [False, True])
