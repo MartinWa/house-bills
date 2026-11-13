@@ -19,6 +19,7 @@ SUBCATEGORY_LABELS = {
     **dict(WASTE_COST_SUBCATEGORIES),
     "electricity_network": "Elnät",
     "electricity_supply": "Elhandel",
+    "electricity_demand": "Effektavgift",
 }
 CATEGORY_LABELS = {
     "electricity_network": "Electricity",
@@ -28,6 +29,18 @@ CATEGORY_LABELS = {
     "other": "Other",
     "electricity": "Electricity",
 }
+
+
+def usage_units(utility, subcategory=""):
+    """Billed power is distinct from additive electricity consumption."""
+    if utility == "electricity" and subcategory == "electricity_demand":
+        return {"kW"}
+    return {
+        "electricity": {"kWh"},
+        "water": {"m3"},
+        "waste": {"kg"},
+        "other": {"kWh", "m3", "kg"},
+    }.get(utility, set())
 
 
 def waste_subcategory(source_text):

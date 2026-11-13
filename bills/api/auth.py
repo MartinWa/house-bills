@@ -18,6 +18,7 @@ REPORTING_PATHS = frozenset(
         "/reports/summary",
         "/reports/costs",
         "/reports/consumption",
+        "/reports/billed-power",
         "/reports/consumption-issues",
     }
 )

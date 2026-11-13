@@ -25,7 +25,7 @@
       <p>Net {{ section.net_minor|money }} {{ invoice.currency }} · VAT {{ section.vat_minor|money }} {{ invoice.currency }} · Cost including VAT {{ section.gross_minor|money }} {{ invoice.currency }}</p>
       <p>Billed period {{ section.start|date:"Y-m-d" }} to {{ section.end|final_day }}</p>
       {% if section.identifiers %}<ul>{% for identifier in section.identifiers %}<li>{{ identifier.kind }}: {{ identifier.value }}</li>{% endfor %}</ul>{% endif %}
-      <h4>Consumption</h4>
+      <h4>{% if section.subcategory_id == 'electricity_demand' %}Billed power{% else %}Consumption{% endif %}</h4>
       {% if section.usages.all %}
         <div class="table-scroll"><table>
           <thead><tr><th scope="col">Category</th><th scope="col">Subcategory</th><th scope="col">Billed period</th><th scope="col">Quantity</th><th scope="col">Measurement basis</th></tr></thead>
@@ -33,7 +33,7 @@
             <tr><td>{{ usage.get_utility_display }}</td><td>{{ usage.subcategory_label|default:"—" }}</td><td>{{ usage.start|date:"Y-m-d" }} to {{ usage.end|final_day }}</td><td>{{ usage.quantity_milli|quantity }} {{ usage.get_unit_display }}</td><td>{{ usage.get_basis_display }}</td></tr>
           {% endfor %}</tbody>
         </table></div>
-      {% else %}<p>No billed consumption recorded for this allocation.</p>{% endif %}
+      {% else %}<p>No billed {% if section.subcategory_id == 'electricity_demand' %}power{% else %}consumption{% endif %} recorded for this allocation.</p>{% endif %}
     </section>
   {% endfor %}
   <h3>Approval history</h3>

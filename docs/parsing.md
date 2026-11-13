@@ -31,8 +31,8 @@ remain review proposals. Dates and filenames never select the newest parser.
 
 | Family/version | Billing structure | Revision |
 | --- | --- | --- |
-| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations, explicit garden/fraction cost blocks and dated water reversals. | `9` |
-| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units and explicit waste cost labels. | `4` |
+| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations, explicit garden/fraction and demand costs, billed kW and dated water reversals. | `11` |
+| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units, explicit waste and demand costs and billed kW. | `6` |
 | `layout_02/v1` | Electricity supply; installation details above each specification. | `3` |
 | `layout_02/v2` | Replacement supply structure; service-specific title and inline installation key. | `2` |
 | `layout_03/v1` | Quarterly waste or dated tank emptying; VAT basis and separate payment summary. | `2` |
@@ -107,8 +107,9 @@ current mappings or explicit reviewed assignments again.
 page lines and private `routing` metadata: vendor, issuer evidence, layout matches,
 invoice kind and proposed section properties. Missing values are null. Independent
 headers and previously extracted sections survive invalid fields or parser errors.
-Parsers retain service cost totals and overall billing periods without extracting
-individual fee amounts or allocating their VAT. Numeric precision, units, periods and
+Parsers retain service cost totals and overall billing periods. Layout 01 separates
+printed Effektavgift and configured waste fraction charges, balancing their VAT to
+the original contract total. Remaining fee amounts are optional. Numeric precision, units, periods and
 allocation/header reconciliation require validation. Repeated
 supply price quantities yield one usage per period; network usage comes from its
 dated billed readings. Multiple readings retain consecutive periods, and their total

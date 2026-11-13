@@ -219,7 +219,7 @@ even when those entries have no allocations. Restore the verified pre-upgrade ba
 with the previous image in that case.
 
 Money uses signed integer minor units: `100` is one SEK. Quantities use signed integer
-thousandths: `1000` is one kWh, m³ or kg. Floats, booleans and strings are rejected by the
+thousandths: `1000` is one kWh, kW, m³ or kg. Floats, booleans and strings are rejected by the
 model fields; number normalization must happen before persistence. SQLite constraints
 reject non-integer stored values. Unknown amounts stay null, and approval requires
 complete reconciled monetary values and an overall period for every allocation. Draft
@@ -283,10 +283,13 @@ source page and an unlocated zero bounding box. Extraction attempts and earlier 
 snapshots retain original evidence.
 
 Approval checks each allocation's net plus VAT against its gross total, then allocation
-totals and rounding against the header. Printed VAT is retained without allocation to
-individual fees. Usage must match the allocation category. Electricity uses kWh, Water uses m³ and Waste uses kg; Other can retain any of these supported source units.
-Repeated electricity usage for the same section/period/basis is prohibited; overlapping
-periods with the same property, source service and basis require review. Network and
+totals and rounding against the header. Splitting explicit demand or waste fraction costs
+apportions VAT by net cost and balances it to the unchanged printed contract VAT.
+Usage must match the allocation category. Electricity consumption uses kWh;
+the Effektavgift subcategory (`electricity_demand`) uses billed kW. Water uses m³ and Waste
+uses kg; Other can retain kWh, m³ or kg. Billed power remains separate from additive consumption.
+Repeated usage for the same section/period/basis is prohibited; overlapping electricity
+consumption periods with the same property, source service and basis require review. Network and
 supply usage remain distinct. Usage reversals and replacements retain their separate
 bases; [approved reporting](reporting.md) selects canonical electricity separately
 and exposes ambiguous overlaps without changing approved values.

@@ -175,6 +175,31 @@ quantities before dividing by `1000.0`; keep electricity/kWh, water/m3 and waste
 separate. Basis retains `measured`, `estimated`, `billed`, `billed_weight` and `reversal`.
 An allocation without consumption contributes costs without inventing zero usage.
 
+Effektavgift costs use the Electricity subcategory `electricity_demand`. They are
+removed from the Elnät allocation, so all electricity costs still sum to the original
+invoice totals. `reporting_electricity_demand` exposes the billed power rows in kW,
+stored in thousandths with their independent periods. Reports summarizes each property's
+billed power with the arithmetic mean, highest and lowest recorded values. Each billed
+value has equal weight; the mean is rounded to 0.001 kW. Only recorded values contribute,
+and date filters select whole billed periods by overlap, independently of invoice dates.
+Full calendar-month extrema show the month and year; other periods retain their exact
+dates. Ties show the latest period and the number of other tied periods. Original rows
+and invoice/source links are retained in collapsed invoice details.
+
+An exact signed credit cancels one positive value with the same property, vendor,
+period and magnitude, taking older invoice dates/IDs first. Reversed values are excluded
+from the statistics. Unmatched negative values stay in the invoice details and are
+counted as exclusions beside the affected property. Explicit zero values still contribute.
+kW is not additive consumption and is excluded from electricity source selection,
+kWh totals and consumption warnings.
+
+To preview a split for already approved Layout 01 invoices using their retained
+source evidence, run `python manage.py split_electricity_demand --property 1`.
+Apply with `--apply --reviewer 1`, using the actual property and staff reviewer IDs;
+omit `--property` to include all properties. Each correction records a new approval
+revision and preserves headers, totals, kWh, other approved corrections and earlier
+snapshots. Allocations without matching evidence or with changed network totals stay unchanged.
+
 Use raw usage for water and waste. Use `reporting_electricity_usage` for combined
 electricity consumption; summing raw supply and network readings would count the
 same consumption twice. Both electricity services still contribute to costs.

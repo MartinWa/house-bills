@@ -24,7 +24,7 @@ KEYS = {"matavfall": "matavfall", "restavfall": "restavfall", "trädgårdsavfall
 def allocated_vat(net_amounts, printed_net, printed_vat):
     """Apportion the printed VAT exactly, including credits and rounding ties."""
     if sum(net_amounts) != printed_net:
-        raise ValueError("Waste net allocations do not match the printed contract.")
+        raise ValueError("Net allocations do not match the printed contract.")
     if not printed_net:
         if printed_vat or any(net_amounts):
             raise ValueError("A zero-net contract needs an explicit VAT split.")

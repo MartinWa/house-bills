@@ -105,7 +105,7 @@ def test_network_column_order_preserves_grouped_quantity(tmp_path, meter_first):
         ]
     candidate = parse(tmp_path, pages, layout_01)
     assert not candidate.issues
-    assert candidate.sections[-1].usages[0].quantity_milli == 1321125
+    assert candidate.sections[-2].usages[0].quantity_milli == 1321125
 
 
 def test_contract_specification_accepts_page_suffix_and_separate_fee_periods(tmp_path):
@@ -180,7 +180,7 @@ def test_network_price_periods_reconcile_separate_readings(tmp_path):
     )
     candidate = parse(tmp_path, pages, layout_01)
     assert not candidate.issues
-    assert [row.quantity_milli for row in candidate.sections[-1].usages] == [121125, 200000]
+    assert [row.quantity_milli for row in candidate.sections[-2].usages] == [121125, 200000]
 
 
 def test_missing_reversal_period_retains_costs_and_requires_review(tmp_path):

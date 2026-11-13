@@ -228,7 +228,7 @@ def metadata(request):
         "vendor_identifier_kinds": choices(VendorIssuerIdentifier.Kind.choices),
         "property_rule_kinds": choices(InvoicePropertyRule.Kind.choices),
         "identifier_kinds": choices(IDENTIFIER_KINDS),
-        "units": ["kWh", "m3", "kg"],
+        "units": [key for key, _ in Usage._meta.get_field("unit").choices],
         "bases": choices(Usage.Basis.choices),
         "frequencies": choices(VendorBillingSchedule.Frequency.choices),
         "review_limits": REVIEW_LIMITS,

@@ -122,6 +122,23 @@ def consumption(request):
     return report_response(request, "consumption", ("rows", "totals", "billed_period"))
 
 
+@router.get("/billed-power", response=s.ReportPage)
+@documented_query(
+    "property_id",
+    "vendor_id",
+    "category",
+    "subcategory",
+    "date_from",
+    "date_to",
+    "mode",
+    "limit",
+    "offset",
+    repeated=["property_id", "vendor_id"],
+)
+def billed_power(request):
+    return report_response(request, "power", ("rows",))
+
+
 @router.get("/consumption-issues", response=s.ReportPage)
 @documented_query(
     "property_id",

@@ -244,7 +244,7 @@ def test_waste_subcategories_survive_review_correction_and_proposal_comparison(
 def test_legacy_waste_review_infers_subcategories_and_retains_original_evidence(
     configured, client, tmp_path
 ):
-    document, _ = upload(client, tmp_path, multi_service())
+    document, _ = upload(client, tmp_path, multi_service(demand=False))
     attempt = document.extractions.get()
     legacy = copy.deepcopy(attempt.candidate)
     for section in legacy["sections"]:
@@ -552,7 +552,7 @@ def test_review_and_approval_keep_multiple_network_readings_without_a_false_warn
     )
     invoice = approved(client, document)
     network = invoice.sections.get(section_id="section_04")
-    assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
+    assert (network.net_minor, network.vat_minor, network.gross_minor) == (22846, 5712, 28558)
     assert list(network.usages.order_by("start").values_list("quantity_milli", "start", "end")) == [
         (121125, date(2024, 2, 1), date(2024, 2, 15)),
         (200000, date(2024, 2, 15), date(2024, 3, 1)),
@@ -621,7 +621,7 @@ def test_multi_service_and_dated_corrections_survive_web_review(
 ):
     document, _ = upload(client, tmp_path, factory())
     invoice = approved(client, document)
-    assert invoice.sections.count() == 4
+    assert invoice.sections.count() == 5
     assert set(invoice.sections.values_list("category", flat=True)) == {
         "water",
         "waste",
@@ -629,9 +629,9 @@ def test_multi_service_and_dated_corrections_survive_web_review(
     }
     quantities = list(Usage.objects.order_by("pk").values_list("quantity_milli", flat=True))
     expected = (
-        [45000, -12000, -14000, 12000, 7500, 321125]
+        [45000, -12000, -14000, 12000, 7500, 321125, 3000]
         if factory != multi_service
-        else [12000, 12000, 7500, 321125]
+        else [12000, 12000, 7500, 321125, 3000]
     )
     assert quantities == expected
 

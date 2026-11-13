@@ -74,18 +74,18 @@ def upload(tmp_path, pages, *, issuer=ISSUER, filename="synthetic.pdf"):
 @pytest.mark.parametrize(
     "factory,family,version,quantities",
     [
-        (multi_service, "layout_01", "v1", [12000, 12000, 7500, 321125]),
+        (multi_service, "layout_01", "v1", [12000, 12000, 7500, 321125, 3000]),
         (
             lambda: multi_service(split_network_readings=True),
             "layout_01",
             "v1",
-            [12000, 12000, 7500, 121125, 200000],
+            [12000, 12000, 7500, 121125, 200000, 3000],
         ),
         (
             lambda: multi_service(correction=True),
             "layout_01",
             "v1",
-            [45000, -12000, -14000, 12000, 7500, 321125],
+            [45000, -12000, -14000, 12000, 7500, 321125, 3000],
         ),
         (shared_supply, "layout_02", "v1", [140250, 510000]),
         (lambda: shared_supply(version="v2"), "layout_02", "v2", [140250, 510000]),

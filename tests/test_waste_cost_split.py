@@ -26,7 +26,7 @@ from .synthetic import multi_service, write_pdf
 
 @pytest.fixture
 def parsed(tmp_path):
-    pages = read_pdf(write_pdf(tmp_path / "fractions.pdf", multi_service()))
+    pages = read_pdf(write_pdf(tmp_path / "fractions.pdf", multi_service(demand=False)))
     return layout_01.parse(pages), pages
 
 
@@ -160,7 +160,7 @@ def test_named_garden_contract_keeps_its_printed_zero_without_a_charge_row(parse
 
 
 def test_legacy_avfall_product_headings_classify_their_own_contract_costs(tmp_path):
-    source = multi_service()
+    source = multi_service(demand=False)
     for page in source:
         for index, line in enumerate(page):
             if isinstance(line, str) and line.startswith("Hushållsavfall avtal 9902"):

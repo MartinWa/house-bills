@@ -3,7 +3,7 @@
 {% block title %}Reports · House Bills{% endblock %}
 {% block content %}
   <h2>Reports</h2>
-  <p>Totals use the latest approved invoices and corrections. Costs use invoice dates. Consumption includes whole billed intervals that overlap the chosen dates.</p>
+  <p>Totals use the latest approved invoices and corrections. Costs use invoice dates. Consumption and billed power include whole billed intervals that overlap the chosen dates.</p>
   <p><a href="{% url 'bills:invoice_coverage' %}?{{ request.GET.urlencode }}">Check missing invoices</a></p>
   {% include "bills/_filters.html" with clear_url="bills:reports" %}
   {% if unavailable %}
@@ -75,6 +75,36 @@
               <td><a href="{% url 'bills:invoice' row.invoice_id %}">{{ row.reference }}</a><small>{{ row.vendor_name }} · {{ row.invoice_date|date:"Y-m-d" }}</small>{% if row.document_id not in manual_document_ids %}<a href="{% url 'bills:source_view' row.document_id %}">View source</a>{% endif %}</td>
               <td>{{ row.name }}{% if row.is_waste_fraction %}<small>Separately billed cost</small>{% endif %}<br>{{ row.gross_minor|money }} {{ row.currency }} including VAT<small>{{ row.net_minor|money }} excluding VAT · {{ row.vat_minor|money }} VAT</small><small>{{ row.period_start|date:"Y-m-d" }} – {{ row.period_end|final_day }}</small></td>
               <td>{% for weight in row.weights %}{{ weight.fraction_name }}: {{ weight.quantity_milli|quantity }} {{ weight.unit }}<small>{{ weight.basis_label }} · {{ weight.period_start|date:"Y-m-d" }} – {{ weight.period_end|final_day }}</small>{% if not forloop.last %}<br>{% endif %}{% empty %}Not reported{% endfor %}</td>
+            </tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </details>
+    {% endif %}
+    {% if billed_power %}
+      <h3>Billed power (Effektavgift)</h3>
+      <p>Average of the recorded billed values for each property in the selected period. Highest and lowest show the billed month or exact period.</p>
+      <div class="table-scroll">
+        <table id="report-billed-power">
+          <thead><tr><th>Property</th><th>Average</th><th>Highest</th><th>Lowest</th></tr></thead>
+          <tbody>{% for row in billed_power_summary %}<tr>
+            <td>{{ row.property_name }}<small>{{ row.value_count }} billed value{{ row.value_count|pluralize }}</small>{% if row.unmatched_credit_count %}<small>{{ row.unmatched_credit_count }} unmatched credit{{ row.unmatched_credit_count|pluralize }} excluded from statistics; see invoice details.</small>{% endif %}</td>
+            <td class="amount">{% if row.value_count %}{{ row.average_milli|quantity }} kW{% else %}—{% endif %}</td>
+            <td>{% include "bills/_power_extreme.html" with value=row.highest other_count=row.highest_other_count %}</td>
+            <td>{% include "bills/_power_extreme.html" with value=row.lowest other_count=row.lowest_other_count %}</td>
+          </tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <details id="billed-power-details">
+        <summary>Billed power invoice details</summary>
+        <p>{{ billed_power|length }} billed power record{{ billed_power|length|pluralize }}, most recent billed periods first. Signed credits are retained here.</p>
+        <div class="table-scroll">
+          <table id="report-billed-power-details">
+            <thead><tr><th>Property</th><th>Invoice</th><th>Billed period</th><th>Billed power</th></tr></thead>
+            <tbody>{% for row in billed_power %}<tr>
+              <td>{{ row.property_name }}</td>
+              <td><a href="{% url 'bills:invoice' row.invoice_id %}">{{ row.reference }}</a><small>{{ row.vendor_name }} · {{ row.invoice_date|date:"Y-m-d" }}</small>{% if row.document_id not in manual_document_ids %}<a href="{% url 'bills:source_view' row.document_id %}{% if row.source_page %}#page={{ row.source_page }}{% endif %}">View source</a>{% endif %}</td>
+              <td>{{ row.period_start|date:"Y-m-d" }} – {{ row.period_end|final_day }}</td>
+              <td class="amount">{{ row.quantity_milli|quantity }} kW</td>
             </tr>{% endfor %}</tbody>
           </table>
         </div>

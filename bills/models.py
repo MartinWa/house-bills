@@ -1135,7 +1135,9 @@ class Usage(AllocationModel):
         related_name="usages",
         db_column="subcategory",
     )
-    unit = models.CharField(max_length=8, choices=[("kWh", "kWh"), ("m3", "m³"), ("kg", "kg")])
+    unit = models.CharField(
+        max_length=8, choices=[("kWh", "kWh"), ("kW", "kW"), ("m3", "m³"), ("kg", "kg")]
+    )
     quantity_milli = ScaledIntegerField()
     start = models.DateField()
     end = models.DateField()
@@ -1159,7 +1161,15 @@ class Usage(AllocationModel):
             ),
             models.CheckConstraint(condition=Q(start__lt=F("end")), name="usage_period_valid"),
             models.CheckConstraint(
-                condition=Q(utility="electricity", unit="kWh")
+                condition=(
+                    Q(utility="electricity", unit="kWh") & ~Q(subcategory="electricity_demand")
+                )
+                | Q(
+                    utility="electricity",
+                    unit="kW",
+                    subcategory="electricity_demand",
+                    subcategory__isnull=False,
+                )
                 | Q(utility="water", unit="m3")
                 | Q(utility="waste", unit="kg")
                 | Q(utility="other", unit__in=["kWh", "m3", "kg"]),

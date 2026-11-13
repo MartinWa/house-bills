@@ -125,7 +125,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
         for section in candidate.sections:
             house_id = routing["section_properties"].get(section.section_id)
             for usage in section.usages:
-                if usage.utility != "electricity" or house_id is None:
+                if usage.utility != "electricity" or usage.unit != "kWh" or house_id is None:
                     continue
                 for other, other_house, other_service in electricity:
                     if (

@@ -2,6 +2,8 @@
 
 import re
 
+from bills.categories import usage_units
+
 from .normalization import DATE, NUMBER, money, source_date, text
 from .types import Candidate, Evidence, Identifier
 
@@ -131,15 +133,9 @@ def reconcile(candidate: Candidate) -> Candidate:
             candidate.issues.append(f"Missing or invalid billing period in {section.section_id}")
         # Corrections reconcile the whole invoice, including valid reviewed
         # generic electricity and Other allocations alongside parsed services.
-        expected_units = {
-            "water": {"m3"},
-            "waste": {"kg"},
-            "electricity": {"kWh"},
-            "electricity_network": {"kWh"},
-            "electricity_supply": {"kWh"},
-            "other": {"kWh", "m3", "kg"},
-        }[section.service]
+        utility = "electricity" if section.service.startswith("electricity_") else section.service
         for usage in section.usages:
+            expected_units = usage_units(utility, usage.subcategory or section.subcategory)
             if usage.unit not in expected_units or usage.start >= usage.end:
                 candidate.issues.append(f"Invalid usage in {section.section_id}")
     if all(s.gross_minor is not None for s in candidate.sections) and None not in (
