@@ -936,6 +936,51 @@ def test_ledger_export_is_a_self_contained_live_input(configured, tmp_path):
     assert invoice.invoice_total_minor == 12500 and invoice.vat_minor == 2500
 
 
+@pytest.mark.parametrize(
+    ("date_semantics", "ledger_date"), [("invoice", "2024-04-15"), ("payment", "2024-05-05")]
+)
+def test_exported_period_pins_survive_new_whole_month_originals(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    date_semantics,
+    ledger_date,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    source = ledger_source(
+        tmp_path, house.pk, date=ledger_date, date_semantics=date_semantics, payment_offset_days=20
+    )
+    plan, live = tmp_path / "plan.json", tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    before = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert (before["period_start"], before["period_end"]) == ("2024-04-05", "2024-05-05")
+
+    ledger["make"]([allocation(house, start=date(2024, 1, 1), end=date(2024, 2, 1))])
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--plan",
+        str(plan),
+        "--commit",
+        stdout=StringIO(),
+    )
+    after = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    for field in ("invoice_date", "period_start", "period_end", "offset", "length"):
+        assert after[field] == before[field]
+    invoice = Invoice.objects.get(reference=before["reference"])
+    section = invoice.sections.get()
+    assert invoice.invoice_date == date(2024, 4, 15)
+    assert (section.start, section.end) == (date(2024, 4, 5), date(2024, 5, 5))
+
+
 def test_ledger_import_commits_once_and_rereads_as_skip(configured, tmp_path):
     actor, vendor, houses = configured
     source = ledger_source(tmp_path, houses[0].pk, reference="SYNTHETIC-LEDGER-1")
@@ -1021,6 +1066,56 @@ def test_ledger_import_separates_same_date_invoices_by_total(configured, tmp_pat
     artifact = json.loads((tmp_path / "third-plan.json").read_text(encoding="utf-8"))
     assert artifact["summary"]["skipped"] == 1
     assert Invoice.objects.filter(vendor=vendor).count() == 2
+
+
+@pytest.mark.parametrize(
+    ("period_mode", "payment_dates", "invoice_date"),
+    [
+        ("calendar", ("2024-04-02", "2024-04-03"), date(2024, 3, 1)),
+        ("offset", ("2024-04-25", "2024-04-26"), date(2024, 4, 11)),
+    ],
+)
+@pytest.mark.parametrize("explicit_references", [False, True])
+def test_distinct_payment_rows_with_same_derived_date_and_total_import_once(
+    configured, tmp_path, period_mode, payment_dates, invoice_date, explicit_references
+):
+    actor, vendor, houses = configured
+    house = houses[0]
+    source = ledger_source(
+        tmp_path,
+        house.pk,
+        date=payment_dates[0],
+        date_semantics="payment",
+        period_mode=period_mode,
+        payment_offset_days=20,
+        reference="SYNTHETIC-SUPPLY" if explicit_references else "",
+    )
+    first = json.loads(source.read_text(encoding="utf-8"))["only_manual"][0]
+    second = {
+        **first,
+        "date": payment_dates[1],
+        "services": {"water": 125.0},
+        "reference": "SYNTHETIC-WATER" if explicit_references else "",
+    }
+    source.write_text(json.dumps({"only_manual": [first, second]}), encoding="utf-8")
+    plan = tmp_path / "plan.json"
+    arguments = import_arguments(source, actor, vendor, house, plan, commit=True)
+    call_command("import_ledger_invoices", *arguments, stdout=StringIO())
+    artifact = json.loads(plan.read_text(encoding="utf-8"))
+    assert artifact["summary"]["imported"] == 2
+    assert artifact["summary"]["skipped"] == artifact["summary"]["failed"] == 0
+    assert artifact["summary"]["gross_minor"] == 25000
+    assert Invoice.objects.filter(invoice_date=invoice_date, invoice_total_minor=12500).count() == 2
+    assert set(BillingSection.objects.values_list("category", "subcategory_id")) == {
+        ("electricity", "electricity_supply"),
+        ("water", None),
+    }
+
+    call_command("import_ledger_invoices", *arguments, stdout=StringIO())
+    replay = json.loads(plan.read_text(encoding="utf-8"))
+    assert replay["summary"]["imported"] == replay["summary"]["failed"] == 0
+    assert replay["summary"]["skipped"] == 2
+    assert Invoice.objects.count() == Document.objects.count() == 2
 
 
 def test_ledger_import_refuses_services_that_do_not_reconcile(configured, tmp_path):

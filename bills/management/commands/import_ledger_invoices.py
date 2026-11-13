@@ -569,7 +569,8 @@ class Command(BaseCommand):
             item["length"] = (item["period_end"] - item["period_start"]).days
             return
         key = item["ledger_vendor"].casefold()
-        if item["offset_days"] is not None and item["length_days"] is not None:
+        row_pinned = item["offset_days"] is not None and item["length_days"] is not None
+        if row_pinned:
             item["offset"], item["length"] = int(item["offset_days"]), int(item["length_days"])
         elif key in pinned:
             item["offset"], item["length"] = pinned[key]
@@ -589,7 +590,12 @@ class Command(BaseCommand):
         start = item["invoice_date"] - timedelta(days=item["offset"])
         item["period_start"] = start
         item["period_end"] = start + timedelta(days=item["length"])
-        if 28 <= item["length"] <= 31 and self.bills_whole_months(item["vendor"]):
+        # Row pins already contain the resolved period, including any export-time snapping.
+        if (
+            not row_pinned
+            and 28 <= item["length"] <= 31
+            and self.bills_whole_months(item["vendor"])
+        ):
             snapped = nearest_month_start(start)
             offset = (item["invoice_date"] - snapped).days
             if 0 <= offset <= 366:
@@ -642,6 +648,9 @@ class Command(BaseCommand):
         )
         if existing.exists():
             return "an approved invoice already uses this vendor and reference"
+        # Payment-derived dates are estimates and cannot establish invoice identity.
+        if item["date_semantics"] == "payment":
+            return ""
         same_date = Invoice.objects.filter(
             status=Invoice.Status.APPROVED,
             vendor=item["vendor"],
