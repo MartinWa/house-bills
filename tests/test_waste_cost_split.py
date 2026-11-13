@@ -12,11 +12,11 @@ from django.core.management import call_command
 from bills.models import Document, Property, PropertyIdentifier, PropertyService, Vendor
 from bills.parsing import layout_01, layout_01_v2
 from bills.parsing.reader import read_pdf
-from bills.parsing.types import Evidence
+from bills.parsing.types import Evidence, Usage
 from bills.parsing.waste_costs import allocated_vat, split_waste_costs
 from bills.reporting import read_report
 from bills.services import StaleReviewError, approve_review, record_extraction
-from bills.waste_costs import plan_retained_cost_split
+from bills.waste_costs import plan_retained_cost_split, reviewed_candidate
 
 from .synthetic import multi_service, write_pdf
 
@@ -384,3 +384,171 @@ def test_new_extraction_keeps_its_proposal_when_a_cost_update_is_stale(retained,
     invoice.document.refresh_from_db()
     assert invoice.review_revision == 1 and invoice.sections.count() == 4
     assert invoice.document.extraction_revision == 2 and invoice.document.state == "review"
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "service,unit", [("other", "kg"), ("other", "m3"), ("other", "kWh"), ("electricity", "kWh")]
+)
+def test_cost_split_preserves_all_valid_reviewed_categories(retained, service, unit):
+    invoice, house, actor, _ = retained
+    candidate = reviewed_candidate(invoice.reviews.get().snapshot["values"])
+    water = candidate.sections[0]
+    evidence = Evidence(3, "Manually reviewed allocation and consumption", (0, 0, 0, 0))
+    candidate.sections.append(
+        replace(
+            water,
+            section_id="reviewed_allocation",
+            service=service,
+            identifiers=[],
+            net_minor=100,
+            vat_minor=25,
+            gross_minor=125,
+            tax_evidence=evidence,
+            total_evidence=evidence,
+            usages=[Usage(service, unit, 12345, water.start, water.end, "billed", evidence)],
+        )
+    )
+    water.net_minor -= 100
+    water.vat_minor -= 25
+    water.gross_minor -= 125
+    approve_review(
+        invoice.pk,
+        expected_revision=1,
+        candidate=candidate,
+        vendor=invoice.vendor,
+        section_properties={"reviewed_allocation": house},
+        actor=actor,
+    )
+    invoice.refresh_from_db()
+    previous = copy.deepcopy(invoice.reviews.get(revision=2).snapshot)
+    output = io.StringIO()
+    call_command("split_waste_costs", property_id=house.pk, stdout=output)
+    assert "Would update 1 invoices" in output.getvalue()
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2
+    call_command("split_waste_costs", property_id=house.pk, apply=True, reviewer=actor.pk)
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 3
+    assert invoice.reviews.get(revision=2).snapshot == previous
+    current = invoice.reviews.get(revision=3).snapshot
+    assert current["values"]["sections"][-1] == previous["values"]["sections"][-1]
+    assert current["properties"]["reviewed_allocation"] == house.pk
+    assert invoice.sections.get(subcategory_id="restavfall").gross_minor == 3750
+
+
+@pytest.mark.django_db(transaction=True)
+def test_newly_enabled_fraction_extends_split_and_preserves_reviewed_parts(retained):
+    invoice, house, actor, _ = retained
+    rest = PropertyService.objects.get(property=house, subcategory_id="restavfall")
+    rest.is_active = False
+    rest.save()
+    call_command("split_waste_costs", property_id=house.pk, apply=True, reviewer=actor.pk)
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2
+    assert not invoice.sections.filter(subcategory_id="restavfall").exists()
+    candidate = reviewed_candidate(invoice.reviews.get(revision=2).snapshot["values"])
+    food = next(section for section in candidate.sections if section.subcategory == "matavfall")
+    general = next(
+        section for section in candidate.sections if section.subcategory == "waste_collection"
+    )
+    food.net_minor += 1
+    food.vat_minor += 1
+    food.gross_minor += 2
+    general.net_minor -= 1
+    general.vat_minor -= 1
+    general.gross_minor -= 2
+    food.start, food.end = date(2024, 1, 1), date(2024, 2, 1)
+    food.usages[0] = replace(food.usages[0], quantity_milli=15000, start=food.start, end=food.end)
+    approve_review(
+        invoice.pk,
+        expected_revision=2,
+        candidate=candidate,
+        vendor=invoice.vendor,
+        section_properties={},
+        actor=actor,
+    )
+    invoice.refresh_from_db()
+    previous = copy.deepcopy(invoice.reviews.get(revision=3).snapshot)
+    rest.is_active = True
+    rest.save()
+    output = io.StringIO()
+    call_command("split_waste_costs", property_id=house.pk, stdout=output)
+    assert "Would update 1 invoices" in output.getvalue()
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 3
+    call_command("split_waste_costs", property_id=house.pk, apply=True, reviewer=actor.pk)
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 4
+    current = invoice.reviews.get(revision=4).snapshot
+    previous_food = next(
+        section
+        for section in previous["values"]["sections"]
+        if section["subcategory"] == "matavfall"
+    )
+    current_food = next(
+        section
+        for section in current["values"]["sections"]
+        if section["subcategory"] == "matavfall"
+    )
+    assert current_food == previous_food
+    assert invoice.reviews.get(revision=3).snapshot == previous
+    assert invoice.sections.get(subcategory_id="restavfall").gross_minor == 3750
+    assert invoice.sections.get(subcategory_id="waste_collection").net_minor == 7199
+    assert sum(invoice.sections.values_list("vat_minor", flat=True)) == invoice.vat_minor
+    report = read_report(property_id=house.pk)
+    fractions = {row["fraction"]: row for row in report["waste_fractions"]}
+    assert fractions["matavfall"]["cost"]["gross_minor"] == 1202
+    assert fractions["restavfall"]["cost"]["gross_minor"] == 3750
+    assert report["waste_total"]["gross_minor"] == 23950
+    output = io.StringIO()
+    call_command(
+        "split_waste_costs", property_id=house.pk, apply=True, reviewer=actor.pk, stdout=output
+    )
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 4 and "Updated 0 invoices" in output.getvalue()
+
+
+def test_extending_partial_split_retains_parts_when_new_charge_is_missing(parsed):
+    candidate, pages = parsed
+    split_waste_costs(candidate, pages, {"section_02": {"matavfall"}})
+    original = copy.deepcopy(candidate.to_dict())
+    pages = [
+        [
+            replace(line, text="Restavfall 190L kärl 7,5 kg 4,00 kr/kg ?? kr")
+            if line.text.startswith("Restavfall 190L")
+            else line
+            for line in page
+        ]
+        for page in pages
+    ]
+    sources, warnings = split_waste_costs(
+        candidate, pages, {"section_02": {"matavfall", "restavfall"}}
+    )
+    assert sources == {} and "missing or invalid" in warnings[0]
+    assert candidate.to_dict() == original
+
+
+def test_extending_partial_split_rejects_changed_contract_totals(parsed):
+    candidate, pages = parsed
+    split_waste_costs(candidate, pages, {"section_02": {"matavfall"}})
+    general = next(
+        section for section in candidate.sections if section.subcategory == "waste_collection"
+    )
+    general.net_minor += 1
+    general.gross_minor += 1
+    original = copy.deepcopy(candidate.to_dict())
+    sources, warnings = split_waste_costs(
+        candidate, pages, {"section_02": {"matavfall", "restavfall"}}
+    )
+    assert sources == {} and "Reviewed waste totals differ" in warnings[0]
+    assert candidate.to_dict() == original
+
+
+def test_incomplete_contract_costs_keep_the_original_proposal(parsed):
+    candidate, pages = parsed
+    candidate.sections[1].net_minor = None
+    original = copy.deepcopy(candidate.to_dict())
+    sources, warnings = split_waste_costs(candidate, pages, {"section_02": {"matavfall"}})
+    assert sources == {} and "complete reviewed cost totals" in warnings[0]
+    assert candidate.to_dict() == original

@@ -66,7 +66,7 @@ def _source_lines(section, lines):
     return lines[start:end]
 
 
-def _split_section(section, lines, tracked):
+def _split_section(section, lines, tracked, existing_parts=()):
     source = _source_lines(section, lines)
     taxes = [
         (index, match) for index, line in enumerate(source) if (match := TAX.match(text(line)))
@@ -76,7 +76,17 @@ def _split_section(section, lines, tracked):
     tax_index, tax = taxes[0]
     tax_evidence = source[tax_index]
     printed_net, printed_vat = money(tax[1]), last_money(tax_evidence)
-    if (section.net_minor, section.vat_minor, section.gross_minor) != (
+    if any(
+        getattr(part, field) is None
+        for part in (section, *existing_parts)
+        for field in ("net_minor", "vat_minor", "gross_minor")
+    ):
+        raise ValueError("The waste contract needs complete reviewed cost totals.")
+    contract_totals = tuple(
+        sum(getattr(part, field) for part in (section, *existing_parts))
+        for field in ("net_minor", "vat_minor", "gross_minor")
+    )
+    if contract_totals != (
         printed_net,
         printed_vat,
         printed_net + printed_vat,
@@ -85,7 +95,7 @@ def _split_section(section, lines, tracked):
             "Reviewed waste totals differ from the printed contract; retained unchanged."
         )
     classified = waste_cost_subcategory(text(line) for line in source[:tax_index])
-    if classified in tracked:
+    if not existing_parts and classified in tracked:
         # A named fraction contract already supplies its entire net and VAT,
         # including a printed zero during a pause in garden collection.
         return [replace(section, subcategory=classified, tax_evidence=tax_evidence)]
@@ -110,7 +120,7 @@ def _split_section(section, lines, tracked):
         evidence.setdefault(key, line)
     if not amounts:
         return [section]
-    remaining = printed_net - sum(amounts.values())
+    remaining = section.net_minor - sum(amounts.values())
     remaining_usages = [usage for usage in section.usages if usage.subcategory not in amounts]
     parts = []
     if remaining or shared_fee is not None or remaining_usages:
@@ -136,7 +146,9 @@ def _split_section(section, lines, tracked):
                 total_evidence=evidence[key],
             )
         )
-    shares = allocated_vat([part.net_minor for part in parts], printed_net, printed_vat)
+    # Existing reviewed fractions keep their amounts and VAT. Apportion only the
+    # residual allocation, after checking the full contract against its source.
+    shares = allocated_vat([part.net_minor for part in parts], section.net_minor, section.vat_minor)
     for part, vat in zip(parts, shares, strict=True):
         part.vat_minor = vat
         part.gross_minor = part.net_minor + vat
@@ -153,28 +165,30 @@ def split_waste_costs(candidate, pages, tracked_sections):
     """
     lines = [line for page in pages for line in page]
     by_id = {section.section_id: section for section in candidate.sections}
-    split_parents = set()
+    split_parts = {}
     for section in candidate.sections:
         suffix = f"_{section.subcategory}"
         if section.subcategory not in KEYS.values() or not section.section_id.endswith(suffix):
             continue
         parent_id = section.section_id[: -len(suffix)]
         parent = by_id.get(parent_id)
-        if parent and parent.identifiers == section.identifiers:
-            split_parents.add(parent_id)
+        if parent and section.service == "waste" and parent.identifiers == section.identifiers:
+            split_parts.setdefault(parent_id, []).append(section)
     sections, sources, warnings = [], {}, []
     for section in candidate.sections:
-        tracked = tracked_sections.get(section.section_id, ())
+        existing_parts = split_parts.get(section.section_id, ())
+        tracked = set(tracked_sections.get(section.section_id, ())) - {
+            part.subcategory for part in existing_parts
+        }
         if (
             section.service != "waste"
-            or section.section_id in split_parents
             or not tracked
             or section.subcategory not in ("", "waste_collection")
         ):
             sections.append(section)
             continue
         try:
-            parts = _split_section(section, lines, tracked)
+            parts = _split_section(section, lines, tracked, existing_parts)
         except ValueError as exc:
             warnings.append(f"{section.section_id}: {exc}")
             parts = [section]

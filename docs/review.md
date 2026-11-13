@@ -167,6 +167,9 @@ docker compose -f compose.development.yaml exec app python manage.py split_waste
 ```
 
 Each applied correction adds a review revision and keeps earlier snapshots intact.
+Enabling another fraction service allows a later correction to split its printed
+charge from the remaining general allocation. Existing fraction costs, VAT, periods
+and weights stay as reviewed; the new parts share the remaining allocation's VAT.
 Contracts whose reviewed totals differ from the source are retained with a warning.
 Manual entries without source charge amounts remain combined.
 
