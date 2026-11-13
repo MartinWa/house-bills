@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from io import StringIO
 
 import pytest
@@ -10,6 +10,8 @@ from django.db import DatabaseError
 from django.test import Client
 
 from bills import backups, storage
+from bills.configuration import add_months
+from bills.invoice_coverage import read_invoice_coverage
 from bills.management.commands import import_ledger_invoices
 from bills.models import (
     BillingSection,
@@ -18,13 +20,17 @@ from bills.models import (
     Invoice,
     Property,
     PropertyIdentifier,
+    PropertyService,
     ReviewRevision,
+    ServiceVendorAssignment,
     Vendor,
+    VendorBillingSchedule,
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
 from bills.reporting import read_report
 
+from .test_reporting import allocation, ledger  # noqa: F401
 from .test_review import manual_fields, review_data
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -273,8 +279,9 @@ def ledger_source(tmp_path, property_id, **overrides):
 
 
 @pytest.mark.parametrize("quantity", [None, 0, 12000])
+@pytest.mark.parametrize("payment", [False, True])
 def test_exact_ledger_waste_costs_retain_optional_partial_and_zero_weights(
-    configured, tmp_path, quantity
+    configured, tmp_path, quantity, payment
 ):
     actor, vendor, houses = configured
     reported = (
@@ -316,7 +323,16 @@ def test_exact_ledger_waste_costs_retain_optional_partial_and_zero_weights(
         },
     ]
     source = ledger_source(
-        tmp_path, houses[0].pk, services={}, total=250.0, allocations=allocations
+        tmp_path,
+        houses[0].pk,
+        services={},
+        total=250.0,
+        allocations=allocations,
+        **(
+            {"date": "2024-04-02", "date_semantics": "payment", "period_mode": "calendar"}
+            if payment
+            else {}
+        ),
     )
     call_command(
         "import_ledger_invoices",
@@ -324,6 +340,8 @@ def test_exact_ledger_waste_costs_retain_optional_partial_and_zero_weights(
         stdout=StringIO(),
     )
     invoice = Invoice.objects.get()
+    assert invoice.invoice_date == (date(2024, 3, 1) if payment else date(2024, 1, 15))
+    assert invoice.sections.get(section_id="combined").start == date(2024, 1, 1)
     assert invoice.sections.get(section_id="combined").gross_minor == 20000
     assert invoice.sections.get(section_id="garden").gross_minor == 5000
     weights = list(invoice.sections.get(section_id="combined").usages.all())
@@ -381,6 +399,505 @@ def test_ledger_import_dry_run_reports_without_writing(configured, tmp_path):
     assert row["reference"] == f"LEDGER-2024-01-15-P{houses[0].pk}"
     assert row["period_start"] == "2024-01-05" and row["period_end"] == "2024-02-04"
     assert row["net_minor"] == 10000 and row["vat_minor"] == 2500
+    assert row["invoice_date"] == "2024-01-15" and row["due_date"] is None
+    assert artifact["date_semantics"] == {vendor.slug: "invoice"}
+    assert artifact["period_modes"] == {vendor.slug: "offset"}
+
+
+@pytest.mark.parametrize(
+    ("payment_date", "invoice_date", "start", "end"),
+    [
+        ("2017-04-03", "2017-03-01", "2017-02-01", "2017-03-01"),
+        ("2017-05-02", "2017-04-01", "2017-03-01", "2017-04-01"),
+        ("2018-10-31", "2018-10-01", "2018-09-01", "2018-10-01"),
+        ("2019-07-31", "2019-07-01", "2019-06-01", "2019-07-01"),
+        ("2024-03-24", "2024-02-01", "2024-01-01", "2024-02-01"),
+        ("2024-03-25", "2024-03-01", "2024-02-01", "2024-03-01"),
+        ("2024-01-02", "2023-12-01", "2023-11-01", "2023-12-01"),
+    ],
+)
+def test_payment_calendar_import_derives_months_and_preserves_provenance(
+    configured, tmp_path, payment_date, invoice_date, start, end
+):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, date=payment_date)
+    plan = tmp_path / "plan.json"
+    output = StringIO()
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], plan, True),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period-mode",
+        "Synthetic Utilities=calendar",
+        stdout=output,
+    )
+    invoice = Invoice.objects.get()
+    assert invoice.invoice_date.isoformat() == invoice_date and invoice.due_date is None
+    section = invoice.sections.get()
+    assert (section.start.isoformat(), section.end.isoformat()) == (start, end)
+    assert invoice.invoice_total_minor == 12500 and section.usages.count() == 0
+    revision = invoice.reviews.get()
+    assert f"Ledger date {payment_date} is a payment date" in revision.note
+    assert f"Invoice date {invoice_date} is derived" in revision.note
+    assert "first day anchors" in revision.note
+    assert "Original invoice unavailable" in revision.note
+    assert revision.snapshot["values"]["due_date"] is None
+    artifact = json.loads(plan.read_text(encoding="utf-8"))
+    assert artifact["rows"][0]["payment_date"] == payment_date
+    assert artifact["rows"][0]["invoice_date"] == invoice_date
+    assert artifact["date_semantics"] == {vendor.slug: "payment"}
+    assert f"DATES {vendor.slug}: payment, period mode calendar" in output.getvalue()
+
+
+def test_payment_calendar_sequence_has_contiguous_coverage_and_is_idempotent(configured, tmp_path):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk)
+    template = json.loads(source.read_text(encoding="utf-8"))["only_manual"][0]
+    starts = [add_months(date(2017, 2, 1), index) for index in range(29)]
+    rows = []
+    for index, start in enumerate(starts):
+        payment = add_months(start, 2).replace(day=2)
+        if index in (20, 27, 28):
+            payment = payment.replace(day=1) - timedelta(days=1)
+        rows.append({**template, "date": payment.isoformat(), "reference": f"SYNTHETIC-{index}"})
+    source.write_text(json.dumps({"only_manual": rows}), encoding="utf-8")
+    service = PropertyService.objects.create(
+        property=houses[0],
+        category="electricity",
+        subcategory="electricity_supply",
+        start_month=date(2017, 3, 1),
+        end_month=date(2019, 7, 1),
+    )
+    ServiceVendorAssignment.objects.create(
+        property_service=service,
+        vendor=vendor,
+        start_month=service.start_month,
+        end_month=service.end_month,
+    )
+    VendorBillingSchedule.objects.create(
+        vendor=vendor,
+        start_month=service.start_month,
+        end_month=service.end_month,
+        first_expected_month=service.start_month,
+    )
+    arguments = import_arguments(source, actor, vendor, houses[0], tmp_path / "plan.json", True)
+    arguments += [
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period-mode",
+        f"{vendor.slug}=calendar",
+    ]
+    for _ in range(2):
+        call_command("import_ledger_invoices", *arguments, stdout=StringIO())
+    assert Invoice.objects.count() == ReviewRevision.objects.count() == 29
+    assert list(BillingSection.objects.order_by("start").values_list("start", flat=True)) == starts
+    assert list(
+        Invoice.objects.order_by("invoice_date").values_list("invoice_date", flat=True)
+    ) == [add_months(start, 1) for start in starts]
+    assert sum(Invoice.objects.values_list("invoice_total_minor", flat=True)) == 29 * 12500
+    coverage = read_invoice_coverage(
+        date_from=service.start_month, date_to=service.end_month, as_of=date(2024, 1, 1)
+    )
+    assert coverage["received_count"] == len(coverage["coverage_rows"]) == 29
+    assert coverage["missing_count"] == 0
+
+
+@pytest.mark.parametrize("due_date", [None, "2017-04-04"])
+def test_payment_export_round_trip_freezes_semantics_and_retains_explicit_due_date(
+    configured, tmp_path, due_date
+):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, date="2017-04-03", due_date=due_date)
+    live = tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], tmp_path / "plan.json", False),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period-mode",
+        f"{vendor.slug}=calendar",
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    assert not Invoice.objects.exists()
+    source.unlink()
+    row = json.loads(live.read_text(encoding="utf-8"))["rows"][0]
+    assert row["date"] == "2017-04-03"
+    assert row["date_semantics"] == "payment" and row["period_mode"] == "calendar"
+    assert row["due_date"] == due_date
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--commit",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get()
+    assert invoice.invoice_date == date(2017, 3, 1)
+    assert invoice.due_date == (date.fromisoformat(due_date) if due_date else None)
+    assert invoice.sections.get().start == date(2017, 2, 1)
+    assert "Ledger date 2017-04-03 is a payment date" in invoice.reviews.get().note
+
+
+def test_date_semantics_apply_per_vendor_and_calendar_preserves_invoice_dates(configured, tmp_path):
+    actor, vendor, houses = configured
+    other = Vendor.objects.create(name="Synthetic Early Issuer", slug="synthetic-early-issuer")
+    source = ledger_source(tmp_path, houses[0].pk, date="2024-04-02")
+    row = json.loads(source.read_text(encoding="utf-8"))["only_manual"][0]
+    source.write_text(
+        json.dumps({"only_manual": [row, {**row, "vendor": other.name}]}), encoding="utf-8"
+    )
+    plan = tmp_path / "plan.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], plan, False),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period-mode",
+        f"{vendor.slug}=calendar",
+        stdout=StringIO(),
+    )
+    rows = json.loads(plan.read_text(encoding="utf-8"))["rows"]
+    assert rows[0]["invoice_date"] == "2024-03-01"
+    assert rows[1]["invoice_date"] == "2024-04-02"
+    assert rows[1]["date_semantics"] == "invoice" and rows[1]["period_mode"] == "offset"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], plan, False),
+        "--period-mode",
+        f"{other.slug}=calendar",
+        stdout=StringIO(),
+    )
+    rows = json.loads(plan.read_text(encoding="utf-8"))["rows"]
+    assert rows[1]["invoice_date"] == "2024-04-02"
+    assert (rows[1]["period_start"], rows[1]["period_end"]) == ("2024-03-01", "2024-04-01")
+
+
+def test_payment_offset_uses_originals_and_export_pins_observed_intervals(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    monkeypatch,
+):
+    actor, house = ledger["actor"], ledger["houses"][0]
+    for index, interval in enumerate((20, 21, 22, 1, 1, 1, 1)):
+        original = index < 3
+        invoice = ledger["make"](
+            [allocation(house, start=date(2024, 2, 1), end=date(2024, 3, 2))],
+            invoice_date=date(2024, 3, 13) if original else date(2024, 2, 2),
+            source=Document.Source.UPLOAD if original else Document.Source.MANUAL,
+        )
+        candidate = ledger["candidates"][invoice.pk]
+        candidate.due_date = candidate.invoice_date + timedelta(days=interval)
+        ledger["correct"](invoice, candidate)
+    source = ledger_source(
+        tmp_path,
+        house.pk,
+        date="2024-04-03",
+        date_semantics="payment",
+        total=250,
+        services={"electricity_supply": 250},
+    )
+    live = tmp_path / "live.json"
+    plan = tmp_path / "plan.json"
+    # No --period override: both intervals must come from the approved originals.
+    arguments = ["--source", str(source), "--actor", actor.username]
+    call_command(
+        "import_ledger_invoices",
+        *arguments,
+        "--export",
+        str(live),
+        "--plan",
+        str(plan),
+        stdout=StringIO(),
+    )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert row["payment_offset_days"] == 21
+    assert row["invoice_date"] == "2024-03-13"
+    assert (row["period_start"], row["period_end"]) == ("2024-02-01", "2024-03-02")
+    assert json.loads(live.read_text(encoding="utf-8"))["rows"][0]["payment_offset_days"] == 21
+    # Repeat with just the exported file, without any original samples.
+    monkeypatch.setattr(import_ledger_invoices.Command, "payment_samples", lambda *_: [])
+    monkeypatch.setattr(import_ledger_invoices.Command, "period_samples", lambda *_, **__: [])
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--commit",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get(reference=f"LEDGER-2024-04-03-P{house.pk}")
+    assert invoice.invoice_date == date(2024, 3, 13) and invoice.due_date is None
+    assert invoice.sections.get().start == date(2024, 2, 1)
+    assert "21-day invoice-to-due interval" in invoice.reviews.get().note
+
+
+@pytest.mark.parametrize(
+    ("payment_date", "start", "end"),
+    [
+        ("2018-03-01", "2018-01-01", "2018-02-01"),
+        ("2019-03-01", "2019-01-01", "2019-02-01"),
+        ("2019-04-01", "2019-02-01", "2019-03-01"),
+    ],
+)
+def test_offset_whole_month_originals_snap_periods_and_export_replays_without_samples(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    monkeypatch,
+    payment_date,
+    start,
+    end,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    ledger["make"]([allocation(house, start=date(2024, 1, 1), end=date(2024, 2, 1))])
+    source = ledger_source(tmp_path, house.pk, date=payment_date, payment_offset_days=20)
+    plan, live = tmp_path / "plan.json", tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period",
+        f"{vendor.slug}=41:30",
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert (row["period_start"], row["period_end"]) == (start, end)
+    exported = json.loads(live.read_text(encoding="utf-8"))["rows"][0]
+    assert (
+        exported["offset_days"]
+        == (date.fromisoformat(row["invoice_date"]) - date.fromisoformat(start)).days
+    )
+    assert exported["length_days"] == (date.fromisoformat(end) - date.fromisoformat(start)).days
+    monkeypatch.setattr(import_ledger_invoices.Command, "sample_sections", lambda *_, **__: [])
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--commit",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get(reference=f"LEDGER-{payment_date}-P{house.pk}")
+    assert (invoice.sections.get().start.isoformat(), invoice.sections.get().end.isoformat()) == (
+        start,
+        end,
+    )
+
+
+@pytest.mark.parametrize(
+    ("periods", "source_kind", "length"),
+    [
+        ([(date(2024, 1, 15), date(2024, 2, 15))], Document.Source.UPLOAD, 30),
+        ([(date(2024, 1, 1), date(2024, 3, 1))], Document.Source.UPLOAD, 60),
+        ([(date(2024, 1, 1), date(2024, 3, 1))], Document.Source.UPLOAD, 30),
+        (
+            [(date(2024, 1, 1), date(2024, 2, 1)), (date(2024, 2, 15), date(2024, 3, 15))],
+            Document.Source.UPLOAD,
+            30,
+        ),
+        ([(date(2024, 1, 1), date(2024, 2, 1))], Document.Source.MANUAL, 30),
+        ([(date(2024, 1, 1), date(2024, 2, 1))], Document.Source.UPLOAD, 60),
+    ],
+)
+def test_offset_snapping_requires_consistent_single_month_originals_and_monthly_length(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    periods,
+    source_kind,
+    length,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    for start, end in periods:
+        ledger["make"]([allocation(house, start=start, end=end)], source=source_kind)
+    source = ledger_source(tmp_path, house.pk, date="2019-04-01", payment_offset_days=20)
+    plan = tmp_path / "plan.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period",
+        f"{vendor.slug}=41:{length}",
+        stdout=StringIO(),
+    )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert row["period_start"] == "2019-01-30"
+    assert row["period_end"] == (date(2019, 1, 30) + timedelta(days=length)).isoformat()
+
+
+@pytest.mark.parametrize(("invoice_date", "offset"), [("2019-01-31", 0), ("2019-02-10", 366)])
+def test_offset_snapping_keeps_export_pins_within_supported_bounds(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    invoice_date,
+    offset,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    ledger["make"]([allocation(house, start=date(2024, 1, 1), end=date(2024, 2, 1))])
+    source = ledger_source(tmp_path, house.pk, date=invoice_date)
+    plan, live = tmp_path / "plan.json", tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--period",
+        f"{vendor.slug}={offset}:30",
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    row = json.loads(live.read_text(encoding="utf-8"))["rows"][0]
+    assert row["offset_days"] == offset and row["length_days"] == 30
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--commit",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get(reference=f"LEDGER-{invoice_date}-P{house.pk}")
+    assert invoice.sections.get().start == date.fromisoformat(invoice_date) - timedelta(days=offset)
+
+
+@pytest.mark.parametrize(
+    ("payment_date", "invoice_date", "period_start"),
+    [
+        ("2018-10-31", "2018-10-12", "2018-09-01"),
+        ("2019-05-31", "2019-05-12", "2019-04-01"),
+        ("2019-07-31", "2019-07-12", "2019-06-01"),
+    ],
+)
+def test_payment_offset_normalizes_early_payments_without_recording_an_estimated_due_date(
+    configured, tmp_path, payment_date, invoice_date, period_start
+):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, date=payment_date, payment_offset_days=20)
+    plan = tmp_path / "plan.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], plan, True),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period",
+        f"{vendor.slug}=41:30",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get()
+    assert invoice.invoice_date.isoformat() == invoice_date
+    assert invoice.sections.get().start.isoformat() == period_start
+    assert invoice.due_date is None
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert row["payment_date"] == payment_date
+    assert (
+        row["due_date_estimate"]
+        == add_months(date.fromisoformat(payment_date).replace(day=1), 1).isoformat()
+    )
+    assert row["due_date"] is None and row["period_mode"] == "offset"
+    assert "payments on or after day 25" in invoice.reviews.get().note
+
+
+def test_calendar_export_does_not_pin_offsets_when_overridden_to_offset_mode(configured, tmp_path):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk)
+    live = tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], tmp_path / "calendar-plan.json", False),
+        "--period-mode",
+        f"{vendor.slug}=calendar",
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    row = json.loads(live.read_text(encoding="utf-8"))["rows"][0]
+    assert row["offset_days"] is None and row["length_days"] is None
+    plan = tmp_path / "offset-plan.json"
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--period-mode",
+        f"{vendor.slug}=offset",
+        "--period",
+        f"{vendor.slug}=10:30",
+        "--plan",
+        str(plan),
+        stdout=StringIO(),
+    )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert (row["period_start"], row["period_end"]) == ("2024-01-05", "2024-02-04")
+
+
+@pytest.mark.parametrize("fields", [{"vendor": "Unknown synthetic vendor"}, {"date": None}])
+def test_early_resolution_failures_keep_date_fields_in_the_plan(configured, tmp_path, fields):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, **fields)
+    plan = tmp_path / "plan.json"
+    with pytest.raises(CommandError, match="Some rows failed"):
+        call_command(
+            "import_ledger_invoices",
+            *import_arguments(source, actor, vendor, houses[0], plan, False),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert row["due_date"] is None
+    assert row["date_semantics"] == "invoice" and row["period_mode"] == "offset"
+
+
+@pytest.mark.parametrize(
+    ("fields", "message"),
+    [
+        ({"date_semantics": "payments"}, "date_semantics must be"),
+        ({"period_mode": "monthly"}, "period_mode must be"),
+        ({"date_semantics": "payment"}, "need approved original invoices"),
+        ({"date_semantics": "payment", "payment_offset_days": True}, "payment_offset_days"),
+        ({"date_semantics": "payment", "payment_offset_days": 0}, "payment_offset_days"),
+        ({"date_semantics": "payment", "payment_offset_days": 91}, "payment_offset_days"),
+    ],
+)
+def test_ledger_date_semantics_failures_are_audited_without_writes(
+    configured, tmp_path, fields, message
+):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, **fields)
+    errors = StringIO()
+    with pytest.raises(CommandError, match="Some rows failed"):
+        call_command(
+            "import_ledger_invoices",
+            *import_arguments(source, actor, vendor, houses[0], tmp_path / "plan.json", True),
+            stdout=StringIO(),
+            stderr=errors,
+        )
+    assert message in errors.getvalue()
+    assert not Invoice.objects.exists() and not Document.objects.exists()
+
+
+@pytest.mark.parametrize("option", ["--date-semantics", "--period-mode"])
+def test_ledger_date_options_reject_unknown_choices(configured, tmp_path, option):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk)
+    with pytest.raises(CommandError, match=option):
+        call_command(
+            "import_ledger_invoices",
+            *import_arguments(source, actor, vendor, houses[0], tmp_path / "plan.json", True),
+            option,
+            f"{vendor.slug}=unknown",
+            stdout=StringIO(),
+        )
+    assert not Invoice.objects.exists()
 
 
 def test_ledger_export_is_a_self_contained_live_input(configured, tmp_path):
@@ -417,6 +934,51 @@ def test_ledger_export_is_a_self_contained_live_input(configured, tmp_path):
     assert invoice.vendor == vendor and section.property == houses[0]
     assert (section.start.isoformat(), section.end.isoformat()) == ("2024-01-05", "2024-02-04")
     assert invoice.invoice_total_minor == 12500 and invoice.vat_minor == 2500
+
+
+@pytest.mark.parametrize(
+    ("date_semantics", "ledger_date"), [("invoice", "2024-04-15"), ("payment", "2024-05-05")]
+)
+def test_exported_period_pins_survive_new_whole_month_originals(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    date_semantics,
+    ledger_date,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    source = ledger_source(
+        tmp_path, house.pk, date=ledger_date, date_semantics=date_semantics, payment_offset_days=20
+    )
+    plan, live = tmp_path / "plan.json", tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    before = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert (before["period_start"], before["period_end"]) == ("2024-04-05", "2024-05-05")
+
+    ledger["make"]([allocation(house, start=date(2024, 1, 1), end=date(2024, 2, 1))])
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--plan",
+        str(plan),
+        "--commit",
+        stdout=StringIO(),
+    )
+    after = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    for field in ("invoice_date", "period_start", "period_end", "offset", "length"):
+        assert after[field] == before[field]
+    invoice = Invoice.objects.get(reference=before["reference"])
+    section = invoice.sections.get()
+    assert invoice.invoice_date == date(2024, 4, 15)
+    assert (section.start, section.end) == (date(2024, 4, 5), date(2024, 5, 5))
 
 
 def test_ledger_import_commits_once_and_rereads_as_skip(configured, tmp_path):
@@ -504,6 +1066,56 @@ def test_ledger_import_separates_same_date_invoices_by_total(configured, tmp_pat
     artifact = json.loads((tmp_path / "third-plan.json").read_text(encoding="utf-8"))
     assert artifact["summary"]["skipped"] == 1
     assert Invoice.objects.filter(vendor=vendor).count() == 2
+
+
+@pytest.mark.parametrize(
+    ("period_mode", "payment_dates", "invoice_date"),
+    [
+        ("calendar", ("2024-04-02", "2024-04-03"), date(2024, 3, 1)),
+        ("offset", ("2024-04-25", "2024-04-26"), date(2024, 4, 11)),
+    ],
+)
+@pytest.mark.parametrize("explicit_references", [False, True])
+def test_distinct_payment_rows_with_same_derived_date_and_total_import_once(
+    configured, tmp_path, period_mode, payment_dates, invoice_date, explicit_references
+):
+    actor, vendor, houses = configured
+    house = houses[0]
+    source = ledger_source(
+        tmp_path,
+        house.pk,
+        date=payment_dates[0],
+        date_semantics="payment",
+        period_mode=period_mode,
+        payment_offset_days=20,
+        reference="SYNTHETIC-SUPPLY" if explicit_references else "",
+    )
+    first = json.loads(source.read_text(encoding="utf-8"))["only_manual"][0]
+    second = {
+        **first,
+        "date": payment_dates[1],
+        "services": {"water": 125.0},
+        "reference": "SYNTHETIC-WATER" if explicit_references else "",
+    }
+    source.write_text(json.dumps({"only_manual": [first, second]}), encoding="utf-8")
+    plan = tmp_path / "plan.json"
+    arguments = import_arguments(source, actor, vendor, house, plan, commit=True)
+    call_command("import_ledger_invoices", *arguments, stdout=StringIO())
+    artifact = json.loads(plan.read_text(encoding="utf-8"))
+    assert artifact["summary"]["imported"] == 2
+    assert artifact["summary"]["skipped"] == artifact["summary"]["failed"] == 0
+    assert artifact["summary"]["gross_minor"] == 25000
+    assert Invoice.objects.filter(invoice_date=invoice_date, invoice_total_minor=12500).count() == 2
+    assert set(BillingSection.objects.values_list("category", "subcategory_id")) == {
+        ("electricity", "electricity_supply"),
+        ("water", None),
+    }
+
+    call_command("import_ledger_invoices", *arguments, stdout=StringIO())
+    replay = json.loads(plan.read_text(encoding="utf-8"))
+    assert replay["summary"]["imported"] == replay["summary"]["failed"] == 0
+    assert replay["summary"]["skipped"] == 2
+    assert Invoice.objects.count() == Document.objects.count() == 2
 
 
 def test_ledger_import_refuses_services_that_do_not_reconcile(configured, tmp_path):

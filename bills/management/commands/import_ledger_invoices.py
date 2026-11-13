@@ -22,6 +22,15 @@ billed length. The resolved convention is printed and can be pinned with
 their inferred periods cannot be trusted; the cost allocation is the missing
 reporting data.
 
+Payment-dated rows require explicit ``--date-semantics VENDOR=payment`` or the
+equivalent input field. Both modes estimate early payments on or after day 25 as
+due on the first of the next month. This final-week heuristic assumes the vendor
+is normally paid near the start of its due month; it cannot identify late payments.
+Offset mode subtracts the vendor's median invoice-to-due interval from approved
+original invoices. Calendar mode uses the previous invoice month and anchors the
+derived invoice date on the first day. Payment dates remain in the
+review note and exported input; they do not become due dates.
+
 An input row may instead supply exact ``allocations`` with integer net/VAT/gross,
 explicit billed periods and optional reported usages. This path preserves waste
 classification and partial/zero weights without deriving tax or collection periods.
@@ -38,7 +47,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from bills.configuration import validate_selected_classification
+from bills.configuration import add_months, validate_selected_classification
 from bills.models import BillingSection, Document, Invoice, Property, Usage, Vendor
 from bills.parsing.types import Candidate, Evidence, Section
 from bills.parsing.types import Usage as CandidateUsage
@@ -59,7 +68,9 @@ VENDOR_ALIASES = {
 }
 DEFAULT_OFFSET = 30
 DEFAULT_LENGTH = 30
-PARSER_REVISION = "ledger-import-v1"
+# Final-week payments are assumed early for the next start-of-month due date.
+EARLY_PAYMENT_DAY = 25
+PARSER_REVISION = "ledger-import-v2"
 LIVE_FORMAT = "house-bills-ledger-import-input"
 
 
@@ -80,6 +91,13 @@ def minor_units(amount):
 def derived_net(gross_minor):
     """Apply the archive's 25 % VAT relationship, rounded to whole öre."""
     return (gross_minor * 4 + 2) // 5
+
+
+def nearest_month_start(value):
+    """Closest calendar-month boundary; ties keep the earlier boundary."""
+    first = value.replace(day=1)
+    following = add_months(first, 1)
+    return following if following - value < value - first else first
 
 
 def parse_pairs(values, label):
@@ -105,6 +123,14 @@ def parse_periods(values):
             raise CommandError("Billing period offsets and lengths must be within 0..366 days.")
         periods[repair_text(key).strip().casefold()] = (offset, length)
     return periods
+
+
+def parse_choices(values, label, choices):
+    pairs = parse_pairs(values, label)
+    for value in pairs.values():
+        if value not in choices:
+            raise CommandError(f"Use {label} VENDOR={'|'.join(choices)}; got {value!r}.")
+    return pairs
 
 
 class Command(BaseCommand):
@@ -138,6 +164,20 @@ class Command(BaseCommand):
             default=[],
             metavar="VENDOR=OFFSET:LENGTH",
             help="Pin an inferred billing period convention; repeatable.",
+        )
+        parser.add_argument(
+            "--date-semantics",
+            action="append",
+            default=[],
+            metavar="VENDOR=payment|invoice",
+            help="Interpret ledger dates as payment or invoice dates; default invoice.",
+        )
+        parser.add_argument(
+            "--period-mode",
+            action="append",
+            default=[],
+            metavar="VENDOR=calendar|offset",
+            help="Use the previous calendar month or an inferred day offset; default offset.",
         )
         parser.add_argument(
             "--plan",
@@ -184,10 +224,16 @@ class Command(BaseCommand):
         vendors = parse_pairs(options["vendor"], "--vendor")
         properties = parse_pairs(options["property"], "--property")
         pinned = parse_periods(options["period"])
+        date_semantics = parse_choices(
+            options["date_semantics"], "--date-semantics", ("payment", "invoice")
+        )
+        period_modes = parse_choices(
+            options["period_mode"], "--period-mode", ("calendar", "offset")
+        )
 
         resolved = []
         for row in rows:
-            resolved.append(self.resolve(row, vendors, properties, pinned))
+            resolved.append(self.resolve(row, vendors, properties, date_semantics, period_modes))
 
         plan = {
             "format": "house-bills-ledger-import",
@@ -196,6 +242,8 @@ class Command(BaseCommand):
             "mode": "commit" if options["commit"] else "dry-run",
             "source": {"path": str(source), "rows": len(rows)},
             "periods": {},
+            "date_semantics": {},
+            "period_modes": {},
             "rows": [],
             "summary": {"imported": 0, "skipped": 0, "failed": 0, "gross_minor": 0},
         }
@@ -206,10 +254,21 @@ class Command(BaseCommand):
                 plan["summary"]["failed"] += 1
                 self.stderr.write(f"ERROR {item['label']}: {item['error']}")
                 continue
-            self.period_convention(item, pinned)
+            try:
+                self.period_convention(item, pinned)
+            except (ValueError, TypeError, KeyError, OverflowError) as exc:
+                item["error"] = str(exc) or "The billing period is invalid."
+                plan["rows"].append(self.plan_row(item))
+                plan["summary"]["failed"] += 1
+                self.stderr.write(f"ERROR {item['label']}: {item['error']}")
+                continue
+            vendor_slug = item["vendor"].slug
+            plan["date_semantics"][vendor_slug] = item["date_semantics"]
+            plan["period_modes"][vendor_slug] = item["period_mode"]
             seen_periods[(item["vendor"].pk, item["property"].pk)] = (
-                item["offset"],
-                item["length"],
+                (item["offset"], item["length"])
+                if item["period_mode"] == "offset"
+                else (None, None)
             )
             reason = self.skip_reason(item)
             if reason:
@@ -242,6 +301,11 @@ class Command(BaseCommand):
         for (vendor_pk, _property_pk), (offset, length) in sorted(seen_periods.items()):
             vendor = Vendor.objects.get(pk=vendor_pk)
             plan["periods"][vendor.slug] = {"offset_days": offset, "length_days": length}
+        for vendor_slug in sorted(plan["date_semantics"]):
+            self.stdout.write(
+                f"DATES {vendor_slug}: {plan['date_semantics'][vendor_slug]}, "
+                f"period mode {plan['period_modes'][vendor_slug]}."
+            )
         gross_total = Decimal(plan["summary"]["gross_minor"]) / 100
         plan["summary"]["gross_total"] = f"{gross_total.quantize(Decimal('0.01')):.2f}"
 
@@ -288,13 +352,17 @@ class Command(BaseCommand):
             "vendor_slug": item["vendor"].slug,
             "property_slug": item["property"].slug,
             "date": item["date"],
+            "date_semantics": item["date_semantics"],
+            "period_mode": item["period_mode"],
+            "payment_offset_days": item.get("payment_offset_days"),
+            "due_date": item["due_date"].isoformat() if item["due_date"] else None,
             "reference": item["reference"],
             "sheet": item["sheet"],
             "services": item["services"],
             "allocations": item["source_allocations"],
             "total": item["total"],
-            "offset_days": item["offset"],
-            "length_days": item["length"],
+            "offset_days": item["offset"] if item["period_mode"] == "offset" else None,
+            "length_days": item["length"] if item["period_mode"] == "offset" else None,
         }
 
     def plan_row(self, item):
@@ -315,7 +383,7 @@ class Command(BaseCommand):
             raise CommandError("The review actor must be an existing active user.")
         return user
 
-    def resolve(self, row, vendor_overrides, property_overrides, pinned):
+    def resolve(self, row, vendor_overrides, property_overrides, date_semantics, period_modes):
         ledger_vendor = row.get("ledger_vendor") or row.get("vendor") or row.get("vendor_slug")
         item = {
             "property_id": row.get("property_id"),
@@ -323,6 +391,11 @@ class Command(BaseCommand):
             "property_slug": row.get("property_slug") or "",
             "offset_days": row.get("offset_days"),
             "length_days": row.get("length_days"),
+            "payment_offset_days": row.get("payment_offset_days"),
+            "due_date": None,
+            "due_date_estimate": None,
+            "date_semantics": row.get("date_semantics", "invoice"),
+            "period_mode": row.get("period_mode", "offset"),
             "ledger_vendor": repair_text(ledger_vendor or ""),
             "date": row.get("date"),
             "sheet": repair_text(row.get("sheet", "")),
@@ -346,13 +419,71 @@ class Command(BaseCommand):
             ):
                 raise ValueError("The row lacks a date, service allocation or total.")
             item["invoice_date"] = date.fromisoformat(item["date"])
+            item["due_date"] = date.fromisoformat(row["due_date"]) if row.get("due_date") else None
+            for field, overrides, choices, default in (
+                ("date_semantics", date_semantics, ("payment", "invoice"), "invoice"),
+                ("period_mode", period_modes, ("calendar", "offset"), "offset"),
+            ):
+                value = (
+                    overrides.get(item["ledger_vendor"].casefold())
+                    or overrides.get(item["vendor"].slug)
+                    or row.get(field, default)
+                )
+                if value not in choices:
+                    raise ValueError(f"{field} must be one of {', '.join(choices)}.")
+                item[field] = value
+            self.date_convention(item)
             item["reference"] = item["reference"] or (
                 f"LEDGER-{item['date']}-P{item['property'].pk}"
             )
             self.money(item)
-        except (CommandError, ValueError, TypeError, KeyError, ValidationError) as exc:
+        except (
+            CommandError,
+            ValueError,
+            TypeError,
+            KeyError,
+            OverflowError,
+            ValidationError,
+        ) as exc:
             item["error"] = str(exc) or "The row is invalid."
         return item
+
+    def date_convention(self, item):
+        if item["date_semantics"] == "invoice":
+            return
+        payment_date = item["invoice_date"]
+        item["payment_date"] = payment_date
+        due_date_estimate = payment_date
+        if payment_date.day >= EARLY_PAYMENT_DAY:
+            due_date_estimate = add_months(payment_date.replace(day=1), 1)
+        item["due_date_estimate"] = due_date_estimate
+        if item["period_mode"] == "calendar":
+            item["invoice_date"] = add_months(due_date_estimate.replace(day=1), -1)
+            return
+        offset = item["payment_offset_days"]
+        if offset is None:
+            samples = self.payment_samples(item["vendor"])
+            if not samples:
+                raise ValueError(
+                    "Payment dates in offset mode need approved original invoices with due dates; "
+                    "use --period-mode VENDOR=calendar for the previous-month convention."
+                )
+            offset = median_low(samples)
+        if type(offset) is not int or not 1 <= offset <= 90:
+            raise ValueError("payment_offset_days must be an integer within 1..90 days.")
+        item["payment_offset_days"] = offset
+        item["invoice_date"] = due_date_estimate - timedelta(days=offset)
+
+    def payment_samples(self, vendor):
+        invoices = Invoice.objects.filter(
+            vendor=vendor,
+            status=Invoice.Status.APPROVED,
+            kind=Invoice.Kind.INVOICE,
+            document__source=Document.Source.UPLOAD,
+            invoice_date__isnull=False,
+            due_date__isnull=False,
+        ).values_list("invoice_date", "due_date")
+        return [(due - issued).days for issued, due in invoices if 1 <= (due - issued).days <= 90]
 
     def vendor(self, item, overrides):
         if item["vendor_slug"]:
@@ -431,25 +562,49 @@ class Command(BaseCommand):
             item["offset"] = (item["invoice_date"] - item["period_start"]).days
             item["length"] = (item["period_end"] - item["period_start"]).days
             return
+        if item["period_mode"] == "calendar":
+            item["period_end"] = item["invoice_date"].replace(day=1)
+            item["period_start"] = add_months(item["period_end"], -1)
+            item["offset"] = (item["invoice_date"] - item["period_start"]).days
+            item["length"] = (item["period_end"] - item["period_start"]).days
+            return
         key = item["ledger_vendor"].casefold()
-        if item["offset_days"] is not None and item["length_days"] is not None:
+        row_pinned = item["offset_days"] is not None and item["length_days"] is not None
+        if row_pinned:
             item["offset"], item["length"] = int(item["offset_days"]), int(item["length_days"])
         elif key in pinned:
             item["offset"], item["length"] = pinned[key]
         elif item["vendor"].slug in pinned:
             item["offset"], item["length"] = pinned[item["vendor"].slug]
         else:
-            samples = self.period_samples(item["vendor"])
+            samples = self.period_samples(
+                item["vendor"], originals_only=item["date_semantics"] == "payment"
+            )
             if samples:
                 item["offset"] = median_low([offset for offset, _ in samples])
                 item["length"] = median_low([length for _, length in samples])
             else:
                 item["offset"], item["length"] = DEFAULT_OFFSET, DEFAULT_LENGTH
+        if not 0 <= item["offset"] <= 366 or not 1 <= item["length"] <= 366:
+            raise ValueError("Billing period offsets and lengths must be within 0..366 days.")
         start = item["invoice_date"] - timedelta(days=item["offset"])
         item["period_start"] = start
         item["period_end"] = start + timedelta(days=item["length"])
+        # Row pins already contain the resolved period, including any export-time snapping.
+        if (
+            not row_pinned
+            and 28 <= item["length"] <= 31
+            and self.bills_whole_months(item["vendor"])
+        ):
+            snapped = nearest_month_start(start)
+            offset = (item["invoice_date"] - snapped).days
+            if 0 <= offset <= 366:
+                item["period_start"] = snapped
+                item["period_end"] = add_months(snapped, 1)
+                item["offset"] = offset
+                item["length"] = (item["period_end"] - snapped).days
 
-    def period_samples(self, vendor):
+    def sample_sections(self, vendor, *, originals_only=False):
         sections = (
             BillingSection.objects.filter(
                 invoice__status=Invoice.Status.APPROVED,
@@ -460,8 +615,24 @@ class Command(BaseCommand):
             .select_related("invoice")
             .only("start", "end", "invoice__invoice_date")
         )
+        if originals_only:
+            sections = sections.filter(
+                invoice__document__source=Document.Source.UPLOAD, invoice__kind=Invoice.Kind.INVOICE
+            )
+        return sections
+
+    def bills_whole_months(self, vendor):
+        """Require original invoices for a consistent single-calendar-month convention."""
+        seen = False
+        for section in self.sample_sections(vendor, originals_only=True):
+            if section.start.day != 1 or section.end != add_months(section.start, 1):
+                return False
+            seen = True
+        return seen
+
+    def period_samples(self, vendor, *, originals_only=False):
         samples = []
-        for section in sections:
+        for section in self.sample_sections(vendor, originals_only=originals_only):
             offset = (section.invoice.invoice_date - section.start).days
             length = (section.end - section.start).days
             if 0 <= offset <= 90 and 1 <= length <= 92:
@@ -477,6 +648,9 @@ class Command(BaseCommand):
         )
         if existing.exists():
             return "an approved invoice already uses this vendor and reference"
+        # Payment-derived dates are estimates and cannot establish invoice identity.
+        if item["date_semantics"] == "payment":
+            return ""
         same_date = Invoice.objects.filter(
             status=Invoice.Status.APPROVED,
             vendor=item["vendor"],
@@ -492,12 +666,17 @@ class Command(BaseCommand):
     @coordinated_write
     @transaction.atomic
     def import_row(self, item, actor):
+        period_basis = (
+            "the previous calendar month convention"
+            if item["period_mode"] == "calendar"
+            else "this vendor's matched invoices or the pinned day offset"
+        )
         note = (
             f"Transcribed from the household ledger, sheet {item['sheet']!r}, "
             f"row dated {item['date']}. Original invoice unavailable. "
             f"VAT derived from the ledger gross amount at 25 %. "
             f"Billing period {item['period_start']} to {item['period_end']} inferred "
-            f"from this vendor's matched invoices. Consumption was not transcribed. "
+            f"from {period_basis}. Consumption was not transcribed. "
             f"Amounts were not verified against an original."
         )
         if item["source_allocations"] is not None:
@@ -507,6 +686,26 @@ class Command(BaseCommand):
                 "Combined waste charges remain combined. "
                 "No VAT or quantity allocation was calculated. "
                 "Original PDF unavailable; source values require reviewer verification."
+            )
+        if item["date_semantics"] == "payment":
+            if item["period_mode"] == "calendar":
+                derivation = (
+                    "Previous-month invoice convention. The first day anchors the derived "
+                    "invoice month and is not a known issue day."
+                )
+            else:
+                derivation = (
+                    f"Invoice date derived using a {item['payment_offset_days']}-day "
+                    "invoice-to-due interval from this vendor's approved originals "
+                    "or the interval pinned in the input."
+                )
+            note += (
+                f" Ledger date {item['payment_date']} is a payment date. "
+                f"The due-date estimate is {item['due_date_estimate']}; payments on or after day "
+                f"{EARLY_PAYMENT_DAY} are treated as early for the first of the next month. "
+                f"Invoice date {item['invoice_date']} is derived, not printed evidence. "
+                f"{derivation} Payment date retained here as provenance; "
+                "due date is recorded only when explicitly supplied."
             )
         document = Document.objects.create(
             source=Document.Source.MANUAL,
@@ -534,7 +733,7 @@ class Command(BaseCommand):
             parser_revision=PARSER_REVISION,
             reference=item["reference"],
             invoice_date=item["invoice_date"],
-            due_date=None,
+            due_date=item["due_date"],
             currency="SEK",
             net_minor=item["net_minor"],
             vat_minor=item["vat_minor"],
