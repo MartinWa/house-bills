@@ -168,7 +168,35 @@ storage recovery on the document page. See [uploads and private originals](inges
 The application tests and [Chromium browser check](../tests/browser/README.md) exercise
 these workflows with wholly synthetic PDFs. [Reports](reporting.md) reflects accepted
 corrections and links ambiguous electricity intervals back to invoice review.
-A bulk backfill of ledger rows uses the same manual-entry service; the
-`import_ledger_invoices` command and its input file stay with the private ledger data,
-outside this repository. Grafana integration and complete real-format coverage remain
-subsequent steps.
+A bulk backfill of ledger rows uses the same manual-entry service through
+`import_ledger_invoices`. Keep source files, exported inputs, plans and repair
+artifacts with the private ledger data, outside version control. The command is a
+dry run unless `--commit` is supplied; `--export` writes a self-contained input.
+
+Dates default to invoice dates and billing periods default to the vendor's median
+invoice-to-period offset. For a payment-dated vendor, explicitly select
+`--date-semantics VENDOR=payment`; `VENDOR` can be the ledger name or resolved slug.
+Offset mode derives the invoice date using the median invoice-to-due interval
+from that vendor's approved original invoices. It fails when no such interval is
+available, unless the input supplies `payment_offset_days` (an integer from 1 to
+90). Newly imported manual entries do not contribute to these payment-date or
+period samples.
+
+Use `--period-mode VENDOR=calendar` for a vendor that invoices the previous
+calendar month. For payment dates, the due month is the payment month, advanced
+one month when payment falls on or after day 25. The invoice month is the month
+before the due month, and the billed period is the calendar month before the
+invoice month. The first day anchors the derived invoice date; the actual issue
+day is unknown. For invoice-dated rows, calendar mode retains the supplied invoice
+date and bills the previous calendar month. Explicit allocation periods are
+always retained; calendar mode takes precedence over `--period` day offsets.
+
+Both options are repeatable and override the row's `date_semantics` and
+`period_mode` fields. The defaults preserve existing inputs. Exported inputs pin
+these choices and any observed payment and period offsets, so repeats need only
+the exported file and reviewer. The plan and console show the resolved choices
+per vendor. Review notes label payment dates and derived invoice dates and
+periods. Payment dates remain in the note and exported input; `due_date` stays
+unknown unless explicitly supplied. Overall amounts remain unchanged, while
+cost reporting and coverage move to the derived invoice month. Repairing already
+approved rows requires separate, audited review revisions.
