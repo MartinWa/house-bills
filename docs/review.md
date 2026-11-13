@@ -172,6 +172,11 @@ charge from the remaining general allocation. Existing fraction costs, VAT, peri
 and weights stay as reviewed; the new parts share the remaining allocation's VAT.
 Contracts whose reviewed totals differ from the source are retained with a warning.
 Manual entries without source charge amounts remain combined.
+Corrections are limited to Layout 01 extractions. Older extractions with no layout
+family must match the full Layout 01 signature before their evidence is used.
+The command continues after stale or invalid invoice corrections, prints each
+failure and a final count, and exits unsuccessfully if any corrections failed.
+Successful corrections remain saved; rerunning retries the failed invoices.
 
 Saves check the invoice review revision and document extraction revision inside the
 approval transaction. A repeated submission or a form opened before another save or

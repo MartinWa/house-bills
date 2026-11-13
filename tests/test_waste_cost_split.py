@@ -7,10 +7,13 @@ from dataclasses import asdict, replace
 from datetime import date
 
 import pytest
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from bills.models import Document, Property, PropertyIdentifier, PropertyService, Vendor
 from bills.parsing import layout_01, layout_01_v2
+from bills.parsing.common import reconcile
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Evidence, Usage
 from bills.parsing.waste_costs import allocated_vat, split_waste_costs
@@ -378,8 +381,18 @@ def test_new_extraction_keeps_its_proposal_when_a_cost_update_is_stale(retained,
         return plan, warnings
 
     monkeypatch.setattr(command, "plan_retained_cost_split", append_proposal_after_planning)
-    with pytest.raises(StaleReviewError):
-        call_command("split_waste_costs", property_id=house.pk, apply=True, reviewer=actor.pk)
+    output, errors = io.StringIO(), io.StringIO()
+    with pytest.raises(CommandError, match="1 invoices could not be corrected"):
+        call_command(
+            "split_waste_costs",
+            property_id=house.pk,
+            apply=True,
+            reviewer=actor.pk,
+            stdout=output,
+            stderr=errors,
+        )
+    assert "Updated 0 invoices" in output.getvalue() and "1 failed" in output.getvalue()
+    assert "newer extraction" in errors.getvalue()
     invoice.refresh_from_db()
     invoice.document.refresh_from_db()
     assert invoice.review_revision == 1 and invoice.sections.count() == 4
@@ -552,3 +565,111 @@ def test_incomplete_contract_costs_keep_the_original_proposal(parsed):
     sources, warnings = split_waste_costs(candidate, pages, {"section_02": {"matavfall"}})
     assert sources == {} and "complete reviewed cost totals" in warnings[0]
     assert candidate.to_dict() == original
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("family", ["layout_03", "layout_06", ""])
+def test_retained_corrections_require_layout_01_evidence(retained, family):
+    invoice, house, actor, attempt = retained
+    original = copy.deepcopy(invoice.reviews.get().snapshot)
+    candidate = reviewed_candidate(original["values"])
+    candidate.layout_family = family
+    evidence = attempt.page_evidence
+    if not family:
+        candidate.layout_version = candidate.parser_revision = ""
+        # Generic contract and VAT rows alone do not establish a supported layout.
+        evidence = [row for row in evidence if not row["text"].startswith("FAKTURASPECIFIKATION")]
+    record_extraction(
+        invoice.document_id,
+        candidate,
+        error="Older unsupported layout." if not family else "",
+        page_evidence=evidence,
+    )
+    plan, warnings = plan_retained_cost_split(invoice, house.pk)
+    assert plan is None and "Layout 01" in warnings[0]
+    output = io.StringIO()
+    call_command(
+        "split_waste_costs", property_id=house.pk, apply=True, reviewer=actor.pk, stdout=output
+    )
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 1 and invoice.sections.count() == 4
+    assert invoice.reviews.get().snapshot == original
+    assert "Updated 0 invoices" in output.getvalue()
+
+
+def test_reviewed_candidate_ignores_extra_legacy_usage_fields(parsed):
+    candidate, _ = parsed
+    original = candidate.to_dict()
+    legacy = copy.deepcopy(original)
+    legacy["sections"][0]["usages"][0]["legacy_metadata"] = {"description": "Older usage field"}
+    retained = copy.deepcopy(legacy)
+    assert reviewed_candidate(legacy).to_dict() == original
+    assert legacy == retained
+
+
+@pytest.mark.parametrize("service,unit", [("electricity", "kg"), ("other", "litres")])
+def test_reviewed_category_reconciliation_still_rejects_invalid_units(parsed, service, unit):
+    candidate, _ = parsed
+    section = candidate.sections[0]
+    section.service = service
+    section.usages[0] = replace(section.usages[0], utility=service, unit=unit)
+    assert "Invalid usage in section_01" in reconcile(candidate).issues
+
+
+@pytest.mark.django_db(transaction=True)
+def test_invalid_correction_rolls_back_one_invoice_and_continues_the_batch(retained, monkeypatch):
+    from bills import services
+
+    invoice, house, actor, attempt = retained
+    invoices = [invoice]
+    for index in (2, 3):
+        document = Document.objects.create(
+            sha256=hashlib.sha256(f"synthetic-batch-{index}".encode()).hexdigest(),
+            original_filename=f"synthetic-batch-{index}.pdf",
+        )
+        candidate = reviewed_candidate(invoice.reviews.get().snapshot["values"])
+        candidate.reference = f"synthetic-batch-{index}"
+        extraction = record_extraction(
+            document.pk, candidate, vendor=invoice.vendor, page_evidence=attempt.page_evidence
+        )
+        invoices.append(
+            approve_review(
+                document.invoices.get().pk,
+                expected_revision=0,
+                candidate=candidate,
+                vendor=invoice.vendor,
+                section_properties={},
+                actor=actor,
+                extraction=extraction,
+            )
+        )
+    invalid_invoice = invoices[1]
+    previous = copy.deepcopy(invalid_invoice.reviews.get().snapshot)
+    validate = services.validate_allocations
+
+    def reject_one_correction(current_invoice):
+        validate(current_invoice)
+        if current_invoice.pk == invalid_invoice.pk:
+            raise ValidationError("Synthetic invalid correction.")
+
+    monkeypatch.setattr(services, "validate_allocations", reject_one_correction)
+    output, errors = io.StringIO(), io.StringIO()
+    with pytest.raises(CommandError, match="1 invoices could not be corrected"):
+        call_command(
+            "split_waste_costs",
+            property_id=house.pk,
+            apply=True,
+            reviewer=actor.pk,
+            stdout=output,
+            stderr=errors,
+        )
+    assert "Updated 2 invoices; 0 unchanged; 1 failed" in output.getvalue()
+    assert f"Invoice {invalid_invoice.pk}" in errors.getvalue()
+    assert "Synthetic invalid correction" in errors.getvalue()
+    for current in invoices:
+        current.refresh_from_db()
+        if current.pk == invalid_invoice.pk:
+            assert current.review_revision == 1 and current.sections.count() == 4
+            assert current.reviews.get().snapshot == previous
+        else:
+            assert current.review_revision == 2 and current.sections.count() == 6

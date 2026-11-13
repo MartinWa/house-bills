@@ -6,6 +6,7 @@ from datetime import date
 from .models import Property, PropertyService
 from .parsing.common import reconcile
 from .parsing.compatibility import cost_totals_candidate
+from .parsing.registry import match_layouts
 from .parsing.types import Candidate, Evidence, Identifier, Section, Usage
 from .parsing.waste_costs import split_waste_costs
 
@@ -71,6 +72,9 @@ def reviewed_candidate(values):
             row[name] = _evidence(row.get(name))
         usages = []
         for usage in row.get("usages", []):
+            usage = {
+                field.name: usage[field.name] for field in fields(Usage) if field.name in usage
+            }
             usages.append(
                 Usage(
                     **{
@@ -90,19 +94,25 @@ def reviewed_candidate(values):
 def plan_retained_cost_split(invoice, property_id):
     """Plan against one approval revision without writing or reparsing other values."""
     review = invoice.reviews.get(revision=invoice.review_revision)
-    candidate = reviewed_candidate(review.snapshot["values"])
-    original = candidate.to_dict()
     extraction = (
         invoice.document.extractions.all().exclude(page_evidence=[]).order_by("-revision").first()
     )
     if extraction is None:
         return None, ["No retained source evidence for itemized waste costs."]
+    unsupported = "Retained source is not a recognized Layout 01 invoice; costs unchanged."
+    if extraction.layout_family and extraction.layout_family != "layout_01":
+        return None, [unsupported]
     pages = {}
     for line in extraction.page_evidence:
         pages.setdefault(line["page"], []).append(_evidence(line))
+    source_pages = [pages[page] for page in sorted(pages)]
+    if not extraction.layout_family and len(match_layouts(source_pages, ["layout_01"])) != 1:
+        return None, [unsupported]
+    candidate = reviewed_candidate(review.snapshot["values"])
+    original = candidate.to_dict()
     properties, warnings = split_configured_costs(
         candidate,
-        [pages[page] for page in sorted(pages)],
+        source_pages,
         review.snapshot["properties"],
         property_id=property_id,
     )

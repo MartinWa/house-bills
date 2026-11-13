@@ -1,6 +1,7 @@
 """Preview or explicitly apply source-backed fraction corrections with review history."""
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from bills.models import Invoice, Property
@@ -44,30 +45,43 @@ class Command(BaseCommand):
             .distinct()
             .order_by("pk")
         )
-        changed, untouched = 0, 0
+        changed, untouched, failed = 0, 0, 0
         for invoice in invoices:
-            plan, warnings = plan_retained_cost_split(invoice, property_id)
-            for warning in warnings:
-                self.stdout.write(f"Invoice {invoice.pk}: {warning}")
-            if plan is None:
-                untouched += 1
-                continue
-            if actor is not None:
-                approve_document_review(
-                    invoice.document_id,
-                    expected_invoice_id=invoice.pk,
-                    expected_extraction_revision=invoice.document.extraction_revision,
-                    **plan,
-                    actor=actor,
-                    note=(
-                        "Separated printed waste fraction charges. Shared fees remain under "
-                        "general waste collection. VAT apportioned by net cost with rounding "
-                        "balanced to the original printed contract VAT. "
-                        "Invoice headers, totals and reported weights retained."
-                    ),
+            try:
+                plan, warnings = plan_retained_cost_split(invoice, property_id)
+                for warning in warnings:
+                    self.stdout.write(f"Invoice {invoice.pk}: {warning}")
+                if plan is None:
+                    untouched += 1
+                    continue
+                if actor is not None:
+                    approve_document_review(
+                        invoice.document_id,
+                        expected_invoice_id=invoice.pk,
+                        expected_extraction_revision=invoice.document.extraction_revision,
+                        **plan,
+                        actor=actor,
+                        note=(
+                            "Separated printed waste fraction charges. Shared fees remain under "
+                            "general waste collection. VAT apportioned by net cost with rounding "
+                            "balanced to the original printed contract VAT. "
+                            "Invoice headers, totals and reported weights retained."
+                        ),
+                    )
+            except ValidationError as exc:
+                failed += 1
+                self.stderr.write(
+                    self.style.ERROR(f"Invoice {invoice.pk}: {'; '.join(exc.messages)}")
                 )
+                continue
             changed += 1
         action = "Updated" if actor is not None else "Would update"
         self.stdout.write(
-            f"{action} {changed} invoices; {untouched} unchanged. Invoice totals retained."
+            f"{action} {changed} invoices; {untouched} unchanged; {failed} failed. "
+            "Invoice totals retained."
         )
+        if failed:
+            raise CommandError(
+                f"{failed} invoices could not be corrected. Rerun to retry them; "
+                "successful corrections were retained."
+            )
