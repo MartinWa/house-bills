@@ -102,19 +102,22 @@ def test_multi_service_pdf_preserves_contracts_costs_and_billed_usage(tmp_path):
         ("water", "9901", 44000, 11000, 55000),
         ("waste", "9902", 11160, 2790, 13950),
         ("waste", "9903", 8000, 2000, 10000),
-        ("electricity_network", "9904", 37846, 9462, 47308),
+        ("electricity_network", "9904", 22846, 5712, 28558),
+        ("electricity", "9904", 15000, 3750, 18750),
     ]
     assert [[u.quantity_milli for u in s.usages] for s in candidate.sections] == [
         [12000],
         [12000, 7500],
         [],
         [321125],
+        [3000],
     ]
     assert [[u.subcategory for u in s.usages] for s in candidate.sections] == [
         [""],
         ["matavfall", "restavfall"],
         [],
         [""],
+        ["electricity_demand"],
     ]
     assert all(
         (u.start, u.end) == (date(2024, 2, 1), date(2024, 3, 1))
@@ -134,7 +137,7 @@ def test_multi_service_pdf_preserves_contracts_costs_and_billed_usage(tmp_path):
 def test_network_readings_keep_billed_intervals_without_repeating_price_quantities(tmp_path):
     candidate = parse_synthetic(tmp_path, multi_service(split_network_readings=True))
     assert candidate.issues == []
-    network = candidate.sections[-1]
+    network = candidate.sections[-2]
     assert [(row.quantity_milli, row.start, row.end, row.basis) for row in network.usages] == [
         (121125, date(2024, 2, 1), date(2024, 2, 15), "measured"),
         (200000, date(2024, 2, 15), date(2024, 3, 1), "measured"),
@@ -142,8 +145,8 @@ def test_network_readings_keep_billed_intervals_without_repeating_price_quantiti
     assert sum(row.quantity_milli for row in network.usages) == 321125
     assert all(row.evidence.page == 4 for row in network.usages)
     assert all(row.evidence.text.startswith("Avläsning") for row in network.usages)
-    assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
-    assert candidate.parser_revision == "10" and candidate.requires_review
+    assert (network.net_minor, network.vat_minor, network.gross_minor) == (22846, 5712, 28558)
+    assert candidate.parser_revision == "12" and candidate.requires_review
 
 
 @pytest.mark.parametrize("correction", [False, True])
@@ -203,10 +206,10 @@ def test_invalid_network_readings_name_consumption_and_preserve_valid_costs(
     ]
     pages[-1].extend(readings)
     candidate = parse_synthetic(tmp_path, pages)
-    network = candidate.sections[-1]
+    network = candidate.sections[-2]
     assert candidate.issues == [f"{warning} in section_04"]
     assert network.usages == []
-    assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
+    assert (network.net_minor, network.vat_minor, network.gross_minor) == (22846, 5712, 28558)
     assert (network.start, network.end) == (date(2024, 2, 1), date(2024, 3, 1))
     assert candidate.requires_review
 
@@ -230,7 +233,7 @@ def test_network_reading_sum_is_checked_against_each_billed_price_quantity(
     ]
     candidate = parse_synthetic(tmp_path, pages)
     assert candidate.issues == ["Inconsistent billed kWh in section_04"]
-    assert sum(row.quantity_milli for row in candidate.sections[-1].usages) == (
+    assert sum(row.quantity_milli for row in candidate.sections[-2].usages) == (
         322125 if label.startswith("Avläsning") else 321125
     )
     assert candidate.requires_review
@@ -307,13 +310,13 @@ def test_shared_invoice_keeps_installations_and_counts_repeated_kwh_once(tmp_pat
 
 @pytest.mark.parametrize("change", ["rename", "remove", "malformed"])
 def test_multi_service_fee_details_do_not_affect_totals_or_consumption(tmp_path, change):
-    pages = multi_service(correction=True, split_network_readings=True)
+    pages = multi_service(correction=True, split_network_readings=True, demand=False)
     expected = parse_synthetic(tmp_path, pages).to_dict()
     fee_labels = (
         "Grundavgift",
         "Bostadsenhetsavgift",
         "Dagvattenavgift",
-        "Effektavgift",
+        "Network fee",
         "Hämtningsavgift",
         "Trädgårdsavfall",
     )

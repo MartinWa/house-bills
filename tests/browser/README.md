@@ -19,6 +19,9 @@ filters and fit the mobile viewport. Anonymous report access is blocked.
 Waste review and reports retain Matavfall and Restavfall separately. Electricity costs
 show Elhandel and Elnät under Electricity while consumption keeps the existing source
 selection.
+Effektavgift costs appear separately from Elnät, with billed power preserved in kW
+through review. Reports shows each property's average, highest and lowest billed power,
+with billed months and expandable invoice details, separately from kWh consumption totals.
 
 Design checks cover the Invoices landing page, User menu and sign out, upload within
 Documents with a direct file picker and a fallback without JavaScript, automatic

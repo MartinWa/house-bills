@@ -9,6 +9,7 @@ from django.db import connection
 
 from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Service, Usage
+from .power_reporting import summarize_billed_power
 from .waste_reporting import read_waste_details, read_waste_report
 
 SELECTION_REASONS = {
@@ -125,6 +126,14 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             """,
             usage_params,
         )
+        billed_power = _rows(
+            reader,
+            f"""
+            SELECT * FROM reporting_electricity_demand WHERE {usage_where}
+            ORDER BY property_name, property_id, period_start DESC, invoice_id, usage_id
+            """,
+            usage_params,
+        )
         # Costs use invoice dates; usage and its issues use billed periods.
         # Identify sources from every displayed part of the same report snapshot.
         invoice_sources = _rows(
@@ -139,12 +148,14 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
                 UNION
                 SELECT invoice_id FROM selected_usage WHERE {usage_where}
                 UNION
+                SELECT invoice_id FROM reporting_electricity_demand WHERE {usage_where}
+                UNION
                 SELECT invoice_id FROM reporting_electricity_selection
                 WHERE source_selection = 'needs_review' AND {usage_where}
             )
             ORDER BY i.document_id, i.id
             """,
-            [*cost_params, *usage_params, *usage_params],
+            [*cost_params, *usage_params, *usage_params, *usage_params],
         )
         manual_rows = [row for row in invoice_sources if row["source"] == "manual"]
         total_invoices = len(invoice_sources)
@@ -172,6 +183,14 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         row["reason"] = SELECTION_REASONS[row["selection_reason"]]
         row["period_start"] = date.fromisoformat(row["period_start"])
         row["period_end"] = date.fromisoformat(row["period_end"])
+    for row in billed_power:
+        for field in ("invoice_date", "period_start", "period_end"):
+            row[field] = date.fromisoformat(row[field])
+        start, end = row["period_start"], row["period_end"]
+        row["is_calendar_month"] = (
+            start.day == end.day == 1
+            and (end.year - start.year) * 12 + end.month - start.month == 1
+        )
     for row in waste["waste_details"]:
         for source in (row, *row["weights"]):
             for field in ("invoice_date", "period_start", "period_end"):
@@ -182,6 +201,8 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         "consumption": consumption,
         "breakdown": breakdown,
         "issues": issues,
+        "billed_power": billed_power,
+        "billed_power_summary": summarize_billed_power(billed_power),
         "total_invoices": total_invoices,
         "pdf_invoices": total_invoices - manual_invoices,
         "manual_invoices": manual_invoices,

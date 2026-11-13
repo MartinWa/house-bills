@@ -238,7 +238,7 @@ def validate_allocations(invoice):
             totals[field] += amount
         for usage in section.usages.all():
             usage.full_clean()
-            if usage.utility == Usage.Utility.ELECTRICITY:
+            if usage.utility == Usage.Utility.ELECTRICITY and usage.unit == "kWh":
                 # A reversal and its replacement can overlap. Two positive-source
                 # measurements with the same basis cannot silently become a sum.
                 for other, property_id, source in electricity:

@@ -84,6 +84,29 @@ def allocation(
     }
 
 
+def demand_allocation(house, quantity, *, start=START, end=END, net=10_000):
+    return allocation(
+        house,
+        service="electricity",
+        subcategory="electricity_demand",
+        usages=[
+            replace(
+                usage(
+                    quantity,
+                    start=start,
+                    end=end,
+                    basis="billed",
+                    subcategory="electricity_demand",
+                ),
+                unit="kW",
+            )
+        ],
+        start=start,
+        end=end,
+        net=net,
+    )
+
+
 @pytest.fixture
 def ledger(tmp_path, settings, django_user_model):
     settings.MEDIA_ROOT = tmp_path / "originals"
@@ -293,11 +316,151 @@ def test_review_records_and_private_proposals_are_absent_from_all_reporting_view
         "consumption": [],
         "breakdown": [],
         "issues": [],
+        "billed_power": [],
+        "billed_power_summary": [],
         "total_invoices": 0,
         "pdf_invoices": 0,
         "manual_invoices": 0,
         "manual_document_ids": [],
     }
+
+
+def test_billed_power_summary_averages_by_property_and_filters_whole_billed_periods(ledger, client):
+    first, second = ledger["houses"]
+    january, march, april, may = (date(2024, month, 1) for month in (1, 3, 4, 5))
+    invoice = ledger["make"](
+        [
+            demand_allocation(first, 1000, start=january, end=START),
+            demand_allocation(first, 3138),
+            demand_allocation(first, 3999, start=march, end=april),
+            demand_allocation(first, 99_000, start=april, end=may),
+            demand_allocation(second, 9000),
+        ],
+        source=Document.Source.MANUAL,
+    )
+    report = read_report(date_from=january, date_to=date(2024, 3, 31))
+    assert len(report["billed_power"]) == 4
+    summary, other = report["billed_power_summary"]
+    assert (summary["property_id"], summary["value_count"], summary["average_milli"]) == (
+        first.pk,
+        3,
+        2712,
+    )
+    assert (summary["highest"]["quantity_milli"], summary["highest"]["period_start"]) == (
+        3999,
+        march,
+    )
+    assert (summary["lowest"]["quantity_milli"], summary["lowest"]["period_start"]) == (
+        1000,
+        january,
+    )
+    assert (other["property_id"], other["average_milli"]) == (second.pk, 9000)
+    assert report["consumption"] == report["issues"] == []
+    selected = read_report(
+        property_id=first.pk, date_from=date(2024, 3, 15), date_to=date(2024, 3, 15)
+    )
+    assert len(selected["billed_power_summary"]) == 1
+    assert selected["billed_power_summary"][0]["average_milli"] == 3999
+    assert selected["billed_power_summary"][0]["value_count"] == 1
+    client.force_login(ledger["actor"])
+    response = client.get(
+        reverse("bills:reports"), {"date_from": "2024-01-01", "date_to": "2024-03-31"}
+    )
+    assert response.status_code == 200
+    assert b"2,712 kW" in response.content
+    assert b"March 2024" in response.content and b"January 2024" in response.content
+    assert b'<details id="billed-power-details">' in response.content
+    assert b"Billed power invoice details" in response.content
+    assert reverse("bills:invoice", args=[invoice.pk]).encode() in response.content
+
+
+def test_billed_power_average_includes_explicit_zero_and_rounds_without_filling_missing_months(
+    ledger,
+):
+    house = ledger["houses"][0]
+    ledger["make"](
+        [
+            demand_allocation(house, 0, start=date(2024, 1, 1), end=START),
+            demand_allocation(house, 1, start=END, end=date(2024, 4, 1)),
+        ]
+    )
+    summary = read_report()["billed_power_summary"][0]
+    assert (summary["value_count"], summary["average_milli"]) == (2, 1)
+    assert summary["lowest"]["quantity_milli"] == 0
+    empty = read_report(date_from=START, date_to=date(2024, 2, 29))
+    assert empty["billed_power_summary"] == empty["billed_power"] == []
+
+
+def test_billed_power_extrema_keep_latest_tied_month_and_exact_nonmonthly_periods(ledger, client):
+    first, second = ledger["houses"]
+    split = date(2024, 2, 15)
+    ledger["make"](
+        [
+            demand_allocation(first, 5000, start=date(2024, 1, 1), end=START),
+            demand_allocation(first, 2000),
+            demand_allocation(first, 5000, start=END, end=date(2024, 4, 1)),
+            demand_allocation(second, 2000, end=split),
+            demand_allocation(second, 4000, start=split, end=date(2024, 4, 1)),
+        ]
+    )
+    summary, partial = read_report()["billed_power_summary"]
+    assert summary["average_milli"] == 4000
+    assert summary["highest"]["period_start"] == END and summary["highest_other_count"] == 1
+    assert summary["highest"]["is_calendar_month"]
+    assert summary["lowest"]["period_start"] == START and summary["lowest_other_count"] == 0
+    assert partial["average_milli"] == 3000
+    assert (
+        not partial["highest"]["is_calendar_month"] and not partial["lowest"]["is_calendar_month"]
+    )
+    client.force_login(ledger["actor"])
+    response = client.get(reverse("bills:reports"))
+    assert b"and 1 other period" in response.content
+    assert "2024-02-15 – 2024-03-31".encode() in response.content
+    assert "2024-02-01 – 2024-02-14".encode() in response.content
+
+
+def test_billed_power_credit_cancels_one_older_matching_value_and_keeps_replacement(ledger):
+    house = ledger["houses"][0]
+    original = ledger["make"]([demand_allocation(house, 3000)])
+    duplicate = ledger["make"]([demand_allocation(house, 3000)])
+    ledger["make"]([demand_allocation(house, -3000, net=-10_000)], kind="credit")
+    replacement = ledger["make"]([demand_allocation(house, 4000)])
+    report = read_report()
+    summary = report["billed_power_summary"][0]
+    assert summary["average_milli"] == 3500 and summary["value_count"] == 2
+    assert summary["highest"]["invoice_id"] == replacement.pk
+    assert summary["lowest"]["invoice_id"] == duplicate.pk
+    assert summary["lowest"]["invoice_id"] != original.pk
+    assert summary["unmatched_credit_count"] == 0
+    assert len(report["billed_power"]) == 4
+    # Removing the uncancelled duplicate leaves the replacement as the only value.
+    ledger["make"]([demand_allocation(house, -3000, net=-10_000)], kind="credit")
+    summary = read_report()["billed_power_summary"][0]
+    assert summary["average_milli"] == 4000 and summary["value_count"] == 1
+
+
+@pytest.mark.parametrize("mismatch", ["vendor", "property", "period", "quantity"])
+def test_unmatched_power_credits_remain_in_details_without_distorting_statistics(ledger, mismatch):
+    first, second = ledger["houses"]
+    ledger["make"]([demand_allocation(first, 3000)])
+    credit = demand_allocation(second if mismatch == "property" else first, -3000, net=-10_000)
+    kwargs = {"kind": "credit"}
+    if mismatch == "vendor":
+        kwargs["issuer"] = Vendor.objects.create(name="Other Synthetic Vendor", slug="other-vendor")
+    elif mismatch == "period":
+        credit = demand_allocation(first, -3000, start=date(2024, 1, 1), end=START, net=-10_000)
+    elif mismatch == "quantity":
+        credit = demand_allocation(first, -2000, net=-10_000)
+    ledger["make"]([credit], **kwargs)
+    report = read_report()
+    assert len(report["billed_power"]) == 2
+    first_summary = report["billed_power_summary"][0]
+    assert first_summary["average_milli"] == 3000 and first_summary["value_count"] == 1
+    assert sum(row["unmatched_credit_count"] for row in report["billed_power_summary"]) == 1
+    if mismatch == "property":
+        second_summary = report["billed_power_summary"][1]
+        assert second_summary["average_milli"] is None and second_summary["value_count"] == 0
+        assert second_summary["highest"] is second_summary["lowest"] is None
 
 
 def test_costs_and_usage_have_independent_grains_exact_values_and_native_timestamps(ledger):

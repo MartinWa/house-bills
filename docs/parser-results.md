@@ -45,7 +45,7 @@ using each section's printed net and VAT totals.
 | Review | `requires_review=True` for every result, including financially reconciled results. `issues` contains consistency failures. |
 
 Money uses signed integer minor units: 100 units equal one SEK. Quantities use signed
-integers at scale 1,000 for kWh, m3 and kg. Parsing uses Decimal, rejects overprecision
+integers at scale 1,000 for kWh, kW, m3 and kg. Parsing uses Decimal, rejects overprecision
 and never silently rounds a money/usage input. Rate and meter-reading text can retain
 additional precision in evidence. Missing information is unknown, rather than zero.
 
@@ -92,6 +92,13 @@ charges and retains the remaining collection fees. The printed contract VAT is
 apportioned by net cost, with signed rounding balanced to its exact total. Each part
 retains the original tax evidence; costs are never derived from weights or unit prices.
 Missing/invalid fraction charges leave the combined allocation available for review.
+Layout 01 also separates explicitly billed Effektavgift net charges under
+`electricity_demand`, retaining other Elnät charges under `electricity_network`.
+Each demand row keeps its printed period and optional billed kW with basis `billed`.
+Power is never inferred from a unit price or converted into kWh. Contract VAT is
+apportioned by net cost and balanced to the unchanged printed VAT total. Invalid
+charges retain the combined network cost; invalid power keeps the fee cost and
+requires review of its quantity.
 Other price rows supply billed consumption/periods or corroborate network readings.
 The original PDF and immutable extracted page evidence retain the source detail.
 

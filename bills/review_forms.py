@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from django import forms
 from django.core.exceptions import ValidationError
 
+from .categories import usage_units
 from .classification_forms import catalogue_field
 from .configuration import validate_classification
 from .models import Category, Invoice, Property, Service, Usage, Vendor
@@ -225,18 +226,17 @@ class UsageForm(SectionChoiceMixin, PeriodMixin, forms.Form):
 
     def clean(self):
         data = super().clean()
-        units = {"electricity": "kWh", "water": "m3", "waste": "kg"}
         if data.get("utility"):
             try:
                 validate_classification(data["utility"], data.get("subcategory"))
             except ValidationError as exc:
                 self.add_error("subcategory", exc.messages)
         if (
-            data.get("utility") in units
+            data.get("utility")
             and "unit" in data
-            and data["unit"] != units[data["utility"]]
+            and data["unit"] not in usage_units(data["utility"], data.get("subcategory"))
         ):
-            self.add_error("unit", "Choose the unit that matches this utility.")
+            self.add_error("unit", "Choose the unit that matches this utility and subcategory.")
         if data.get("basis") == "reversal" and data.get("quantity_milli", 0) > 0:
             self.add_error("quantity_milli", "A reversal must have a zero or negative quantity.")
         return data
@@ -415,7 +415,7 @@ class ReviewForms:
             service = section.cleaned_data["category"]
             if data["utility"] != utilities.get(service):
                 form.add_error("utility", "Consumption must match the allocation's category.")
-            if data["utility"] == "electricity":
+            if data["utility"] == "electricity" and data["unit"] == "kWh":
                 source = (
                     section.cleaned_data["property"].pk,
                     service,

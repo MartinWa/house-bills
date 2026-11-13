@@ -322,7 +322,7 @@ class ReviewUsage(Input):
     section_id: Name
     utility: CategoryKey
     subcategory: Key | None = None
-    unit: Literal["kWh", "m3", "kg"]
+    unit: Literal["kWh", "kW", "m3", "kg"]
     quantity_milli: Integer
     period_start: ISODate
     period_end: ISODate

@@ -16,6 +16,8 @@ extraction service or runtime CDN dependencies.
 - Track missing combined bills separately from received invoices needing review or
   incomplete service allocations.
 - Maintain shared cost and consumption subcategories under Electricity, Water, Waste and Other.
+- Separate printed electricity demand charges (Effektavgift) from Elnät costs and track
+  billed kW with period averages, highest and lowest billed months and invoice details.
 - Mark confirmed months with no invoice as not sent, retaining a reason and later expectations.
 - Preserve original bytes and reuse exact duplicate uploads, including invoices
   copied into different property folders.
@@ -89,8 +91,9 @@ verification are pending. A local production build is available for evaluation.
 This is a shared private installation: signed-in users can access its billing
 records. It has no tenant or per-property isolation. Parsing is synchronous;
 NAS timing has not been measured. Reports use invoice dates for costs and whole
-billed consumption periods, without calendar-month proration. Individual fee rows
-stay in the original PDF. Folder import, historical OCR, Grafana access transport
+billed consumption periods, without calendar-month proration. Selected demand and waste
+fraction charges are separated; remaining fee details stay in the original PDF.
+Folder import, historical OCR, Grafana access transport
 and loading parser plugins from a mounted directory are not implemented.
 
 - [HTTP API and automation](docs/api.md), [OpenAPI schema](docs/api/openapi.json)

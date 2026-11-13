@@ -34,7 +34,7 @@ def starts(line, *labels: str) -> bool:
 
 def unit(value: str) -> str:
     try:
-        return {"kwh": "kWh", "m3": "m3", "m³": "m3", "kg": "kg"}[value.casefold()]
+        return {"kwh": "kWh", "kw": "kW", "m3": "m3", "m³": "m3", "kg": "kg"}[value.casefold()]
     except KeyError:
         raise ValueError("Unsupported usage unit") from None
 

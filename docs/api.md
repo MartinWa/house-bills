@@ -26,7 +26,7 @@ deletion cascade. Confirmations require `add_serviceinvoiceexception`; annotatio
 reads, corrections and deletion require staff and the corresponding permissions.
 
 Reporting tokens can GET `/me`, `/reports/selectors`, `/reports/summary`,
-`/reports/costs`, `/reports/consumption` and `/reports/consumption-issues`.
+`/reports/costs`, `/reports/consumption`, `/reports/billed-power` and `/reports/consumption-issues`.
 They cannot access configuration, pending proposals, originals, coverage or writes,
 even when owned by a superuser. HTML workflow access remains available to signed-in
 active accounts, and automation tokens inherit that same shared-installation access.
@@ -240,6 +240,10 @@ weights include invoice, allocation/usage, property, vendor, currency and date I
 Costs support `mode=rows`, `totals` and `invoice_month`. Consumption supports `rows`,
 `totals` and `billed_period`; the latter retains complete endpoints, basis and source.
 `/reports/consumption-issues` returns paginated excluded approved intervals.
+`/reports/billed-power` returns paginated billed kW rows for Effektavgift with
+`mode=rows` and the same usage-period filters. Power remains separate from kWh
+consumption and is not summed across billed periods. Effektavgift costs are available
+from `/reports/costs?subcategory=electricity_demand`.
 `/reports/invoice-coverage` is automation-only and always includes the effective
 UTC `as_of` date.
 

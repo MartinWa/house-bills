@@ -26,7 +26,7 @@
     <fieldset><legend>Invoice fields</legend><div class="field-grid">
       {% for field in review.header.visible_fields %}<div class="field{% if field.field.widget.input_type == 'checkbox' %} checkbox-field{% endif %}">{{ field.label_tag }}{{ field }}{% if show_errors %}{{ field.errors }}{% endif %}</div>{% endfor %}
     </div></fieldset>
-    <p>Enter amounts in SEK with up to two decimal places and consumption with up to three. Commas and decimal points are accepted. Billed periods include both dates shown.</p>
+    <p>Enter amounts in SEK with up to two decimal places and consumption or billed power with up to three. Use kW for Effektavgift and kWh for electricity consumption. Commas and decimal points are accepted. Billed periods include both dates shown.</p>
     {% for group_name, label, formset in review.groups %}
       <section data-formset="{{ group_name }}" data-limit="{{ formset.absolute_max }}">
         <h3>{{ label }}</h3>

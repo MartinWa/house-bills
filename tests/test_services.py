@@ -197,7 +197,7 @@ def test_approval_uses_vendor_default_and_preserves_assignments_after_config_cha
     vendor.save()
     candidate = layout_01.parse(read_pdf(write_pdf(tmp_path / "multi.pdf", multi_service())))
     approved = approve(setup, candidate=candidate)
-    assert approved.sections.count() == 4
+    assert approved.sections.count() == 5
     assert set(approved.sections.values_list("property_id", flat=True)) == {houses[0].pk}
     assert set(approved.reviews.get().snapshot["properties"].values()) == {houses[0].pk}
     vendor.default_property = houses[1]

@@ -5,6 +5,7 @@ import re
 from bills.categories import waste_cost_subcategory, waste_subcategory
 
 from .common import AMOUNT, header, last_money, reconcile
+from .electricity_demand import split_electricity_demand
 from .layout_helpers import capture, cost_period
 from .normalization import (
     DATE,
@@ -20,7 +21,7 @@ from .normalization import (
 from .normalization import unit as normalize_unit
 from .types import Evidence, Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_01", "v1", "10"
+FAMILY, VERSION, REVISION = "layout_01", "v1", "12"
 SERVICE = {
     "vatten": "water",
     "hushållsavfall": "waste",
@@ -367,4 +368,6 @@ def parse_sections(pages, *, candidate, pattern=SECTION, services=SERVICE, legac
         s.gross_minor or 0 for s in candidate.sections if s.service == "waste"
     ):
         candidate.issues.append("Printed waste total mismatch")
+    _, warnings = split_electricity_demand(candidate, pages)
+    candidate.issues.extend(warnings)
     return reconcile(candidate)

@@ -1,0 +1,6 @@
+{% load bill_values %}
+{% if value %}
+  <span class="amount">{{ value.quantity_milli|quantity }} kW</span>
+  <small>{% if value.is_calendar_month %}{{ value.period_start|date:"F Y" }}{% else %}{{ value.period_start|date:"Y-m-d" }} – {{ value.period_end|final_day }}{% endif %}</small>
+  {% if other_count %}<small>and {{ other_count }} other period{{ other_count|pluralize }}</small>{% endif %}
+{% else %}—{% endif %}

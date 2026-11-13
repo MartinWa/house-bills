@@ -48,7 +48,9 @@ def resolved_filters(reader, filters, kind):
         raise ReportTooBroad("100 property IDs")
     bounds = []
     projections = (
-        ["costs"]
+        ["power"]
+        if kind == "power"
+        else ["costs"]
         if kind == "costs"
         else ["consumption", "issues"]
         if kind in ("consumption", "issues")
@@ -61,6 +63,7 @@ def resolved_filters(reader, filters, kind):
             "costs": "reporting_costs",
             "consumption": "selected_usage",
             "issues": "reporting_electricity_selection",
+            "power": "reporting_electricity_demand",
         }[projection]
         if projection == "issues":
             where += " AND source_selection = 'needs_review'"
@@ -200,6 +203,7 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
             "costs": "reporting_costs",
             "consumption": "selected_usage",
             "issues": "reporting_electricity_selection",
+            "power": "reporting_electricity_demand",
         }[kind]
         cte = SELECTED if table == "selected_usage" else ""
         if kind == "issues":

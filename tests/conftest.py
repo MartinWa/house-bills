@@ -34,3 +34,7 @@ def classification_catalogue(request):
                     "is_waste_fraction": True,
                 },
             )
+        Subcategory.objects.get_or_create(
+            pk="electricity_demand",
+            defaults={"category": "electricity", "name": "Effektavgift"},
+        )
