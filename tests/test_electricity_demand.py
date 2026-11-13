@@ -89,6 +89,7 @@ def test_contract_and_product_formats_separate_costs_and_power_without_changing_
     assert candidate.to_dict() == previous
 
 
+@pytest.mark.parametrize("unit_price", ["kr/kW", "kr /kW", "kr/ kW", "kr / kW"])
 @pytest.mark.parametrize(
     "row,expected_power,warning",
     [
@@ -114,9 +115,9 @@ def test_contract_and_product_formats_separate_costs_and_power_without_changing_
     ],
 )
 def test_power_uses_only_explicit_exact_billed_kw_and_cost_survives_invalid_power(
-    tmp_path, row, expected_power, warning
+    tmp_path, row, expected_power, warning, unit_price
 ):
-    candidate, _ = parse(tmp_path, row)
+    candidate, _ = parse(tmp_path, row.replace("kr/kW", unit_price))
     demand = candidate.sections[-1]
     assert demand.subcategory == "electricity_demand"
     assert sum(section.net_minor for section in candidate.sections) == candidate.net_minor
@@ -230,9 +231,9 @@ def test_unmatched_reviewed_network_allocation_is_retained_beside_a_known_split(
 
 
 @pytest.fixture
-def retained(tmp_path, settings, django_user_model):
+def retained(tmp_path, settings, django_user_model, request):
     settings.MEDIA_ROOT = tmp_path / "originals"
-    candidate, pages = parse(tmp_path)
+    candidate, pages = parse(tmp_path, replacement=getattr(request, "param", None))
     combined(candidate)
     house = Property.objects.create(name="Synthetic House", slug="synthetic-house")
     vendor = Vendor.objects.create(name="Synthetic Utilities", slug="synthetic-utilities")
@@ -312,6 +313,28 @@ def test_retained_split_previews_applies_once_and_keeps_corrections_history_and_
     call_command("split_electricity_demand", apply=True, reviewer=actor.pk, stdout=output)
     invoice.refresh_from_db()
     assert invoice.review_revision == 2 and "Updated 0 invoices" in output.getvalue()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "retained",
+    ["Effektavgift 1 feb 2024 - 1 mar 2024 50,00 kr / kW 150,00 kr"],
+    indirect=True,
+)
+def test_retained_split_applies_spaced_unit_price_without_inventing_billed_power(retained):
+    invoice, house, actor, extraction = retained
+    plan, warnings = plan_retained_demand_split(invoice, house.pk)
+    assert plan is not None and warnings == []
+    call_command("split_electricity_demand", apply=True, reviewer=actor.pk)
+    invoice.refresh_from_db()
+    assert invoice.review_revision == 2
+    demand = invoice.sections.get(subcategory_id="electricity_demand")
+    assert (demand.net_minor, demand.vat_minor, demand.gross_minor) == (15000, 3750, 18750)
+    assert not demand.usages.exists()
+    assert invoice.sections.get(subcategory_id="electricity_network").gross_minor == 28558
+    assert demand.total_evidence == next(
+        row for row in extraction.page_evidence if row["text"].startswith("Effektavgift")
+    )
 
 
 @pytest.mark.django_db(transaction=True)

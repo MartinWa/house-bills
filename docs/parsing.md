@@ -31,8 +31,8 @@ remain review proposals. Dates and filenames never select the newest parser.
 
 | Family/version | Billing structure | Revision |
 | --- | --- | --- |
-| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations, explicit garden/fraction and demand costs, billed kW and dated water reversals. | `11` |
-| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units, explicit waste and demand costs and billed kW. | `6` |
+| `layout_01/v1` | Contract-based water, waste, network and supply; page continuations, explicit garden/fraction and demand costs, billed kW and dated water reversals. | `12` |
+| `layout_01/v2` | Historical product-number water, network and supply, including printed `kbm` water units, explicit waste and demand costs and billed kW. | `7` |
 | `layout_02/v1` | Electricity supply; installation details above each specification. | `3` |
 | `layout_02/v2` | Replacement supply structure; service-specific title and inline installation key. | `2` |
 | `layout_03/v1` | Quarterly waste or dated tank emptying; VAT basis and separate payment summary. | `2` |

@@ -69,7 +69,9 @@ def _split_section(section, source):
             raise ValueError("The printed Effektavgift charge is missing or invalid.")
         period = source_period(value) if PERIOD.search(value) else (section.start, section.end)
         usages = []
-        power = POWER.search(PERIOD.sub("", value))
+        # Unit prices may separate "/" from "kW"; retain the original source evidence.
+        power_text = re.sub(r"/\s+", "/", PERIOD.sub("", value))
+        power = POWER.search(power_text)
         try:
             if power is not None:
                 if power[2].casefold() != "kw":
@@ -85,7 +87,7 @@ def _split_section(section, source):
                         subcategory=SUBCATEGORY,
                     )
                 )
-            elif re.search(r"(?<!/)\bkW\b", value, re.I):
+            elif re.search(r"(?<!/)\bkW\b", power_text, re.I):
                 raise ValueError("Invalid billed power")
         except ValueError:
             warnings.append(f"Invalid billed power in {section.section_id}")

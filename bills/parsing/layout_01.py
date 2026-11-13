@@ -21,7 +21,7 @@ from .normalization import (
 from .normalization import unit as normalize_unit
 from .types import Evidence, Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_01", "v1", "11"
+FAMILY, VERSION, REVISION = "layout_01", "v1", "12"
 SERVICE = {
     "vatten": "water",
     "hushållsavfall": "waste",

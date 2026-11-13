@@ -5,7 +5,7 @@ import re
 from . import layout_01
 from .normalization import text
 
-FAMILY, VERSION, REVISION = "layout_01", "v2", "6"
+FAMILY, VERSION, REVISION = "layout_01", "v2", "7"
 PRODUCT = re.compile(
     r"^(Elnätavgifter|Vatten & Avlopp|Elhandelskostnad|Vatten|Hushållsavfall|Avfall|Elnät|Elhandel)"
     r"\s+prodnr\s+(\d+)\b",
