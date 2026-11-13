@@ -327,6 +327,7 @@ def test_retained_split_applies_spaced_unit_price_without_inventing_billed_power
     assert plan is not None and warnings == []
     call_command("split_electricity_demand", apply=True, reviewer=actor.pk)
     invoice.refresh_from_db()
+    extraction.refresh_from_db()
     assert invoice.review_revision == 2
     demand = invoice.sections.get(subcategory_id="electricity_demand")
     assert (demand.net_minor, demand.vat_minor, demand.gross_minor) == (15000, 3750, 18750)
