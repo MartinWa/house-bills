@@ -93,6 +93,13 @@ def derived_net(gross_minor):
     return (gross_minor * 4 + 2) // 5
 
 
+def nearest_month_start(value):
+    """Closest calendar-month boundary; ties keep the earlier boundary."""
+    first = value.replace(day=1)
+    following = add_months(first, 1)
+    return following if following - value < value - first else first
+
+
 def parse_pairs(values, label):
     pairs = {}
     for value in values:
@@ -582,8 +589,16 @@ class Command(BaseCommand):
         start = item["invoice_date"] - timedelta(days=item["offset"])
         item["period_start"] = start
         item["period_end"] = start + timedelta(days=item["length"])
+        if 28 <= item["length"] <= 31 and self.bills_whole_months(item["vendor"]):
+            snapped = nearest_month_start(start)
+            offset = (item["invoice_date"] - snapped).days
+            if 0 <= offset <= 366:
+                item["period_start"] = snapped
+                item["period_end"] = add_months(snapped, 1)
+                item["offset"] = offset
+                item["length"] = (item["period_end"] - snapped).days
 
-    def period_samples(self, vendor, *, originals_only=False):
+    def sample_sections(self, vendor, *, originals_only=False):
         sections = (
             BillingSection.objects.filter(
                 invoice__status=Invoice.Status.APPROVED,
@@ -598,8 +613,20 @@ class Command(BaseCommand):
             sections = sections.filter(
                 invoice__document__source=Document.Source.UPLOAD, invoice__kind=Invoice.Kind.INVOICE
             )
+        return sections
+
+    def bills_whole_months(self, vendor):
+        """Require original invoices for a consistent single-calendar-month convention."""
+        seen = False
+        for section in self.sample_sections(vendor, originals_only=True):
+            if section.start.day != 1 or section.end != add_months(section.start, 1):
+                return False
+            seen = True
+        return seen
+
+    def period_samples(self, vendor, *, originals_only=False):
         samples = []
-        for section in sections:
+        for section in self.sample_sections(vendor, originals_only=originals_only):
             offset = (section.invoice.invoice_date - section.start).days
             length = (section.end - section.start).days
             if 0 <= offset <= 90 and 1 <= length <= 92:

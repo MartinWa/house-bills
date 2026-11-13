@@ -183,6 +183,12 @@ available, unless the input supplies `payment_offset_days` (an integer from 1 to
 sample. The default invoice-date mode retains its existing period sampling,
 which can include approved manual entries.
 
+When a vendor's approved originals consistently bill single calendar months,
+offset mode snaps an inferred monthly period to the nearest month boundary and
+sets its end to the next month. Multi-month lengths, mid-month or mixed cycles,
+and vendors without original samples retain day arithmetic. Corrected offsets
+and lengths are pinned in plans and exports, so replay needs no original samples.
+
 Both payment-date modes normalize payments on or after day 25 to a due-date
 estimate on the first of the next month; earlier payments use the payment date
 as the estimate. This is a fixed final-week heuristic for vendors usually paid

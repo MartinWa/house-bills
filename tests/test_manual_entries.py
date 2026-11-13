@@ -638,6 +638,138 @@ def test_payment_offset_uses_originals_and_export_pins_observed_intervals(
 
 
 @pytest.mark.parametrize(
+    ("payment_date", "start", "end"),
+    [
+        ("2018-03-01", "2018-01-01", "2018-02-01"),
+        ("2019-03-01", "2019-01-01", "2019-02-01"),
+        ("2019-04-01", "2019-02-01", "2019-03-01"),
+    ],
+)
+def test_offset_whole_month_originals_snap_periods_and_export_replays_without_samples(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    monkeypatch,
+    payment_date,
+    start,
+    end,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    ledger["make"]([allocation(house, start=date(2024, 1, 1), end=date(2024, 2, 1))])
+    source = ledger_source(tmp_path, house.pk, date=payment_date, payment_offset_days=20)
+    plan, live = tmp_path / "plan.json", tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period",
+        f"{vendor.slug}=41:30",
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert (row["period_start"], row["period_end"]) == (start, end)
+    exported = json.loads(live.read_text(encoding="utf-8"))["rows"][0]
+    assert (
+        exported["offset_days"]
+        == (date.fromisoformat(row["invoice_date"]) - date.fromisoformat(start)).days
+    )
+    assert exported["length_days"] == (date.fromisoformat(end) - date.fromisoformat(start)).days
+    monkeypatch.setattr(import_ledger_invoices.Command, "sample_sections", lambda *_, **__: [])
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--commit",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get(reference=f"LEDGER-{payment_date}-P{house.pk}")
+    assert (invoice.sections.get().start.isoformat(), invoice.sections.get().end.isoformat()) == (
+        start,
+        end,
+    )
+
+
+@pytest.mark.parametrize(
+    ("periods", "source_kind", "length"),
+    [
+        ([(date(2024, 1, 15), date(2024, 2, 15))], Document.Source.UPLOAD, 30),
+        ([(date(2024, 1, 1), date(2024, 3, 1))], Document.Source.UPLOAD, 60),
+        ([(date(2024, 1, 1), date(2024, 3, 1))], Document.Source.UPLOAD, 30),
+        (
+            [(date(2024, 1, 1), date(2024, 2, 1)), (date(2024, 2, 15), date(2024, 3, 15))],
+            Document.Source.UPLOAD,
+            30,
+        ),
+        ([(date(2024, 1, 1), date(2024, 2, 1))], Document.Source.MANUAL, 30),
+        ([(date(2024, 1, 1), date(2024, 2, 1))], Document.Source.UPLOAD, 60),
+    ],
+)
+def test_offset_snapping_requires_consistent_single_month_originals_and_monthly_length(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    periods,
+    source_kind,
+    length,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    for start, end in periods:
+        ledger["make"]([allocation(house, start=start, end=end)], source=source_kind)
+    source = ledger_source(tmp_path, house.pk, date="2019-04-01", payment_offset_days=20)
+    plan = tmp_path / "plan.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period",
+        f"{vendor.slug}=41:{length}",
+        stdout=StringIO(),
+    )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert row["period_start"] == "2019-01-30"
+    assert row["period_end"] == (date(2019, 1, 30) + timedelta(days=length)).isoformat()
+
+
+@pytest.mark.parametrize(("invoice_date", "offset"), [("2019-01-31", 0), ("2019-02-10", 366)])
+def test_offset_snapping_keeps_export_pins_within_supported_bounds(
+    ledger,  # noqa: F811 - Imported pytest fixture.
+    tmp_path,
+    invoice_date,
+    offset,
+):
+    actor, vendor, house = ledger["actor"], ledger["vendor"], ledger["houses"][0]
+    ledger["make"]([allocation(house, start=date(2024, 1, 1), end=date(2024, 2, 1))])
+    source = ledger_source(tmp_path, house.pk, date=invoice_date)
+    plan, live = tmp_path / "plan.json", tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, house, plan, False),
+        "--period",
+        f"{vendor.slug}={offset}:30",
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    row = json.loads(live.read_text(encoding="utf-8"))["rows"][0]
+    assert row["offset_days"] == offset and row["length_days"] == 30
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--commit",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get(reference=f"LEDGER-{invoice_date}-P{house.pk}")
+    assert invoice.sections.get().start == date.fromisoformat(invoice_date) - timedelta(days=offset)
+
+
+@pytest.mark.parametrize(
     ("payment_date", "invoice_date", "period_start"),
     [
         ("2018-10-31", "2018-10-12", "2018-09-01"),
