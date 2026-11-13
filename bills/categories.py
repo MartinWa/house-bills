@@ -53,6 +53,13 @@ def waste_cost_subcategory(source_texts):
         ):
             section_fractions.add(waste_subcategory(match[1]))
         if match := re.match(
+            r"^Avfall (?:avtal|prodnr)\s+\d+\s+Kärl\s+\d+\s*(?:l|liter)\s+"
+            r"(Matavfall|Restavfall|Trädgårdsavfall)\b",
+            source.strip(),
+            re.I,
+        ):
+            section_fractions.add(waste_subcategory(match[1]))
+        if match := re.match(
             r"^(?:Tömn(?:ing)?\s+)?(Matavfall|Restavfall|Trädgårdsavfall)\b",
             source.strip(),
             re.I,

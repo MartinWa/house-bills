@@ -145,6 +145,11 @@ not separately reported; absent weights are `[]`. Printed zero costs and zero
 weights remain zero. Quantities retain their signed values and bases; different
 bases are displayed separately. Configured active fractions can show “Not reported”.
 
+When enabled fraction cost services split explicit Layout 01 charges, each fraction
+has its own net, VAT and gross cost. Shared collection fees remain in the general
+breakdown. VAT rounding is balanced to the original contract total, so every cost
+still contributes once and the overall waste total is preserved.
+
 The Waste table's weights come from the same cost sections/invoices selected by
 **invoice date**, including their independent billed periods. The existing
 Consumption table continues to use **usage-period overlap**. Neither prorates

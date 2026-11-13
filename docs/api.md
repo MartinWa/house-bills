@@ -118,6 +118,9 @@ Only waste entries may be fractions; combined collection and tank emptying are
 service keys. Referenced fraction kind remains stable. Service reads/writes include
 `service_group`, automatically derived when omitted. Garden and other collection
 services default to `waste_collection`; tank emptying retains its own group.
+Enabled fraction services also enable separate extraction of explicitly priced
+Layout 01 waste charges for their property, retaining shared collection fees and
+reconciling apportioned VAT to the printed contract total.
 
 Waste assignments own cost schedules with effective months, `frequency_months`,
 nullable `first_expected_month`, optional `season_start_month`/`season_end_month`

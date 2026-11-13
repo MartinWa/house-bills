@@ -5,14 +5,14 @@ import re
 from . import layout_01
 from .normalization import text
 
-FAMILY, VERSION, REVISION = "layout_01", "v2", "4"
+FAMILY, VERSION, REVISION = "layout_01", "v2", "5"
 PRODUCT = re.compile(
-    r"^(Elnätavgifter|Vatten & Avlopp|Elhandelskostnad|Vatten|Hushållsavfall|Elnät|Elhandel)"
+    r"^(Elnätavgifter|Vatten & Avlopp|Elhandelskostnad|Vatten|Hushållsavfall|Avfall|Elnät|Elhandel)"
     r"\s+prodnr\s+(\d+)\b",
     re.I,
 )
 SECTION = re.compile(
-    r"^(Elnätavgifter|Vatten & Avlopp|Elhandelskostnad|Vatten|Hushållsavfall|Elnät|Elhandel)"
+    r"^(Elnätavgifter|Vatten & Avlopp|Elhandelskostnad|Vatten|Hushållsavfall|Avfall|Elnät|Elhandel)"
     r"\s+(?:prodnr|avtal)\s+(\d+)\b",
     re.I,
 )
@@ -21,6 +21,7 @@ SERVICE = {
     "elnätavgifter": "electricity_network",
     "vatten & avlopp": "water",
     "elhandelskostnad": "electricity_supply",
+    "avfall": "waste",
 }
 
 
