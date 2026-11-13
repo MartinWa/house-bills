@@ -38,6 +38,48 @@
         </tr>{% empty %}<tr><td colspan="6">No approved costs match these filters.</td></tr>{% endfor %}</tbody>
       </table>
     </div>
+    <h3>Waste</h3>
+    <p class="waste-total" id="waste-total"><strong>Total waste cost: {{ waste_total.gross_minor|money_whole }} {{ waste_total.currency }}</strong> including VAT</p>
+    <p>Combined charges stay combined. Separately billed fraction costs and reported weights are shown independently. Weights here come from the invoices selected by invoice date. Tank emptying is included in the total.</p>
+    <div class="table-scroll">
+      <table id="waste-property-totals">
+        <caption>Waste cost by property</caption>
+        <thead><tr><th>Property</th><th>Excluding VAT</th><th>VAT</th><th>Including VAT</th></tr></thead>
+        <tbody>{% for row in waste_totals_by_property %}<tr>
+          <td>{{ row.property_name }}</td><td class="amount">{{ row.net_minor|money_whole }} {{ row.currency }}</td><td class="amount">{{ row.vat_minor|money_whole }} {{ row.currency }}</td><td class="amount">{{ row.gross_minor|money_whole }} {{ row.currency }}</td>
+        </tr>{% empty %}<tr><td colspan="4">No approved waste costs match these filters.</td></tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    {% if waste_fractions or waste_general or waste_other_services %}
+      <div class="table-scroll">
+        <table id="waste-breakdown">
+          <caption>Breakdown of total waste cost and reported weights</caption>
+          <thead><tr><th>Property</th><th>Fraction or service</th><th>Cost including VAT</th><th>Reported weight</th></tr></thead>
+          <tbody>
+            {% include "bills/_waste_rows.html" with rows=waste_fractions fraction=True %}
+            {% include "bills/_waste_rows.html" with rows=waste_general fraction=False %}
+            {% include "bills/_waste_rows.html" with rows=waste_other_services fraction=False %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+    {% if waste_details %}
+      <details>
+        <summary>Waste invoice details</summary>
+        <p>Showing {{ waste_details|length }} of {{ waste_detail_count }} cost records, most recent first. Totals above include all matching records.</p>
+        <div class="table-scroll">
+          <table id="waste-details">
+            <thead><tr><th>Property</th><th>Invoice</th><th>Cost and billed period</th><th>Reported weights and billed periods</th></tr></thead>
+            <tbody>{% for row in waste_details %}<tr>
+              <td>{{ row.property_name }}</td>
+              <td><a href="{% url 'bills:invoice' row.invoice_id %}">{{ row.reference }}</a><small>{{ row.vendor_name }} · {{ row.invoice_date|date:"Y-m-d" }}</small>{% if row.document_id not in manual_document_ids %}<a href="{% url 'bills:source_view' row.document_id %}">View source</a>{% endif %}</td>
+              <td>{{ row.name }}{% if row.is_waste_fraction %}<small>Separately billed cost</small>{% endif %}<br>{{ row.gross_minor|money }} {{ row.currency }} including VAT<small>{{ row.net_minor|money }} excluding VAT · {{ row.vat_minor|money }} VAT</small><small>{{ row.period_start|date:"Y-m-d" }} – {{ row.period_end|final_day }}</small></td>
+              <td>{% for weight in row.weights %}{{ weight.fraction_name }}: {{ weight.quantity_milli|quantity }} {{ weight.unit }}<small>{{ weight.basis_label }} · {{ weight.period_start|date:"Y-m-d" }} – {{ weight.period_end|final_day }}</small>{% if not forloop.last %}<br>{% endif %}{% empty %}Not reported{% endfor %}</td>
+            </tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </details>
+    {% endif %}
     <h3>Consumption totals</h3>
     <p>Electricity uses network readings first, with supply as a fallback. Signed corrections are retained. Billed intervals are not prorated into calendar months.</p>
     <div class="table-scroll">

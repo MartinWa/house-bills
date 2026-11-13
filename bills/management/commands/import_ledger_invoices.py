@@ -21,6 +21,10 @@ billed length. The resolved convention is printed and can be pinned with
 `--period` for an exact repeat. Consumption quantities are not imported because
 their inferred periods cannot be trusted; the cost allocation is the missing
 reporting data.
+
+An input row may instead supply exact ``allocations`` with integer net/VAT/gross,
+explicit billed periods and optional reported usages. This path preserves waste
+classification and partial/zero weights without deriving tax or collection periods.
 """
 
 import json
@@ -29,12 +33,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from statistics import median_low
 
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from bills.models import BillingSection, Document, Invoice, Property, Vendor
-from bills.parsing.types import Candidate, Section
+from bills.configuration import validate_selected_classification
+from bills.models import BillingSection, Document, Invoice, Property, Usage, Vendor
+from bills.parsing.types import Candidate, Evidence, Section
+from bills.parsing.types import Usage as CandidateUsage
 from bills.services import approve_document_review
 from bills.storage import coordinated_write
 
@@ -284,6 +291,7 @@ class Command(BaseCommand):
             "reference": item["reference"],
             "sheet": item["sheet"],
             "services": item["services"],
+            "allocations": item["source_allocations"],
             "total": item["total"],
             "offset_days": item["offset"],
             "length_days": item["length"],
@@ -320,6 +328,7 @@ class Command(BaseCommand):
             "sheet": repair_text(row.get("sheet", "")),
             "reference": (row.get("reference") or "").strip(),
             "services": row.get("services") or {},
+            "source_allocations": row.get("allocations"),
             "total": row.get("total"),
             "ledger_row": row.get("row") or {},
             "status": "error",
@@ -330,14 +339,18 @@ class Command(BaseCommand):
         try:
             item["vendor"] = self.vendor(item, vendor_overrides)
             item["property"] = self.property(item, property_overrides)
-            if not item["date"] or not item["services"] or item["total"] is None:
+            if (
+                not item["date"]
+                or (not item["services"] and not item["source_allocations"])
+                or item["total"] is None
+            ):
                 raise ValueError("The row lacks a date, service allocation or total.")
             item["invoice_date"] = date.fromisoformat(item["date"])
             item["reference"] = item["reference"] or (
                 f"LEDGER-{item['date']}-P{item['property'].pk}"
             )
             self.money(item)
-        except (CommandError, ValueError, TypeError) as exc:
+        except (CommandError, ValueError, TypeError, KeyError, ValidationError) as exc:
             item["error"] = str(exc) or "The row is invalid."
         return item
 
@@ -373,6 +386,8 @@ class Command(BaseCommand):
         return house
 
     def money(self, item):
+        if item["source_allocations"] is not None:
+            return self.exact_allocations(item)
         sections, net_total, vat_total, gross_total = [], 0, 0, 0
         for index, (service, amount) in enumerate(sorted(item["services"].items()), 1):
             gross = minor_units(amount)
@@ -410,6 +425,12 @@ class Command(BaseCommand):
         )
 
     def period_convention(self, item, pinned):
+        if item["source_allocations"] is not None:
+            item["period_start"] = min(date.fromisoformat(row["start"]) for row in item["sections"])
+            item["period_end"] = max(date.fromisoformat(row["end"]) for row in item["sections"])
+            item["offset"] = (item["invoice_date"] - item["period_start"]).days
+            item["length"] = (item["period_end"] - item["period_start"]).days
+            return
         key = item["ledger_vendor"].casefold()
         if item["offset_days"] is not None and item["length_days"] is not None:
             item["offset"], item["length"] = int(item["offset_days"]), int(item["length_days"])
@@ -479,6 +500,14 @@ class Command(BaseCommand):
             f"from this vendor's matched invoices. Consumption was not transcribed. "
             f"Amounts were not verified against an original."
         )
+        if item["source_allocations"] is not None:
+            note = (
+                "Exact costs, billing periods and any reported weights "
+                "transcribed from the supplied ledger entry. "
+                "Combined waste charges remain combined. "
+                "No VAT or quantity allocation was calculated. "
+                "Original PDF unavailable; source values require reviewer verification."
+            )
         document = Document.objects.create(
             source=Document.Source.MANUAL,
             state=Document.State.REVIEW,
@@ -488,12 +517,14 @@ class Command(BaseCommand):
             Section(
                 section_id=row["section_id"],
                 service=row["service"],
+                subcategory=row.get("subcategory", ""),
                 identifiers=[],
-                start=item["period_start"],
-                end=item["period_end"],
+                start=date.fromisoformat(row["start"]) if "start" in row else item["period_start"],
+                end=date.fromisoformat(row["end"]) if "end" in row else item["period_end"],
                 net_minor=row["net_minor"],
                 vat_minor=row["vat_minor"],
                 gross_minor=row["gross_minor"],
+                usages=[self.reported_usage(usage) for usage in row.get("usages", [])],
             )
             for row in item["sections"]
         ]
@@ -532,3 +563,91 @@ class Command(BaseCommand):
         invoice = document.invoices.get()
         item["invoice_id"] = invoice.pk
         item["document_id"] = document.pk
+
+    def exact_allocations(self, item):
+        """Retain explicit fraction amounts/weights without deriving a cost split."""
+        source = item["source_allocations"]
+        if not isinstance(source, list) or not source or len(source) > 20:
+            raise ValueError("Provide 1–20 exact allocations.")
+        sections, net, vat, gross = [], 0, 0, 0
+        keys = set()
+        for index, row in enumerate(source, 1):
+            if not isinstance(row, dict):
+                raise ValueError("Each exact allocation must be an object.")
+            category = row.get("category") or row.get("service")
+            subcategory = row.get("subcategory") or ""
+            if category in ("electricity_network", "electricity_supply"):
+                subcategory, category = subcategory or category, "electricity"
+            validate_selected_classification(category, subcategory)
+            amounts = [row.get(name) for name in ("net_minor", "vat_minor", "gross_minor")]
+            if (
+                any(type(value) is not int for value in amounts)
+                or amounts[0] + amounts[1] != amounts[2]
+            ):
+                raise ValueError(
+                    "Exact allocations need integer net/VAT/gross amounts that reconcile."
+                )
+            start, end = date.fromisoformat(row["start"]), date.fromisoformat(row["end"])
+            if start >= end:
+                raise ValueError("Exact allocations need an ordered, end-exclusive billed period.")
+            key = row.get("section_id") or f"ledger-{index}"
+            if key in keys:
+                raise ValueError("Exact allocation keys must be distinct.")
+            keys.add(key)
+            reported = row.get("usages", [])
+            if not isinstance(reported, list):
+                raise ValueError(
+                    "Reported usages must be a list; absent weights use an empty list."
+                )
+            for weight in reported:
+                candidate = self.reported_usage(weight)
+                if candidate.utility != category:
+                    raise ValueError("Reported quantities must match their allocation category.")
+            sections.append(
+                {
+                    **row,
+                    "section_id": key,
+                    "service": category,
+                    "subcategory": subcategory,
+                    "usages": reported,
+                }
+            )
+            net, vat, gross = net + amounts[0], vat + amounts[1], gross + amounts[2]
+        if sum(len(row["usages"]) for row in sections) > 60:
+            raise ValueError("At most 60 reported usages are accepted.")
+        total = minor_units(item["total"])
+        if abs(total - gross) > 100:
+            raise ValueError("Exact allocations do not reconcile with the reported invoice total.")
+        item.update(
+            net_minor=net,
+            vat_minor=vat,
+            rounding_minor=total - gross,
+            invoice_total_minor=total,
+            amount_due_minor=total,
+            sections=sections,
+        )
+
+    def reported_usage(self, row):
+        if not isinstance(row, dict):
+            raise ValueError("A reported quantity must be an object.")
+        validate_selected_classification(row["utility"], row.get("subcategory") or "")
+        start, end = date.fromisoformat(row["start"]), date.fromisoformat(row["end"])
+        quantity, basis = row["quantity_milli"], row["basis"]
+        if type(quantity) is not int or start >= end or basis not in Usage.Basis.values:
+            raise ValueError(
+                "Reported quantities need integer thousandths, valid basis and ordered periods."
+            )
+        if row["unit"] != {"electricity": "kWh", "water": "m3", "waste": "kg"}.get(row["utility"]):
+            raise ValueError("Reported quantity unit must match its category.")
+        if basis == "reversal" and quantity > 0:
+            raise ValueError("A reversal quantity must be zero or negative.")
+        return CandidateUsage(
+            utility=row["utility"],
+            subcategory=row.get("subcategory") or "",
+            unit=row["unit"],
+            quantity_milli=quantity,
+            start=start,
+            end=end,
+            basis=basis,
+            evidence=Evidence(1, "Manually transcribed invoice-reported quantity", (0, 0, 0, 0)),
+        )

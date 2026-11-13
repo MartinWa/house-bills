@@ -221,7 +221,9 @@ def metadata(request):
     return {
         "categories": choices(Category.choices),
         "subcategories": list(
-            Subcategory.objects.order_by("key").values("key", "category", "name", "is_active")
+            Subcategory.objects.order_by("key").values(
+                "key", "category", "name", "is_active", "is_waste_fraction"
+            )
         ),
         "vendor_identifier_kinds": choices(VendorIssuerIdentifier.Kind.choices),
         "property_rule_kinds": choices(InvoicePropertyRule.Kind.choices),

@@ -14,12 +14,13 @@ from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from ninja import Router, Status
 
-from bills.configuration_actions import change_billing_frequency, change_vendor
+from bills.configuration_actions import change_billing_frequency, change_cost_pattern, change_vendor
 from bills.models import (
     Category,
     InvoicePropertyRule,
     Property,
     PropertyService,
+    ServiceCostSchedule,
     ServiceInvoiceException,
     ServiceVendorAssignment,
     Subcategory,
@@ -57,6 +58,12 @@ def configuration_queryset(model):
             "replacement_period",
         ),
         VendorBillingSchedule: ("vendor", "replacement_period"),
+        ServiceCostSchedule: (
+            "service_vendor_assignment__vendor",
+            "service_vendor_assignment__property_service__property",
+            "service_vendor_assignment__property_service__subcategory",
+            "replacement_period",
+        ),
         ServiceInvoiceException: ("vendor",),
     }
     counts = {
@@ -69,6 +76,7 @@ def configuration_queryset(model):
             "service_assignments",
         ),
         PropertyService: ("vendor_assignments",),
+        ServiceVendorAssignment: ("cost_schedules",),
     }
     queryset = model.objects.all()
     if model in relations:
@@ -159,6 +167,7 @@ def representation(obj):
             "category": obj.category,
             "category_name": Category(obj.category).label,
             "enabled": obj.is_active,
+            "is_waste_fraction": obj.is_waste_fraction,
         }
         links["category"] = resource_path("categories", obj.category)
     elif isinstance(obj, PropertyService):
@@ -171,6 +180,7 @@ def representation(obj):
             "subcategory": obj.subcategory_id,
             "subcategory_name": obj.subcategory.name if obj.subcategory_id else None,
             "mode": obj.mode,
+            "service_group": obj.service_group,
         }
         links.update(
             owner=resource_path("properties", obj.property_id),
@@ -223,6 +233,32 @@ def representation(obj):
             if obj.pk and obj.is_active
             else None,
         )
+    elif isinstance(obj, ServiceCostSchedule):
+        segment = "cost-schedules"
+        assignment = obj.service_vendor_assignment
+        service = assignment.property_service
+        fields = {
+            "assignment_id": assignment.pk,
+            "service_id": service.pk,
+            "property_id": service.property_id,
+            "property_name": service.property.name,
+            "vendor_id": assignment.vendor_id,
+            "vendor_name": assignment.vendor.name,
+            "subcategory": service.subcategory_id,
+            "subcategory_name": service.subcategory.name if service.subcategory_id else None,
+            "frequency_months": obj.frequency_months,
+            "first_expected_month": obj.first_expected_month,
+            "season_start_month": obj.season_start_month,
+            "season_end_month": obj.season_end_month,
+        }
+        links.update(
+            owner=resource_path("vendor-assignments", assignment.pk),
+            collection=f"{PREFIX}/vendor-assignments/{assignment.pk}/cost-schedules",
+            service=resource_path("services", service.pk),
+            replacement=f"{resource_path(segment, obj.pk)}/replacement"
+            if obj.pk and obj.is_active
+            else None,
+        )
     elif isinstance(obj, ServiceInvoiceException):
         segment = "invoice-exceptions"
         fields = {
@@ -243,9 +279,19 @@ def representation(obj):
         )
     else:
         raise TypeError("Unregistered configuration resource")
-    if isinstance(obj, (PropertyService, ServiceVendorAssignment, VendorBillingSchedule)):
+    if isinstance(obj, ServiceVendorAssignment):
+        links["cost_schedules"] = {
+            "count": relation_count(obj, "cost_schedules"),
+            "href": f"{PREFIX}/vendor-assignments/{obj.pk}/cost-schedules",
+        }
+    if isinstance(
+        obj, (PropertyService, ServiceVendorAssignment, VendorBillingSchedule, ServiceCostSchedule)
+    ):
         fields.update(start_month=obj.start_month, end_month=obj.end_month, enabled=obj.is_active)
-    if isinstance(obj, (ServiceVendorAssignment, VendorBillingSchedule)) and obj.pk:
+    if (
+        isinstance(obj, (ServiceVendorAssignment, VendorBillingSchedule, ServiceCostSchedule))
+        and obj.pk
+    ):
         if obj.predecessor_id:
             links["predecessor"] = resource_path(segment, obj.predecessor_id)
         replacement = getattr(obj, "replacement_period", None)
@@ -386,7 +432,12 @@ COLLECTIONS = (
         s.SubcategoryIn,
         s.SubcategoryPatch,
         s.SubcategoryOut,
-        {"category": "category", "enabled": "is_active", "q": "name__icontains"},
+        {
+            "category": "category",
+            "enabled": "is_active",
+            "is_waste_fraction": "is_waste_fraction",
+            "q": "name__icontains",
+        },
         ("key",),
         {"key": "key", "name": "name"},
     ),
@@ -400,6 +451,7 @@ COLLECTIONS = (
         {
             "category": "category",
             "subcategory": "subcategory_id",
+            "service_group": "service_group",
             "mode": "mode",
             "enabled": "is_active",
         },
@@ -418,6 +470,18 @@ COLLECTIONS = (
         ("start_month", "id"),
         {"start_month": "start_month", "end_month": "end_month", "id": "id"},
         (PropertyService, "property_service_id"),
+    ),
+    Collection(
+        ServiceCostSchedule,
+        "/vendor-assignments/{owner_id}/cost-schedules",
+        "/cost-schedules/{key}",
+        s.CostScheduleIn,
+        s.CostSchedulePatch,
+        s.CostScheduleOut,
+        {"active_month": "", "enabled": "is_active"},
+        ("start_month", "id"),
+        {"start_month": "start_month", "id": "id"},
+        (ServiceVendorAssignment, "service_vendor_assignment_id"),
     ),
     Collection(
         VendorBillingSchedule,
@@ -513,7 +577,10 @@ def register_collection(spec):
     ):
         aliases = {}
         if "{owner_id}" in path:
-            owner_name = "service_id" if spec.owner[0] is PropertyService else spec.owner[1]
+            owner_name = {
+                PropertyService: "service_id",
+                ServiceVendorAssignment: "assignment_id",
+            }.get(spec.owner[0], spec.owner[1])
             aliases[owner_name] = "owner_id"
         if "{key}" in path:
             key_name = {
@@ -525,6 +592,7 @@ def register_collection(spec):
                 PropertyService: "service_id",
                 ServiceVendorAssignment: "assignment_id",
                 VendorBillingSchedule: "schedule_id",
+                ServiceCostSchedule: "cost_schedule_id",
             }[spec.model]
             aliases[key_name] = "key"
         for public, internal in aliases.items():
@@ -623,6 +691,22 @@ def replace_period(request, response, model, key, payload):
         old = get_record(model, key)
         if old.end_month != payload.expected_end_month:
             raise ApiError(409, "stale_configuration", "The predecessor end month has changed.")
+        cost_children = []
+        if model is ServiceVendorAssignment:
+            from bills.configuration import add_months
+
+            last = (
+                payload.start_month
+                if payload.transition_month
+                else add_months(payload.start_month, -1)
+            )
+            cost_children = [
+                row
+                for row in old.cost_schedules.all()
+                if row.end_month is None or row.end_month > last
+            ]
+            if cost_children:
+                require_model(request, ServiceCostSchedule, "change")
         try:
             if model is ServiceVendorAssignment:
                 replacement = change_vendor(
@@ -630,6 +714,15 @@ def replace_period(request, response, model, key, payload):
                     month=payload.start_month,
                     vendor=get_record(Vendor, payload.vendor_id),
                     transition_month=payload.transition_month,
+                )
+            elif model is ServiceCostSchedule:
+                replacement = change_cost_pattern(
+                    key,
+                    month=payload.start_month,
+                    frequency_months=payload.frequency_months,
+                    first_expected_month=payload.first_expected_month,
+                    season_start_month=payload.season_start_month,
+                    season_end_month=payload.season_end_month,
                 )
             else:
                 replacement = change_billing_frequency(
@@ -659,6 +752,10 @@ def replace_period(request, response, model, key, payload):
             }
             log_change(request, old, CHANGE, [{"changed": {"fields": ["end_month"]}}, relation])
             log_change(request, replacement, ADDITION, [{"added": {}}, relation])
+            for child in cost_children:
+                log_change(
+                    request, child, CHANGE, "API cost pattern ended with its vendor assignment."
+                )
             successor = getattr(replacement, "replacement_period", None)
             if successor is not None:
                 log_change(
@@ -694,6 +791,20 @@ def replace_schedule(
     request, response: HttpResponse, schedule_id: int, payload: s.ScheduleReplacement
 ):
     return replace_period(request, response, VendorBillingSchedule, schedule_id, payload)
+
+
+@router.post(
+    "/cost-schedules/{cost_schedule_id}/replacement",
+    response={200: s.CostScheduleOut, 201: s.CostScheduleOut},
+)
+@documented_query("dry_run")
+def replace_cost_schedule(
+    request,
+    response: HttpResponse,
+    cost_schedule_id: int,
+    payload: s.CostScheduleReplacement,
+):
+    return replace_period(request, response, ServiceCostSchedule, cost_schedule_id, payload)
 
 
 def format_representation(key, vendor_id=None):

@@ -47,6 +47,7 @@ from .services import (
     invoice_identity_conflicts,
 )
 from .storage import ingest_pdf, open_original, retry_document
+from .waste_reporting import ReportTooBroad
 
 
 @never_cache
@@ -343,6 +344,9 @@ def reports(request):
                 date_from=form.cleaned_data["date_from"],
                 date_to=form.cleaned_data["date_to"],
             )
+        except ReportTooBroad as exc:
+            form.add_error(None, exc)
+            status = 400
         except sqlite3.DatabaseError:
             unavailable, status = True, 503
     else:

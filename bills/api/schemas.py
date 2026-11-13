@@ -132,6 +132,7 @@ class SubcategoryIn(Input):
     category: CategoryKey
     name: Name
     enabled: StrictBool = True
+    is_waste_fraction: StrictBool = False
 
 
 class SubcategoryOut(SubcategoryIn, Resource):
@@ -141,6 +142,7 @@ class SubcategoryOut(SubcategoryIn, Resource):
 class ServiceIn(Input):
     category: CategoryKey
     subcategory: Key | None = None
+    service_group: Key = ""
     mode: Literal["regular", "occasional"] = "regular"
     enabled: StrictBool = True
     start_month: Month
@@ -187,6 +189,37 @@ class ScheduleOut(ScheduleIn, Resource):
     id: int | None
     vendor_id: int
     vendor_name: str
+
+
+class CostScheduleIn(Input):
+    start_month: Month
+    end_month: Month | None = None
+    first_expected_month: Month | None = None
+    frequency_months: Frequency = 1
+    season_start_month: Annotated[StrictInt, Field(ge=1, le=12)] | None = None
+    season_end_month: Annotated[StrictInt, Field(ge=1, le=12)] | None = None
+    enabled: StrictBool = True
+
+
+class CostScheduleOut(CostScheduleIn, Resource):
+    id: int | None
+    assignment_id: int
+    service_id: int
+    property_id: int
+    property_name: str
+    vendor_id: int
+    vendor_name: str
+    subcategory: str | None
+    subcategory_name: str | None
+
+
+class CostScheduleReplacement(Input):
+    start_month: Month
+    expected_end_month: Month | None
+    first_expected_month: Month | None = None
+    frequency_months: Frequency
+    season_start_month: Annotated[StrictInt, Field(ge=1, le=12)] | None = None
+    season_end_month: Annotated[StrictInt, Field(ge=1, le=12)] | None = None
 
 
 class AssignmentReplacement(Input):
@@ -245,6 +278,7 @@ SubcategoryPatch = partial_schema(SubcategoryIn, exclude=("key",))
 ServicePatch = partial_schema(ServiceIn)
 AssignmentPatch = partial_schema(AssignmentIn)
 SchedulePatch = partial_schema(ScheduleIn)
+CostSchedulePatch = partial_schema(CostScheduleIn)
 
 
 SourcePage = Annotated[StrictInt, Field(ge=1, le=2**63 - 1)]
@@ -460,6 +494,28 @@ class DateBounds(Schema):
     date_to: date | None
 
 
+class WasteWeightSource(Schema):
+    usage_id: int
+    allocation_id: int
+    invoice_id: int
+    document_id: int
+    property_id: int
+    property_name: str
+    vendor_id: int
+    vendor_name: str
+    invoice_date: date
+    currency: str
+    subcategory: str
+    fraction_name: str
+    unit: str
+    quantity_milli: int
+    basis: str
+    basis_label: str
+    period_start: date
+    period_end: date
+    source_page: int | None = None
+
+
 class ReportRow(Schema):
     property_id: int
     property_name: str
@@ -488,6 +544,55 @@ class ReportRow(Schema):
     source_selection: str | None = None
     selection_reason: str | None = None
     source: str | None = None
+    allocation_id: int | None = None
+    usage_id: int | None = None
+    document_id: int | None = None
+    section_key: str | None = None
+    reference: str | None = None
+
+
+class CostReportRow(ReportRow):
+    weights: list[WasteWeightSource] = []
+
+
+class WasteMoney(Schema):
+    currency: str = "SEK"
+    net_minor: int | None
+    vat_minor: int | None
+    gross_minor: int | None
+
+
+class WasteWeight(Schema):
+    unit: str
+    quantity_milli: int
+    basis: str
+    basis_label: str
+
+
+class WasteEntry(Schema):
+    property_id: int
+    property_name: str
+    subcategory: str
+    fraction: str | None
+    fraction_name: str
+    name: str
+    currency: str
+    cost: WasteMoney | None
+    weights: list[WasteWeight]
+    reason: str
+
+
+class WastePropertyTotal(WasteMoney):
+    property_id: int
+    property_name: str
+
+
+class WasteFields(Schema):
+    waste_total: WasteMoney | None = None
+    waste_totals_by_property: list[WastePropertyTotal] = []
+    waste_fractions: list[WasteEntry] = []
+    waste_general: list[WasteEntry] = []
+    waste_other_services: list[WasteEntry] = []
 
 
 class AggregateOut(Schema):
@@ -505,7 +610,15 @@ class ReportPage(Page[ReportRow]):
     effective_date_bounds: DateBounds
 
 
-class SummaryOut(Schema):
+class CostAggregateOut(AggregateOut, WasteFields):
+    pass
+
+
+class CostReportPage(ReportPage, WasteFields):
+    items: list[CostReportRow]
+
+
+class SummaryOut(WasteFields):
     filters: ReportFilters
     effective_date_bounds: DateBounds
     costs: list[ReportRow]

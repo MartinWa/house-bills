@@ -9,14 +9,16 @@ from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
 
-from .configuration import staged_configuration
-from .configuration_actions import change_billing_frequency, change_vendor
+from .configuration import add_months, staged_configuration
+from .configuration_actions import change_billing_frequency, change_cost_pattern, change_vendor
 from .forms import (
     ChangeBillingFrequencyForm,
+    ChangeCostPatternForm,
     ChangeVendorForm,
     ConfigurationInlineFormSet,
     InvoicePropertyRuleForm,
     PropertyServiceForm,
+    ServiceCostScheduleForm,
     ServiceInvoiceExceptionForm,
     ServiceVendorAssignmentForm,
     VendorBillingScheduleForm,
@@ -27,6 +29,7 @@ from .models import (
     InvoicePropertyRule,
     Property,
     PropertyService,
+    ServiceCostSchedule,
     ServiceInvoiceException,
     ServiceVendorAssignment,
     Subcategory,
@@ -190,11 +193,60 @@ class ConfigurationAdmin(admin.ModelAdmin):
         for formset in group:
             formset.configuration_group = group
             formset.form.defer_graph = True
+        obj._configuration_formsets = group
         return formsets, inlines
 
     def save_model(self, request, obj, form, change):
         with staged_configuration():
+            if isinstance(obj, ServiceVendorAssignment) and change:
+                self._stage_cost_children(obj)
             super().save_model(request, obj, form, change)
+            for pattern in getattr(obj, "_staged_cost_patterns", []):
+                ServiceCostSchedule.objects.filter(pk=pattern.pk).update(
+                    is_active=pattern.is_active
+                )
+
+    def _stage_cost_children(self, assignment):
+        """Apply a validated inline graph while keeping parent-bound triggers valid."""
+        saved = ServiceVendorAssignment.objects.get(pk=assignment.pk)
+        children = {row.pk: row for row in saved.cost_schedules.all()}
+        if not children:
+            return
+        removed = []
+        for formset in getattr(assignment, "_configuration_formsets", []):
+            if formset.model is not ServiceCostSchedule:
+                continue
+            for child_form in formset.initial_forms:
+                if formset._should_delete_form(child_form):
+                    removed.append(child_form.instance.pk)
+                    children.pop(child_form.instance.pk, None)
+                elif child_form.has_changed():
+                    children[child_form.instance.pk] = child_form.instance
+        # Widen temporarily, then save the checked children and final parent.
+        # Django's change-form transaction rolls back every stage on failure.
+        ServiceVendorAssignment.objects.filter(pk=assignment.pk).update(is_active=False)
+        end = (
+            None
+            if saved.end_month is None or assignment.end_month is None
+            else max(saved.end_month, assignment.end_month)
+        )
+        ServiceVendorAssignment.objects.filter(pk=assignment.pk).update(
+            start_month=min(saved.start_month, assignment.start_month), end_month=end
+        )
+        ServiceCostSchedule.objects.filter(service_vendor_assignment_id=assignment.pk).update(
+            is_active=False
+        )
+        ServiceCostSchedule.objects.filter(pk__in=removed).delete()
+        for pattern in children.values():
+            ServiceCostSchedule.objects.filter(pk=pattern.pk).update(
+                start_month=pattern.start_month,
+                end_month=pattern.end_month,
+                frequency_months=pattern.frequency_months,
+                first_expected_month=pattern.first_expected_month,
+                season_start_month=pattern.season_start_month,
+                season_end_month=pattern.season_end_month,
+            )
+        assignment._staged_cost_patterns = list(children.values())
 
     def save_related(self, request, form, formsets, change):
         with transaction.atomic(), staged_configuration():
@@ -204,6 +256,7 @@ class ConfigurationAdmin(admin.ModelAdmin):
                 if isinstance(formset, ConfigurationInlineFormSet) and formset.model in (
                     ServiceVendorAssignment,
                     VendorBillingSchedule,
+                    ServiceCostSchedule,
                 ):
                     changed_pks = [
                         row.instance.pk for row in formset.initial_forms if row.has_changed()
@@ -216,7 +269,7 @@ class ConfigurationAdmin(admin.ModelAdmin):
     def delete_model(self, request, obj):
         obj.delete()
 
-    def dated_change(self, request, object_id, *, frequency=False):
+    def dated_change(self, request, object_id, *, frequency=False, cost=False):
         obj = self.get_object(request, object_id)
         if obj is None:
             raise Http404
@@ -224,18 +277,59 @@ class ConfigurationAdmin(admin.ModelAdmin):
             raise PermissionDenied
         if request.method not in ("GET", "POST"):
             raise PermissionDenied
-        form_class = ChangeBillingFrequencyForm if frequency else ChangeVendorForm
+        form_class = (
+            ChangeCostPatternForm
+            if cost
+            else ChangeBillingFrequencyForm
+            if frequency
+            else ChangeVendorForm
+        )
         initial = {"grace_days": getattr(obj, "grace_days", 0)}
+        if cost:
+            initial = {
+                name: getattr(obj, name)
+                for name in (
+                    "frequency_months",
+                    "first_expected_month",
+                    "season_start_month",
+                    "season_end_month",
+                )
+            }
         form = form_class(request.POST if request.method == "POST" else None, initial=initial)
         if request.method == "POST" and form.is_valid():
+            children = []
+            if isinstance(obj, ServiceVendorAssignment):
+                last = (
+                    form.cleaned_data["month"]
+                    if form.cleaned_data["transition_month"]
+                    else add_months(form.cleaned_data["month"], -1)
+                )
+                children = [
+                    row
+                    for row in obj.cost_schedules.all()
+                    if row.end_month is None or row.end_month > last
+                ]
+                if children and not request.user.has_perm("bills.change_servicecostschedule"):
+                    raise PermissionDenied
             try:
-                replacement = (change_billing_frequency if frequency else change_vendor)(
+                action = (
+                    change_cost_pattern
+                    if cost
+                    else change_billing_frequency
+                    if frequency
+                    else change_vendor
+                )
+                replacement = action(
                     obj.pk,
                     **form.cleaned_data,
                 )
             except ValidationError as exc:
                 form.add_error(None, exc.messages)
             else:
+                for child in children:
+                    self.log_change(
+                        request, child, "Ended cost pattern with its vendor assignment."
+                    )
                 self.log_change(request, obj, "Ended period through dated configuration change.")
                 self.log_addition(request, replacement, "Created replacement dated period.")
                 successor = getattr(replacement, "replacement_period", None)
@@ -259,7 +353,11 @@ class ConfigurationAdmin(admin.ModelAdmin):
                 **self.admin_site.each_context(request),
                 "form": form,
                 "original": obj,
-                "title": "Change billing frequency" if frequency else "Change vendor",
+                "title": "Change cost pattern"
+                if cost
+                else "Change billing frequency"
+                if frequency
+                else "Change vendor",
                 "opts": self.model._meta,
             },
         )
@@ -286,8 +384,8 @@ class PropertyAdmin(admin.ModelAdmin):
             "property_services": PropertyService.objects.filter(
                 property=self.get_object(request, object_id)
             )
-            .select_related("property")
-            .prefetch_related("vendor_assignments__vendor"),
+            .select_related("property", "subcategory")
+            .prefetch_related("vendor_assignments__vendor", "vendor_assignments__cost_schedules"),
         }
         return super().change_view(request, object_id, form_url, context)
 
@@ -327,6 +425,7 @@ class PropertyServiceAdmin(PropertySelectorMixin, ConfigurationAdmin):
         "property",
         "category_label",
         "subcategory_label",
+        "service_group",
         "vendors",
         "mode",
         "service_starts",
@@ -335,10 +434,13 @@ class PropertyServiceAdmin(PropertySelectorMixin, ConfigurationAdmin):
         "is_active",
     ]
     list_select_related = ["property"]
-    list_filter = ["property", "category", "subcategory", "is_active"]
+    list_filter = ["property", "category", "subcategory", "service_group", "is_active"]
     search_fields = ["property__name", "vendor_assignments__vendor__name"]
     fieldsets = [
-        (None, {"fields": [("property", "is_active"), ("category", "subcategory")]}),
+        (
+            None,
+            {"fields": [("property", "is_active"), ("category", "subcategory"), "service_group"]},
+        ),
         (
             "Tracking period",
             {"fields": [("start_month", "end_month"), "mode"]},
@@ -392,8 +494,8 @@ class InvoicePropertyRuleAdmin(PropertySelectorMixin, admin.ModelAdmin):
 
 @admin.register(Subcategory)
 class SubcategoryAdmin(admin.ModelAdmin):
-    list_display = ["name", "key", "category", "is_active"]
-    list_filter = ["category", "is_active"]
+    list_display = ["name", "key", "category", "is_waste_fraction", "is_active"]
+    list_filter = ["category", "is_waste_fraction", "is_active"]
     search_fields = ["name", "key"]
 
     def get_readonly_fields(self, request, obj=None):
@@ -427,12 +529,32 @@ class VendorBillingScheduleAdmin(ConfigurationAdmin):
         ] + super().get_urls()
 
 
+class ServiceCostScheduleInline(admin.StackedInline):
+    model = ServiceCostSchedule
+    form = ServiceCostScheduleForm
+    formset = ConfigurationInlineFormSet
+    fields = [
+        ("frequency_months", "is_active"),
+        ("start_month", "end_month"),
+        "first_expected_month",
+        ("season_start_month", "season_end_month"),
+    ]
+    extra = 0
+    show_change_link = True
+
+
 @admin.register(ServiceVendorAssignment)
 class ServiceVendorAssignmentAdmin(ConfigurationAdmin):
     change_form_template = "admin/bills/servicevendorassignment/change_form.html"
     form = ServiceVendorAssignmentForm
     list_display = ["property_service", "vendor", "start_month", "end_month", "is_active"]
     list_filter = ["vendor", "property_service__property", "is_active"]
+    inlines = [ServiceCostScheduleInline]
+
+    def get_inline_instances(self, request, obj=None):
+        if obj and obj.property_service.category != "waste":
+            return []
+        return super().get_inline_instances(request, obj)
 
     def get_urls(self):
         return [
@@ -440,6 +562,42 @@ class ServiceVendorAssignmentAdmin(ConfigurationAdmin):
                 "<path:object_id>/change-vendor/",
                 self.admin_site.admin_view(self.dated_change),
                 name="bills_servicevendorassignment_change_vendor",
+            )
+        ] + super().get_urls()
+
+
+@admin.register(ServiceCostSchedule)
+class ServiceCostScheduleAdmin(ConfigurationAdmin):
+    change_form_template = "admin/bills/servicecostschedule/change_form.html"
+    form = ServiceCostScheduleForm
+    list_display = [
+        "service_vendor_assignment",
+        "start_month",
+        "end_month",
+        "frequency_months",
+        "first_expected_month",
+        "season_start_month",
+        "season_end_month",
+        "is_active",
+    ]
+    list_select_related = [
+        "service_vendor_assignment__vendor",
+        "service_vendor_assignment__property_service__property",
+    ]
+    list_filter = [
+        "service_vendor_assignment__vendor",
+        "service_vendor_assignment__property_service__property",
+        "is_active",
+    ]
+
+    def get_urls(self):
+        return [
+            path(
+                "<path:object_id>/change-pattern/",
+                self.admin_site.admin_view(
+                    lambda request, object_id: self.dated_change(request, object_id, cost=True)
+                ),
+                name="bills_servicecostschedule_change_pattern",
             )
         ] + super().get_urls()
 

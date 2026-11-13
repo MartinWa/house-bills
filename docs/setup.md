@@ -16,6 +16,14 @@ and open **User → Administration**.
    postal addresses do not identify a property.
 5. A vendor's optional **Default property** supplies a fallback. Specific rules
    and delivery-address mappings take precedence; conflicts require review.
+6. Add **Property services** and dated **Service vendors**, then configure each
+   vendor's shared **Billing schedule**. For waste costs appearing on only some
+   bills, add **Service cost patterns** on the service vendor. Keep a general waste
+   service for combined charges. Configure fraction services only for separately
+   billed costs; invoice weights need no fraction service or cost pattern.
+7. Enable Plast, Kartong and Glas under **Subcategories** when they are needed.
+   Activation makes them available in review; unfamiliar PDF layouts still need
+   manual review or parser support.
 
 Use **Documents → Upload invoice** to preserve a PDF, then **Review and approve
 invoice**. Compare reference, dates, totals, property/service allocations and
@@ -35,3 +43,10 @@ explicit acceptance.
 Configuration is stored in SQLite and survives image replacement. Installation
 paths and secrets belong in private environment configuration. Verify
 [backup and clean restoration](backup-and-recovery.md) before normal real-data use.
+
+Migration `0025_waste_fractions` preserves approved amounts, weights and review JSON,
+groups garden with waste collection, and leaves cost patterns unset. Establish real
+cost frequencies and billing seasons from the vendor arrangement. Reversing it
+removes group/fraction-kind/pattern metadata, while retaining catalogue entries.
+Reversing further to a pre-catalogue schema can be blocked by those extra entries;
+use a pre-upgrade backup when restoring that older installation.

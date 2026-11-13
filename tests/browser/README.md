@@ -41,6 +41,11 @@ to invoices and fits a 320-pixel mobile viewport. Property forms list services, 
 mode and vendor history.
 Waste collection and tank emptying use cost subcategories
 under Waste, separately from Restavfall/Matavfall consumption.
+Waste cost patterns select costs on the shared vendor cadence without suppressing
+receipt expectations. Review and reports retain combined charges with partial
+fraction weights, separately billed garden costs without weights, and explicit
+zero costs/weights. Future fractions can be activated and entered through review.
+Waste source details and desktop/mobile layouts are checked with synthetic invoices.
 Marking a missing combined bill as **Not sent this month** retains its reason, vendor
 and invoice month and preserves other months and receipts. A received bill missing
 waste collection requires review; its service confirmation includes an explicit review

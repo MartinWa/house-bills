@@ -20,7 +20,7 @@ from .normalization import (
 from .normalization import unit as normalize_unit
 from .types import Evidence, Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_01", "v1", "8"
+FAMILY, VERSION, REVISION = "layout_01", "v1", "9"
 SERVICE = {
     "vatten": "water",
     "hushållsavfall": "waste",
@@ -28,7 +28,7 @@ SERVICE = {
     "elhandel": "electricity_supply",
 }
 SECTION = re.compile(r"^(Vatten|Hushållsavfall|Elnät|Elhandel) avtal (\d+)\b", re.I)
-WASTE_USAGE = re.compile(r"^(?:Matavfall|Restavfall)\b.*\bkärl\b", re.I)
+WASTE_USAGE = re.compile(r"^(?:Matavfall|Restavfall|Trädgårdsavfall)\b.*\bkärl\b.*\bkg\b", re.I)
 UNIT_QUANTITY = re.compile(rf"(?<![\w,.])(?P<value>{NUMBER})\s+(?P<unit>m[3³]|kbm|kWh|kg)\b", re.I)
 INSTALLATION = re.compile(r"(?:Anläggnings[- ]?ID|Anl\s+id)[: ]+((?:\d\s*){18})(?!\d)", re.I)
 

@@ -15,6 +15,7 @@ from .models import (
     InvoicePropertyRule,
     Property,
     PropertyService,
+    ServiceCostSchedule,
     ServiceInvoiceException,
     ServiceVendorAssignment,
     Vendor,
@@ -145,6 +146,7 @@ class PropertyServiceForm(ClassificationFormMixin, ConfigurationForm):
             "property",
             "category",
             "subcategory",
+            "service_group",
             "mode",
             "is_active",
             "start_month",
@@ -198,6 +200,66 @@ class VendorBillingScheduleForm(ConfigurationForm):
             "grace_days",
             "is_active",
         ]
+
+
+class ServiceCostScheduleForm(ConfigurationForm):
+    start_month = InvoiceMonthField(label="Effective first month")
+    end_month = InvoiceMonthField(label="Effective last month", required=False)
+    first_expected_month = InvoiceMonthField(
+        label="First bill containing this cost", required=False
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "service_vendor_assignment" in self.fields:
+            self.fields[
+                "service_vendor_assignment"
+            ].queryset = ServiceVendorAssignment.objects.filter(
+                property_service__category="waste"
+            ).select_related(
+                "vendor", "property_service__property", "property_service__subcategory"
+            )
+        self.fields["frequency_months"].help_text = (
+            "Select which shared vendor bills should include this cost. "
+            "As needed leaves it optional."
+        )
+        self.fields[
+            "first_expected_month"
+        ].help_text = "Required for periodic costs; must be a vendor invoice month."
+        self.fields[
+            "season_start_month"
+        ].help_text = "Optional billing season, 1–12. Set both ends; a season can wrap December."
+
+    class Meta:
+        model = ServiceCostSchedule
+        fields = [
+            "service_vendor_assignment",
+            "start_month",
+            "end_month",
+            "frequency_months",
+            "first_expected_month",
+            "season_start_month",
+            "season_end_month",
+            "is_active",
+        ]
+
+
+class ChangeCostPatternForm(forms.Form):
+    month = InvoiceMonthField(label="Change from month")
+    frequency_months = forms.TypedChoiceField(
+        choices=ServiceCostSchedule.Frequency.choices,
+        coerce=int,
+        label="Cost frequency",
+    )
+    first_expected_month = InvoiceMonthField(
+        label="First bill containing this cost", required=False
+    )
+    season_start_month = forms.IntegerField(
+        label="First billing season month", required=False, min_value=1, max_value=12
+    )
+    season_end_month = forms.IntegerField(
+        label="Last billing season month", required=False, min_value=1, max_value=12
+    )
 
 
 class ChangeVendorForm(forms.Form):

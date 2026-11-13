@@ -9,7 +9,15 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from .categories import CATEGORY_LABELS, subcategory_label
-from .configuration import add_months, contains, expected
+from .configuration import (
+    add_months,
+    contains,
+    cost_is_expected,
+    cost_pattern,
+    cost_pattern_label,
+    expected,
+    tracks_vendor_receipt,
+)
 from .models import Invoice, PropertyService, ServiceInvoiceException
 from .parsing.compatibility import cost_totals_candidate
 from .reporting import reporting_reader
@@ -66,6 +74,12 @@ def _snapshot(start, end):
                 "SELECT * FROM bills_vendorbillingschedule ORDER BY start_month, id"
             )
         ]
+        patterns = [
+            SimpleNamespace(**dict(row))
+            for row in reader.execute(
+                "SELECT * FROM bills_servicecostschedule ORDER BY start_month, id"
+            )
+        ]
         exceptions = [
             dict(row)
             for row in reader.execute(
@@ -98,10 +112,12 @@ def _snapshot(start, end):
                 "WHERE i.document_id=e.document_id AND i.status='approved')"
             )
         ]
-    for row in [*services, *assignments, *schedules]:
+    for row in [*services, *assignments, *schedules, *patterns]:
         row.start_month, row.end_month = _date(row.start_month), _date(row.end_month)
         if hasattr(row, "first_expected_month"):
             row.first_expected_month = _date(row.first_expected_month)
+    for pattern in patterns:
+        pattern.pattern_label = cost_pattern_label(pattern)
     for item in exceptions:
         item["month"] = _date(item["month"])
     receipts = defaultdict(dict)
@@ -143,10 +159,10 @@ def _snapshot(start, end):
             "sections": allocations,
             "review_revision": None,
         }
-    return services, assignments, schedules, exceptions, receipts
+    return services, assignments, schedules, patterns, exceptions, receipts
 
 
-def _allocation(configured, assignment, schedule, month, as_of, bills, exceptions):
+def _allocation(configured, assignment, schedule, month, as_of, bills, exceptions, patterns):
     approved = [bill for bill in bills if bill["status"] == "approved"]
     pending = [bill for bill in bills if bill["status"] != "approved"]
     approved_matches = [
@@ -175,6 +191,8 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
     not_sent_exception = any(
         item and item["reviewed_invoice_id"] is None for item in (scoped, global_exception)
     )
+    cost_required = cost_is_expected(configured, assignment, month, patterns)
+    pattern = cost_pattern(assignment, month, patterns)
     status = (
         "unassigned"
         if assignment is None
@@ -184,6 +202,8 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         if approved_matches
         else "needs_review"
         if pending_matches
+        else "not_due"
+        if not cost_required
         else "not_expected"
         if reviewed_exception or (not bills and not_sent_exception)
         else "incomplete"
@@ -205,7 +225,13 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         if configured.subcategory
         else "",
         "status": status,
-        "status_label": STATUS_LABELS[status],
+        "status_label": "Cost not due" if status == "not_due" else STATUS_LABELS[status],
+        "cost_required": cost_required,
+        "cost_schedule_id": pattern.id if pattern else None,
+        "service_group": configured.service_group,
+        "cost_pattern_label": cost_pattern_label(pattern)
+        if pattern
+        else ("Required on every vendor bill" if configured.mode == "regular" else "As needed"),
         "exception_id": scoped["id"] if scoped else None,
         "exception_reason": scoped["reason"] if scoped else "",
         "approved_invoice_count": len(approved_matches),
@@ -227,16 +253,12 @@ def read_invoice_coverage(
     as_of = as_of or datetime.now(UTC).date()
     start = (date_from or as_of.replace(month=1, day=1)).replace(day=1)
     end = (date_to or as_of).replace(day=1)
-    services, assignments, schedules, exceptions, receipts = _snapshot(start, end)
+    services, assignments, schedules, patterns, exceptions, receipts = _snapshot(start, end)
     grouped = defaultdict(list)
     configured_services = []
     for configured in services:
         history = [row for row in assignments if row.property_service_id == configured.id]
-        if (
-            (property_id is not None and configured.property_id != property_id)
-            or (service and configured.category != service)
-            or (vendor_id is not None and not any(row.vendor_id == vendor_id for row in history))
-        ):
+        if vendor_id is not None and not any(row.vendor_id == vendor_id for row in history):
             continue
         if configured.start_month > end or (configured.end_month and configured.end_month < start):
             continue
@@ -254,15 +276,25 @@ def read_invoice_coverage(
                 else "Ended"
                 if configured.end_month and configured.end_month < as_of.replace(day=1)
                 else "Active",
-                "vendor_assignments": [vars(row) for row in history],
+                "vendor_assignments": [
+                    {
+                        **vars(row),
+                        "cost_schedules": [
+                            vars(pattern)
+                            for pattern in patterns
+                            if pattern.service_vendor_assignment_id == row.id
+                        ],
+                    }
+                    for row in history
+                ],
             }
         )
-        if not configured.is_active or configured.mode != PropertyService.Mode.REGULAR:
+        if not configured.is_active:
             continue
         month = max(start, configured.start_month)
         while month <= end and contains(configured, month):
             applicable = [row for row in history if row.is_active and contains(row, month)]
-            if not applicable and vendor_id is None:
+            if not applicable and vendor_id is None and configured.mode == "regular":
                 grouped[(None, month, configured.id)].append((configured, None, None))
             for assignment in applicable:
                 if vendor_id is not None and assignment.vendor_id != vendor_id:
@@ -282,8 +314,24 @@ def read_invoice_coverage(
                         (configured, assignment, schedule)
                     )
             month = add_months(month, 1)
+    configured_services = [
+        item
+        for item in configured_services
+        if (property_id is None or item["property_id"] == property_id)
+        and (not service or item["category"] == service)
+    ]
+    displayed_service_ids = {item["id"] for item in configured_services}
     rows = []
     for (vendor, month, _), required in grouped.items():
+        # Receipt eligibility belongs to the whole vendor bill, including hidden services.
+        if vendor is not None and not any(
+            tracks_vendor_receipt(configured, assignment, month, patterns)
+            for configured, assignment, _ in required
+        ):
+            continue
+        required = [item for item in required if item[0].id in displayed_service_ids]
+        if not required:
+            continue
         bills = list(receipts[(vendor, month)].values())
         approved = [bill for bill in bills if bill["status"] == "approved"]
         pending = [bill for bill in bills if bill["status"] != "approved"]
@@ -293,15 +341,22 @@ def read_invoice_coverage(
         global_exception = next(
             (item for item in relevant_exceptions if item["property_service_id"] is None), None
         )
-        required_rows = [
-            _allocation(*item, month, as_of, bills, relevant_exceptions) for item in required
+        allocation_rows = [
+            _allocation(*item, month, as_of, bills, relevant_exceptions, patterns)
+            for item in required
         ]
+        required_rows = [item for item in allocation_rows if item["cost_required"]]
+        optional_rows = [item for item in allocation_rows if not item["cost_required"]]
         states = {item["status"] for item in required_rows}
+        configured, assignment, schedule = required[0]
+        missing_after = (
+            add_months(month, 1) + timedelta(days=schedule.grace_days) if schedule else None
+        )
         row_status = (
             "unassigned"
             if vendor is None
             else "unscheduled"
-            if "unscheduled" in states
+            if schedule is None or "unscheduled" in states
             else "incomplete"
             if approved and states - {"received", "not_expected"}
             else "received"
@@ -310,11 +365,11 @@ def read_invoice_coverage(
             if pending
             else "not_expected"
             if states == {"not_expected"}
+            or (global_exception and global_exception["reviewed_invoice_id"] is None)
             else "missing"
-            if "missing" in states
+            if "missing" in states or (missing_after and as_of >= missing_after)
             else "expected"
         )
-        configured, assignment, schedule = required[0]
         rows.append(
             {
                 "vendor_id": vendor,
@@ -324,9 +379,7 @@ def read_invoice_coverage(
                 "schedule_id": schedule.id if schedule else None,
                 "frequency_months": schedule.frequency_months if schedule else None,
                 "grace_days": schedule.grace_days if schedule else None,
-                "missing_after": add_months(month, 1) + timedelta(days=schedule.grace_days)
-                if schedule
-                else None,
+                "missing_after": missing_after,
                 "property_service_id": configured.id if vendor is None else None,
                 "property_id": configured.property_id
                 if len({item[0].property_id for item in required}) == 1
@@ -337,10 +390,11 @@ def read_invoice_coverage(
                 "category": configured.category,
                 "service": configured.category,
                 "category_label": ", ".join(
-                    dict.fromkeys(item["category_label"] for item in required_rows)
+                    dict.fromkeys(item["category_label"] for item in allocation_rows)
                 ),
                 "subcategory_label": "",
                 "required_services": required_rows,
+                "optional_services": optional_rows,
                 "status": row_status,
                 "status_label": STATUS_LABELS[row_status],
                 "receipt_status": "received"

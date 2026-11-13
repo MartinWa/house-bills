@@ -258,6 +258,12 @@ from bills.models import Invoice as CurrentInvoice
 latest = MigrationExecutor(connection)
 latest.migrate(latest.loader.graph.leaf_nodes('bills') + [old_targets[1]])
 validate_allocations(CurrentInvoice.objects.get(pk=invoice.pk))
+# This old-schema recovery test needs a pristine legacy catalogue. Migration 0025
+# seeds unused fractions that the pre-catalogue schema cannot represent.
+from bills.models import Subcategory
+from importlib import import_module
+initial = import_module('bills.migrations.0019_shared_classification')
+Subcategory.objects.exclude(pk__in=[row[0] for row in initial.INITIAL_SUBCATEGORIES]).delete()
 MigrationExecutor(connection).migrate(new_targets)
 
 draft = Invoice.objects.create(document_id=document.pk, reference='SYNTHETIC-TOTAL-002')

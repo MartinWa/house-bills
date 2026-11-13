@@ -88,7 +88,7 @@ def report_response(request, kind, modes):
     return result
 
 
-@router.get("/costs", response=s.AggregateOut | s.ReportPage)
+@router.get("/costs", response=s.CostAggregateOut | s.CostReportPage)
 @documented_query(
     "property_id",
     "vendor_id",

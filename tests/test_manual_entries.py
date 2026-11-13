@@ -272,6 +272,70 @@ def ledger_source(tmp_path, property_id, **overrides):
     return source
 
 
+@pytest.mark.parametrize("quantity", [None, 0, 12000])
+def test_exact_ledger_waste_costs_retain_optional_partial_and_zero_weights(
+    configured, tmp_path, quantity
+):
+    actor, vendor, houses = configured
+    reported = (
+        []
+        if quantity is None
+        else [
+            {
+                "utility": "waste",
+                "subcategory": "matavfall",
+                "unit": "kg",
+                "quantity_milli": quantity,
+                "basis": "billed_weight",
+                "start": "2024-01-01",
+                "end": "2024-02-01",
+            }
+        ]
+    )
+    allocations = [
+        {
+            "section_id": "combined",
+            "category": "waste",
+            "subcategory": "waste_collection",
+            "net_minor": 16000,
+            "vat_minor": 4000,
+            "gross_minor": 20000,
+            "start": "2024-01-01",
+            "end": "2024-02-01",
+            "usages": reported,
+        },
+        {
+            "section_id": "garden",
+            "category": "waste",
+            "subcategory": "tradgardsavfall",
+            "net_minor": 4000,
+            "vat_minor": 1000,
+            "gross_minor": 5000,
+            "start": "2024-01-01",
+            "end": "2024-02-01",
+        },
+    ]
+    source = ledger_source(
+        tmp_path, houses[0].pk, services={}, total=250.0, allocations=allocations
+    )
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], tmp_path / "plan.json", commit=True),
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get()
+    assert invoice.sections.get(section_id="combined").gross_minor == 20000
+    assert invoice.sections.get(section_id="garden").gross_minor == 5000
+    weights = list(invoice.sections.get(section_id="combined").usages.all())
+    assert len(weights) == int(quantity is not None)
+    if quantity is not None:
+        assert weights[0].quantity_milli == quantity and weights[0].subcategory_id == "matavfall"
+    assert invoice.sections.get(section_id="garden").usages.count() == 0
+    report = read_report()
+    assert report["waste_total"]["gross_minor"] == 25000
+    assert report["waste_general"][0]["cost"]["gross_minor"] == 20000
+
+
 def import_arguments(source, actor, vendor, house, plan, commit):
     arguments = [
         "--source",

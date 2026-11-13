@@ -12,7 +12,7 @@ configuration; other staff need the relevant Django model permissions. Changes r
 POST and CSRF protection.
 
 The billing lists are grouped in both the Administration dashboard and sidebar:
-**Property configuration** (Properties, Property services, Service vendors),
+**Property configuration** (Properties, Property services, Service vendors, Service cost patterns),
 **Vendor configuration** (Vendors, Vendor billing schedules, Invoice property rules),
 **Classification** (Subcategories), and **Invoice follow-up** (Months with no invoice).
 
@@ -55,7 +55,7 @@ specific assignment. Changing this setting does not alter previously approved in
 ## Property services and vendor history
 
 Use **Properties** as the entry point for the services a property needs. Each
-**Property service** has a category, optional subcategory, regular/occasional mode,
+**Property service** has a category, optional subcategory, service group, regular/occasional mode,
 enabled flag and inclusive first/last tracking months. Existing first expected
 months migrate as tracking bounds; they do not establish an earlier physical
 service start date. Separate dated service records retain gaps and disabled periods.
@@ -86,6 +86,27 @@ Occasional services, including tank emptying, remain available without becoming
 required on each bill. A vendor billing entirely as needed creates no recurring
 invoice expectation. An active regular service without a vendor appears as
 **Needs vendor**; an assignment without a schedule appears as **Needs billing schedule**.
+
+Waste services can have dated **Service cost patterns**, edited on their service
+vendor or through the separate pattern list. These select which shared vendor bills
+should contain the cost. Frequencies are 1, 2, 3, 6 or 12 months, with an explicit
+first expected cost month, or **As needed** (0) with no anchor. Optional seasons use
+both month numbers in 1–12 and may wrap December. They describe billing months.
+Patterns never establish collection dates or change the vendor's invoice cadence.
+
+Enabled pattern periods cannot overlap and must fit inside the vendor assignment
+and service tracking dates. Periodic frequencies must be multiples of every
+overlapping vendor frequency and their anchors must align with its invoice months.
+Use **Change cost pattern** to retain dated history. Ending/changing a vendor closes
+its affected patterns; configure the replacement vendor's patterns explicitly.
+Future patterns starting after the old assignment's proposed end must be
+reconfigured first. Vendor frequency changes validate affected cost patterns.
+
+Within an enabled pattern, matching periodic months require the cost; other months
+and as-needed patterns leave it optional. Outside the pattern's dates, the service
+mode applies: regular requires the cost on each vendor bill, occasional leaves it
+optional. A shared invoice remains expected even when all of its costs are optional.
+Weights never establish cost or receipt requirements.
 
 One scheduled vendor/month produces one combined-bill expectation across its
 properties and services. Receipt and allocation completeness remain separate. A
@@ -118,11 +139,15 @@ activity; disabling a service suppresses its expectations.
 The fixed categories are **Electricity**, **Water**, **Waste** and **Other**.
 Maintain their shared **Subcategories** catalogue in Administration. Initial keys
 are `electricity_network`, `electricity_supply`, `matavfall`, `restavfall`,
-`tank_emptying` and `waste_collection`. Add entries such as Plastic or Cardboard
-without changing the schema. Category selectors filter available subcategories.
+`tradgardsavfall`, `tank_emptying` and `waste_collection`. Fraction keys `plastic`,
+`cardboard` and `glass` start disabled, with labels Plast, Kartong and Glas. Enable
+them when needed. Further fractions can be added without changing the schema.
+Category selectors filter available subcategories.
 Empty subcategories preserve combined or unspecified classification.
 
-Each subcategory has a stable key, editable name and enabled flag. Renaming updates
+Each subcategory has a stable key, editable name, enabled flag and `is_waste_fraction`.
+Only waste entries can be fractions; `waste_collection` and `tank_emptying` remain
+service cost keys. Fraction kind is immutable once referenced. Renaming updates
 display labels. Disable obsolete entries to keep existing references. Saved keys
 are immutable; referenced entries cannot be deleted or moved to another category.
 New entries supply classification choices; they do not add PDF extraction rules.
@@ -137,6 +162,12 @@ and supply remain distinct consumption sources with the existing selection that
 avoids counting energy twice. Unspecified consumption sources require review before
 selection, even when their cost is classified as network or supply.
 
+All collection costs, including garden waste, default to service group
+`waste_collection`. Tank emptying retains `tank_emptying`; other services default to
+their subcategory or category. A group organizes services without changing invoice
+matching. Create fraction cost services only for separately billed costs; weights
+on a combined charge do not require fraction cost services.
+
 ## Records and precision
 
 | Record | Stored values |
@@ -144,10 +175,11 @@ selection, even when their cost is classified as network or supply.
 | Property / Vendor | Display names and safe unique storage slugs; vendors also have an optional default property. |
 | VendorIssuerIdentifier / VendorLayoutFamily | Private vendor identification numbers and compatible installed invoice formats. |
 | InvoicePropertyRule | A vendor-scoped installation, contract, product-number or delivery-address key mapped to one property. |
-| Subcategory | Stable key, fixed category, editable name and enabled flag. |
-| PropertyService | Property, category, optional catalogue subcategory, regular/occasional mode, enabled flag and tracking months. A private immutable legacy billing configuration supports migration recovery. |
+| Subcategory | Stable key, fixed category, stable fraction kind, editable name and enabled flag. |
+| PropertyService | Property, category, optional catalogue subcategory, service group, regular/occasional fallback mode, enabled flag and tracking months. A private immutable legacy billing configuration supports migration recovery. |
 | VendorBillingSchedule | Vendor, effective months, first expected invoice month, frequency, grace days and enabled flag. |
 | ServiceVendorAssignment | A vendor attached to a property service for inclusive assignment months, with an enabled flag. |
+| ServiceCostSchedule | Assignment, effective months, periodic cost frequency/anchor or as needed, optional billing season, enabled flag and predecessor history. |
 | ServiceInvoiceException | Vendor/month/reason, optional property-service scope and optional reviewed invoice/revision binding for an absent allocation. |
 | Document | Source (`upload` or `manual`), unique SHA-256 for uploads, original filename, relative private path, separate processing/storage state and messages, staging/publication journal paths, extraction counter and a private legacy fee archive. |
 | ExtractionAttempt | Append-only candidate JSON, page evidence, layout family/version, parser revision, error/state and attempt number. Invalid and failed results remain private proposals. |

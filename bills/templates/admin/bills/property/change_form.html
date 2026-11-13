@@ -6,13 +6,13 @@
     <section class="module" aria-labelledby="property-services-heading">
       <h2 id="property-services-heading">Property services</h2>
       {% if perms.bills.add_propertyservice %}<p><a href="{% url 'admin:bills_propertyservice_add' %}?property={{ original.pk }}">Add service</a></p>{% endif %}
-      <p>Each service has tracking dates and dated service vendors. Billing frequency belongs to its vendor's shared schedule. Cost and consumption subcategories can differ within an allocation.</p>
+      <p>Each service has tracking dates and dated vendors. Billing frequency belongs to the vendor's shared schedule. Cost patterns select which bills contain a service cost; outside their dates, the service mode supplies the fallback. Waste weights are optional invoice facts.</p>
       <table>
-        <thead><tr><th scope="col">Service</th><th scope="col">Mode</th><th scope="col">Service starts</th><th scope="col">Service ends</th><th scope="col">Vendors</th><th scope="col">Enabled</th></tr></thead>
+        <thead><tr><th scope="col">Service / group</th><th scope="col">Fallback mode</th><th scope="col">Service starts</th><th scope="col">Service ends</th><th scope="col">Vendors and cost patterns</th><th scope="col">Enabled</th></tr></thead>
         <tbody>{% for service in property_services %}<tr>
-          <td><a href="{% url 'admin:bills_propertyservice_change' service.pk %}">{{ service.category_label }}{% if service.subcategory_label %} / {{ service.subcategory_label }}{% endif %}</a></td>
+          <td><a href="{% url 'admin:bills_propertyservice_change' service.pk %}">{{ service.category_label }}{% if service.subcategory_label %} / {{ service.subcategory_label }}{% endif %}</a><br>{{ service.service_group }}</td>
           <td>{{ service.get_mode_display }}</td><td>{{ service.start_month|date:"Y-m" }}</td><td>{{ service.end_month|date:"Y-m"|default:"Ongoing" }}</td>
-          <td>{% for assignment in service.vendor_assignments.all %}{{ assignment.vendor }} ({{ assignment.start_month|date:"Y-m" }}–{{ assignment.end_month|date:"Y-m"|default:"ongoing" }}{% if not assignment.is_active %}, disabled{% endif %}){% if not forloop.last %}<br>{% endif %}{% empty %}Needs vendor{% endfor %}</td>
+          <td>{% for assignment in service.vendor_assignments.all %}<a href="{% url 'admin:bills_servicevendorassignment_change' assignment.pk %}">{{ assignment.vendor }}</a> ({{ assignment.start_month|date:"Y-m" }}–{{ assignment.end_month|date:"Y-m"|default:"ongoing" }}{% if not assignment.is_active %}, disabled{% endif %}){% for pattern in assignment.cost_schedules.all %}<br>{{ pattern.start_month|date:"Y-m" }}–{{ pattern.end_month|date:"Y-m"|default:"ongoing" }}: {{ pattern.pattern_label }}{% if not pattern.is_active %} (disabled){% endif %}{% empty %}<br>Uses service fallback{% endfor %}{% if not forloop.last %}<br>{% endif %}{% empty %}Needs vendor{% endfor %}</td>
           <td>{{ service.is_active|yesno:"Yes,No" }}</td>
         </tr>{% empty %}<tr><td colspan="6">No services configured.</td></tr>{% endfor %}</tbody>
       </table>

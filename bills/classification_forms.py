@@ -11,6 +11,9 @@ class SubcategorySelect(forms.Select):
         option = super().create_option(name, value, label, selected, index, subindex, attrs)
         if hasattr(value, "instance"):
             option["attrs"]["data-category"] = value.instance.category
+            option["attrs"]["data-waste-fraction"] = (
+                "true" if value.instance.is_waste_fraction else "false"
+            )
         return option
 
 

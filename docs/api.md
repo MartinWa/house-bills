@@ -84,6 +84,7 @@ and `/invoice-formats`, then create owned configuration through its parent's col
 | `/properties/{id}/services` | `/services/{id}` |
 | `/services/{id}/vendor-assignments` | `/vendor-assignments/{id}` |
 | `/vendors/{id}/billing-schedules` | `/billing-schedules/{id}` |
+| `/vendor-assignments/{id}/cost-schedules` | `/cost-schedules/{id}` |
 | `/subcategories` | `/subcategories/{key}` |
 
 Collections support GET/POST; details support GET/PATCH/DELETE. Owner IDs come from
@@ -111,6 +112,22 @@ Accepted previews return 200 with `dry_run: true`; their generated IDs/links are
 provisional and cannot be reused in subsequent requests. To build a setup sequence,
 create accepted resources normally and use their returned IDs for later calls.
 A service with no vendor is a valid intermediate state.
+
+Subcategories expose `is_waste_fraction` and can be filtered with that boolean.
+Only waste entries may be fractions; combined collection and tank emptying are
+service keys. Referenced fraction kind remains stable. Service reads/writes include
+`service_group`, automatically derived when omitted. Garden and other collection
+services default to `waste_collection`; tank emptying retains its own group.
+
+Waste assignments own cost schedules with effective months, `frequency_months`,
+nullable `first_expected_month`, optional `season_start_month`/`season_end_month`
+and `enabled`. Frequency 0 means optional/as needed with no anchor or season.
+Periodic anchors/frequencies must align with all overlapping shared vendor schedules.
+POST `/cost-schedules/{id}/replacement` supplies `start_month`, observed
+`expected_end_month` and the new frequency/anchor/season. The predecessor and
+replacement retain history. Vendor assignment replacements close affected child
+patterns and require change permission for those patterns. The new assignment
+starts without a copied cost pattern. CRUD and replacements support `dry_run`.
 
 All configuration month markers are first-of-month ISO dates. Start and end months
 are inclusive: January through March uses `2027-01-01` / `2027-03-01`. Null end
@@ -201,6 +218,21 @@ and selected-consumption totals plus source/exclusion counts. Costs and consumpt
 use independent projections; electricity costs include every approved allocation,
 while consumption selects network/supply before vendor/subcategory/date filtering.
 Hiding network rows never promotes excluded supply to fallback.
+
+Summary and cost responses add `waste_total`, `waste_totals_by_property`,
+`waste_fractions`, `waste_general` and `waste_other_services`. A fraction entry has
+independent `cost` (nullable) and `weights` (possibly empty), identified by property
+and currency. A combined cost stays general even when it has fraction weights.
+Zero differs from absence. Tank emptying stays visibly separate while contributing
+to the total. These breakdowns are already included in total waste cost.
+
+Waste weights in those fields, and the attached `weights` on waste cost source
+rows, use the same **invoice-date and monetary classification filters as costs**.
+They retain their own basis and billed periods. Monetary fraction filtering does
+not select a combined section's fraction weights. `/reports/consumption` keeps its
+existing shape and **usage-period overlap** filters, including future fraction keys.
+Waste aggregates cover the full filtered result before cost-row pagination; source
+weights include invoice, allocation/usage, property, vendor, currency and date IDs.
 
 Costs support `mode=rows`, `totals` and `invoice_month`. Consumption supports `rows`,
 `totals` and `billed_period`; the latter retains complete endpoints, basis and source.

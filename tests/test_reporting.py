@@ -64,11 +64,19 @@ def usage(
 
 
 def allocation(
-    house, *, service="electricity_network", usages=(), net=10_000, start=START, end=END
+    house,
+    *,
+    service="electricity_network",
+    subcategory="",
+    usages=(),
+    net=10_000,
+    start=START,
+    end=END,
 ):
     return {
         "house": house,
         "service": service,
+        "subcategory": subcategory,
         "usages": usages,
         "net": net,
         "start": start,
@@ -110,6 +118,7 @@ def ledger(tmp_path, settings, django_user_model):
             Section(
                 section_id=f"section-{position}",
                 service=spec["service"],
+                subcategory=spec["subcategory"],
                 identifiers=[],
                 usages=list(spec["usages"]),
                 start=spec["start"],
@@ -273,6 +282,13 @@ def test_review_records_and_private_proposals_are_absent_from_all_reporting_view
     ):
         assert rows(view) == []
     assert read_report() == {
+        "waste_total": {"currency": "SEK", "net_minor": 0, "vat_minor": 0, "gross_minor": 0},
+        "waste_totals_by_property": [],
+        "waste_fractions": [],
+        "waste_general": [],
+        "waste_other_services": [],
+        "waste_details": [],
+        "waste_detail_count": 0,
         "costs": [],
         "consumption": [],
         "breakdown": [],

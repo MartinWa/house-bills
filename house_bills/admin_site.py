@@ -4,7 +4,10 @@ from django.contrib.admin import AdminSite
 from django.contrib.admin.apps import AdminConfig
 
 BILLING_GROUPS = (
-    ("Property configuration", ("Property", "PropertyService", "ServiceVendorAssignment")),
+    (
+        "Property configuration",
+        ("Property", "PropertyService", "ServiceVendorAssignment", "ServiceCostSchedule"),
+    ),
     ("Vendor configuration", ("Vendor", "VendorBillingSchedule", "InvoicePropertyRule")),
     ("Classification", ("Subcategory",)),
     ("Invoice follow-up", ("ServiceInvoiceException",)),
