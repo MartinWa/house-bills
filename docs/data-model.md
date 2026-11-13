@@ -168,6 +168,13 @@ their subcategory or category. A group organizes services without changing invoi
 matching. Create fraction cost services only for separately billed costs; weights
 on a combined charge do not require fraction cost services.
 
+An enabled fraction cost service also enables itemized extraction for its property
+in Layout 01 invoices. Explicit Matavfall, Restavfall and Trädgårdsavfall charge
+amounts become separate cost allocations, even inside a shared collection contract.
+Shared and remaining fees stay under `waste_collection`. VAT is apportioned by
+net cost with rounding balanced to the printed contract VAT. Missing or ambiguous
+charge amounts retain the combined cost for review; weights never supply a cost.
+
 ## Records and precision
 
 | Record | Stored values |

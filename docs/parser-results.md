@@ -24,12 +24,14 @@ private_result = candidate.to_dict()
 sections continuing onto another page and dated water reversals. It accepts the two
 validated header arrangements. `layout_02/v1` extracts electricity supply specifications
 with a separate installation on each billing page. Neither module contains vendor names
-or private identifiers. Layout 01 v1 records implementation revision `8`; layout 02 v1
+or private identifiers. Layout 01 v1 records implementation revision `10`; layout 02 v1
 records revision `3`.
 `layout_02/v2`, revision `2`, retains a separate replacement signature with synthetic
 coverage. The registry selects by structure and keeps v1 available for older invoices.
-`layout_01/v2`, revision `3`, additionally handles historical product-number sections. The
+`layout_01/v2`, revision `5`, additionally handles historical product-number sections. The
 [parser guide](parsing.md) lists the other installed structures and revisions.
+Historical `Avfall prodnr ... Kärl ...` headings identify their named waste fraction
+using each section's printed net and VAT totals.
 
 ## Structure and precision
 
@@ -83,10 +85,15 @@ and approval JSON remains immutable and is adapted in memory from explicit evide
 
 ## Financial reconciliation
 
-Printed service net and VAT are authoritative. No per-fee VAT or gross is calculated,
-and no fee description or amount is required. Price rows are read only where they supply
-billed consumption and periods or corroborate network readings. The original PDF and
-immutable extracted page evidence retain the source detail.
+Printed service net and VAT are authoritative. Normally no per-fee VAT or gross is
+calculated, and fee descriptions and amounts are optional. For a mapped property with
+enabled fraction cost services, Layout 01 separates explicitly printed fraction net
+charges and retains the remaining collection fees. The printed contract VAT is
+apportioned by net cost, with signed rounding balanced to its exact total. Each part
+retains the original tax evidence; costs are never derived from weights or unit prices.
+Missing/invalid fraction charges leave the combined allocation available for review.
+Other price rows supply billed consumption/periods or corroborate network readings.
+The original PDF and immutable extracted page evidence retain the source detail.
 
 Net plus VAT must equal each service's cost including VAT. Service net and VAT must sum
 to the header values; service costs plus explicit invoice rounding must equal the invoice

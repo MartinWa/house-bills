@@ -20,7 +20,7 @@ from .normalization import (
 from .normalization import unit as normalize_unit
 from .types import Evidence, Identifier, Section, Usage
 
-FAMILY, VERSION, REVISION = "layout_01", "v1", "9"
+FAMILY, VERSION, REVISION = "layout_01", "v1", "10"
 SERVICE = {
     "vatten": "water",
     "hushållsavfall": "waste",
@@ -45,7 +45,7 @@ def matches(pages):
         and any(SECTION.match(text(line)) for page in pages for line in page)
         and not any(
             re.match(
-                r"^(?:Elnätavgifter|Vatten & Avlopp|Elhandelskostnad|Vatten|Hushållsavfall|"
+                r"^(?:Elnätavgifter|Vatten & Avlopp|Elhandelskostnad|Vatten|Hushållsavfall|Avfall|"
                 r"Elnät|Elhandel)\s+prodnr\b",
                 text(line),
                 re.I,

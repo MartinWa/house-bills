@@ -143,7 +143,7 @@ def test_network_readings_keep_billed_intervals_without_repeating_price_quantiti
     assert all(row.evidence.page == 4 for row in network.usages)
     assert all(row.evidence.text.startswith("Avläsning") for row in network.usages)
     assert (network.net_minor, network.vat_minor, network.gross_minor) == (37846, 9462, 47308)
-    assert candidate.parser_revision == "9" and candidate.requires_review
+    assert candidate.parser_revision == "10" and candidate.requires_review
 
 
 @pytest.mark.parametrize("correction", [False, True])

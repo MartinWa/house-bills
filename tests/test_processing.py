@@ -2,6 +2,7 @@ import copy
 import io
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import date
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -17,6 +18,7 @@ from bills.models import (
     Invoice,
     Property,
     PropertyIdentifier,
+    PropertyService,
     Usage,
     Vendor,
     VendorIssuerIdentifier,
@@ -107,6 +109,34 @@ def test_supported_uploads_persist_proposals_without_approved_rows(
     assert document.invoices.get().status == "review"
     assert BillingSection.objects.count() == Usage.objects.count() == 0
     assert storage.private_path(document.original_path).read_bytes() == pdf.read_bytes()
+
+
+def test_configured_fraction_services_extract_separate_costs_and_keep_shared_fees(
+    tmp_path, configured
+):
+    house = configured[1][0]
+    for fraction in ("matavfall", "restavfall"):
+        PropertyService.objects.create(
+            property=house, category="waste", subcategory_id=fraction, start_month=date(2024, 1, 1)
+        )
+    _, attempt, _, _ = upload(tmp_path, multi_service())
+    assert attempt.candidate["issues"] == []
+    sections = {section["section_id"]: section for section in attempt.candidate["sections"]}
+    assert sections["section_02"]["gross_minor"] == 9000
+    assert sections["section_02"]["usages"] == []
+    assert sections["section_02_matavfall"]["gross_minor"] == 1200
+    assert sections["section_02_restavfall"]["gross_minor"] == 3750
+    assert sections["section_02_matavfall"]["usages"][0]["quantity_milli"] == 12000
+    assert sections["section_02_restavfall"]["usages"][0]["quantity_milli"] == 7500
+    assert all(
+        attempt.candidate["routing"]["section_properties"][key] == house.pk for key in sections
+    )
+    assert (
+        sum(section["net_minor"] for section in sections.values()) == attempt.candidate["net_minor"]
+    )
+    assert (
+        sum(section["vat_minor"] for section in sections.values()) == attempt.candidate["vat_minor"]
+    )
 
 
 def test_cosmetic_case_spacing_and_period_dash_keep_version_and_source_evidence(

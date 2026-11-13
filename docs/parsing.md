@@ -57,9 +57,12 @@ network readings retain column order and exact grouped quantities. Network price
 are checked against readings within their own printed periods. When a contract has no
 overall period label, dated fee rows supply its cost period; billed waste weights keep
 their separate collection intervals. Undated water reversals remain review issues.
-Waste extraction keeps combined charges combined, independently of Matavfall and
-Restavfall weight lines. Supported contract/product blocks classify explicit garden
-costs and unambiguous named fraction cost blocks using their own reported totals.
+Waste extraction keeps combined charges combined unless the mapped property has
+enabled fraction cost services. For those services, Layout 01 splits explicit billed
+fraction amounts into separate allocations, retaining shared fees under general
+collection. VAT shares reconcile to the printed contract VAT. Missing charge amounts
+keep the combined cost and require review. Supported contract/product blocks also
+classify explicit garden costs and unambiguous named fraction blocks using their totals.
 Annual collections, container volumes and collection counts are not kg usage.
 A cost section needs no weight; reported zero kg is retained. Activating Plast,
 Kartong or Glas only adds review choices. Their future layouts need explicit parser

@@ -14,6 +14,7 @@ from .parsing.recognition import recognize_vendor
 from .parsing.registry import LAYOUTS, match_layouts
 from .services import StaleReviewError, record_extraction, resolve_section_property
 from .storage import open_original, private_path
+from .waste_costs import split_configured_costs
 
 
 def parse_document(document_id, *, force=False, expected_revision=None):
@@ -112,6 +113,14 @@ def parse_document(document_id, *, force=False, expected_revision=None):
                     candidate.issues.append(
                         f"Conflicting property mappings in {section.section_id}"
                     )
+            if parser.FAMILY == "layout_01":
+                properties, warnings = split_configured_costs(
+                    candidate,
+                    pages,
+                    routing["section_properties"],
+                )
+                routing["section_properties"] = properties
+                candidate.issues.extend(warnings)
         electricity = []
         for section in candidate.sections:
             house_id = routing["section_properties"].get(section.section_id)

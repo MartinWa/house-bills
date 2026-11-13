@@ -129,14 +129,18 @@ def reconcile(candidate: Candidate) -> Candidate:
             candidate.issues.append(f"Gross total mismatch in {section.section_id}")
         if section.start is None or section.end is None or section.start >= section.end:
             candidate.issues.append(f"Missing or invalid billing period in {section.section_id}")
-        expected_unit = {
-            "water": "m3",
-            "waste": "kg",
-            "electricity_network": "kWh",
-            "electricity_supply": "kWh",
+        # Corrections reconcile the whole invoice, including valid reviewed
+        # generic electricity and Other allocations alongside parsed services.
+        expected_units = {
+            "water": {"m3"},
+            "waste": {"kg"},
+            "electricity": {"kWh"},
+            "electricity_network": {"kWh"},
+            "electricity_supply": {"kWh"},
+            "other": {"kWh", "m3", "kg"},
         }[section.service]
         for usage in section.usages:
-            if usage.unit != expected_unit or usage.start >= usage.end:
+            if usage.unit not in expected_units or usage.start >= usage.end:
                 candidate.issues.append(f"Invalid usage in {section.section_id}")
     if all(s.gross_minor is not None for s in candidate.sections) and None not in (
         candidate.rounding_minor,

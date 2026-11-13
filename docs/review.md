@@ -64,11 +64,14 @@ manual approval. Review forms do not save partial drafts. Validation errors reta
 submitted fields and approved values; closing or cancelling discards unsaved entries.
 
 For waste, select Matavfall, Restavfall, Trädgårdsavfall, Plast, Kartong or Glas on
-an allocation only when its exact cost is separately reported. Keep combined/base
-charges in general waste. Do not divide a combined cost by weights or derive VAT
-for a split. Each reported fraction weight can belong to a combined allocation;
-a fraction cost can have no weight. Enter only reported weights, including printed
-zeros, and preserve negative reversals. Missing weights never prevent approval.
+an allocation only when its charge amount is reported. Keep shared/base charges in
+general waste. Enabled fraction cost services allow Layout 01 to split printed net
+charges and apportion the contract's printed VAT, balancing rounding to the exact
+VAT total. Check those allocations against their source rows and shared VAT evidence.
+Do not divide a combined cost by weights. Each reported fraction weight can belong
+to a combined allocation; a fraction cost can have no weight. Enter only reported
+weights, including printed zeros, and preserve negative reversals. Missing weights
+never prevent approval.
 Enable future fractions in Subcategories before selecting them for new records.
 Existing references to disabled entries remain reviewable.
 
@@ -153,6 +156,27 @@ approved values also completes review while retaining your corrections. An extra
 that matches the approval, or predates the latest review, offers no loading option.
 Unsupported or invalid re-parsing outcomes
 still require full manual review; they cannot approve themselves.
+
+After configuring fraction cost services, existing approvals can be updated from
+their retained Layout 01 evidence without replacing reviewed headers, periods or
+weights. Preview the changes first, then explicitly apply them with a staff user ID:
+
+```sh
+docker compose -f compose.development.yaml exec app python manage.py split_waste_costs --property PROPERTY_ID
+docker compose -f compose.development.yaml exec app python manage.py split_waste_costs --property PROPERTY_ID --apply --reviewer STAFF_USER_ID
+```
+
+Each applied correction adds a review revision and keeps earlier snapshots intact.
+Enabling another fraction service allows a later correction to split its printed
+charge from the remaining general allocation. Existing fraction costs, VAT, periods
+and weights stay as reviewed; the new parts share the remaining allocation's VAT.
+Contracts whose reviewed totals differ from the source are retained with a warning.
+Manual entries without source charge amounts remain combined.
+Corrections are limited to Layout 01 extractions. Older extractions with no layout
+family must match the full Layout 01 signature before their evidence is used.
+The command continues after stale or invalid invoice corrections, prints each
+failure and a final count, and exits unsuccessfully if any corrections failed.
+Successful corrections remain saved; rerunning retries the failed invoices.
 
 Saves check the invoice review revision and document extraction revision inside the
 approval transaction. A repeated submission or a form opened before another save or
