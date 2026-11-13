@@ -638,6 +638,94 @@ def test_payment_offset_uses_originals_and_export_pins_observed_intervals(
 
 
 @pytest.mark.parametrize(
+    ("payment_date", "invoice_date", "period_start"),
+    [
+        ("2018-10-31", "2018-10-12", "2018-09-01"),
+        ("2019-05-31", "2019-05-12", "2019-04-01"),
+        ("2019-07-31", "2019-07-12", "2019-06-01"),
+    ],
+)
+def test_payment_offset_normalizes_early_payments_without_recording_an_estimated_due_date(
+    configured, tmp_path, payment_date, invoice_date, period_start
+):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, date=payment_date, payment_offset_days=20)
+    plan = tmp_path / "plan.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], plan, True),
+        "--date-semantics",
+        f"{vendor.slug}=payment",
+        "--period",
+        f"{vendor.slug}=41:30",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get()
+    assert invoice.invoice_date.isoformat() == invoice_date
+    assert invoice.sections.get().start.isoformat() == period_start
+    assert invoice.due_date is None
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert row["payment_date"] == payment_date
+    assert (
+        row["due_date_estimate"]
+        == add_months(date.fromisoformat(payment_date).replace(day=1), 1).isoformat()
+    )
+    assert row["due_date"] is None and row["period_mode"] == "offset"
+    assert "payments on or after day 25" in invoice.reviews.get().note
+
+
+def test_calendar_export_does_not_pin_offsets_when_overridden_to_offset_mode(configured, tmp_path):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk)
+    live = tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], tmp_path / "calendar-plan.json", False),
+        "--period-mode",
+        f"{vendor.slug}=calendar",
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    row = json.loads(live.read_text(encoding="utf-8"))["rows"][0]
+    assert row["offset_days"] is None and row["length_days"] is None
+    plan = tmp_path / "offset-plan.json"
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--period-mode",
+        f"{vendor.slug}=offset",
+        "--period",
+        f"{vendor.slug}=10:30",
+        "--plan",
+        str(plan),
+        stdout=StringIO(),
+    )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert (row["period_start"], row["period_end"]) == ("2024-01-05", "2024-02-04")
+
+
+@pytest.mark.parametrize("fields", [{"vendor": "Unknown synthetic vendor"}, {"date": None}])
+def test_early_resolution_failures_keep_date_fields_in_the_plan(configured, tmp_path, fields):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, **fields)
+    plan = tmp_path / "plan.json"
+    with pytest.raises(CommandError, match="Some rows failed"):
+        call_command(
+            "import_ledger_invoices",
+            *import_arguments(source, actor, vendor, houses[0], plan, False),
+            stdout=StringIO(),
+            stderr=StringIO(),
+        )
+    row = json.loads(plan.read_text(encoding="utf-8"))["rows"][0]
+    assert row["due_date"] is None
+    assert row["date_semantics"] == "invoice" and row["period_mode"] == "offset"
+
+
+@pytest.mark.parametrize(
     ("fields", "message"),
     [
         ({"date_semantics": "payments"}, "date_semantics must be"),

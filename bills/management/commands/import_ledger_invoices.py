@@ -23,10 +23,12 @@ their inferred periods cannot be trusted; the cost allocation is the missing
 reporting data.
 
 Payment-dated rows require explicit ``--date-semantics VENDOR=payment`` or the
-equivalent input field. Offset mode subtracts the vendor's median invoice-to-due
-interval from approved original invoices. Calendar mode uses the previous
-invoice month, advancing the due month for payments on or after day 25, and
-anchors the derived invoice date on the first day. Payment dates remain in the
+equivalent input field. Both modes estimate early payments on or after day 25 as
+due on the first of the next month. This final-week heuristic assumes the vendor
+is normally paid near the start of its due month; it cannot identify late payments.
+Offset mode subtracts the vendor's median invoice-to-due interval from approved
+original invoices. Calendar mode uses the previous invoice month and anchors the
+derived invoice date on the first day. Payment dates remain in the
 review note and exported input; they do not become due dates.
 
 An input row may instead supply exact ``allocations`` with integer net/VAT/gross,
@@ -66,6 +68,8 @@ VENDOR_ALIASES = {
 }
 DEFAULT_OFFSET = 30
 DEFAULT_LENGTH = 30
+# Final-week payments are assumed early for the next start-of-month due date.
+EARLY_PAYMENT_DAY = 25
 PARSER_REVISION = "ledger-import-v2"
 LIVE_FORMAT = "house-bills-ledger-import-input"
 
@@ -255,8 +259,9 @@ class Command(BaseCommand):
             plan["date_semantics"][vendor_slug] = item["date_semantics"]
             plan["period_modes"][vendor_slug] = item["period_mode"]
             seen_periods[(item["vendor"].pk, item["property"].pk)] = (
-                item["offset"],
-                item["length"],
+                (item["offset"], item["length"])
+                if item["period_mode"] == "offset"
+                else (None, None)
             )
             reason = self.skip_reason(item)
             if reason:
@@ -349,8 +354,8 @@ class Command(BaseCommand):
             "services": item["services"],
             "allocations": item["source_allocations"],
             "total": item["total"],
-            "offset_days": item["offset"],
-            "length_days": item["length"],
+            "offset_days": item["offset"] if item["period_mode"] == "offset" else None,
+            "length_days": item["length"] if item["period_mode"] == "offset" else None,
         }
 
     def plan_row(self, item):
@@ -380,6 +385,10 @@ class Command(BaseCommand):
             "offset_days": row.get("offset_days"),
             "length_days": row.get("length_days"),
             "payment_offset_days": row.get("payment_offset_days"),
+            "due_date": None,
+            "due_date_estimate": None,
+            "date_semantics": row.get("date_semantics", "invoice"),
+            "period_mode": row.get("period_mode", "offset"),
             "ledger_vendor": repair_text(ledger_vendor or ""),
             "date": row.get("date"),
             "sheet": repair_text(row.get("sheet", "")),
@@ -437,11 +446,12 @@ class Command(BaseCommand):
             return
         payment_date = item["invoice_date"]
         item["payment_date"] = payment_date
+        due_date_estimate = payment_date
+        if payment_date.day >= EARLY_PAYMENT_DAY:
+            due_date_estimate = add_months(payment_date.replace(day=1), 1)
+        item["due_date_estimate"] = due_date_estimate
         if item["period_mode"] == "calendar":
-            due_month = payment_date.replace(day=1)
-            if payment_date.day >= 25:
-                due_month = add_months(due_month, 1)
-            item["invoice_date"] = add_months(due_month, -1)
+            item["invoice_date"] = add_months(due_date_estimate.replace(day=1), -1)
             return
         offset = item["payment_offset_days"]
         if offset is None:
@@ -455,7 +465,7 @@ class Command(BaseCommand):
         if type(offset) is not int or not 1 <= offset <= 90:
             raise ValueError("payment_offset_days must be an integer within 1..90 days.")
         item["payment_offset_days"] = offset
-        item["invoice_date"] = payment_date - timedelta(days=offset)
+        item["invoice_date"] = due_date_estimate - timedelta(days=offset)
 
     def payment_samples(self, vendor):
         invoices = Invoice.objects.filter(
@@ -644,9 +654,8 @@ class Command(BaseCommand):
         if item["date_semantics"] == "payment":
             if item["period_mode"] == "calendar":
                 derivation = (
-                    "Previous-month invoice convention; payments on or after day 25 belong "
-                    "to the next due month. The first day anchors the derived invoice month "
-                    "and is not a known issue day."
+                    "Previous-month invoice convention. The first day anchors the derived "
+                    "invoice month and is not a known issue day."
                 )
             else:
                 derivation = (
@@ -656,6 +665,8 @@ class Command(BaseCommand):
                 )
             note += (
                 f" Ledger date {item['payment_date']} is a payment date. "
+                f"The due-date estimate is {item['due_date_estimate']}; payments on or after day "
+                f"{EARLY_PAYMENT_DAY} are treated as early for the first of the next month. "
                 f"Invoice date {item['invoice_date']} is derived, not printed evidence. "
                 f"{derivation} Payment date retained here as provenance; "
                 "due date is recorded only when explicitly supplied."

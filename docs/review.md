@@ -179,8 +179,18 @@ invoice-to-period offset. For a payment-dated vendor, explicitly select
 Offset mode derives the invoice date using the median invoice-to-due interval
 from that vendor's approved original invoices. It fails when no such interval is
 available, unless the input supplies `payment_offset_days` (an integer from 1 to
-90). Newly imported manual entries do not contribute to these payment-date or
-period samples.
+90). For payment-dated vendors, manual entries do not contribute to either
+sample. The default invoice-date mode retains its existing period sampling,
+which can include approved manual entries.
+
+Both payment-date modes normalize payments on or after day 25 to a due-date
+estimate on the first of the next month; earlier payments use the payment date
+as the estimate. This is a fixed final-week heuristic for vendors usually paid
+near the start of their due month. It cannot distinguish early and late payments
+or describe every vendor's due convention; use payment semantics only for a
+reviewed ledger convention that fits it. Offset mode subtracts its pinned or
+observed interval from this estimate. The estimate appears in the plan and
+review note and does not populate the invoice's `due_date`.
 
 Use `--period-mode VENDOR=calendar` for a vendor that invoices the previous
 calendar month. For payment dates, the due month is the payment month, advanced
@@ -194,7 +204,9 @@ always retained; calendar mode takes precedence over `--period` day offsets.
 Both options are repeatable and override the row's `date_semantics` and
 `period_mode` fields. The defaults preserve existing inputs. Exported inputs pin
 these choices and any observed payment and period offsets, so repeats need only
-the exported file and reviewer. The plan and console show the resolved choices
+the exported file and reviewer. Calendar exports leave `offset_days` and
+`length_days` unset so a later switch to offset mode uses a supplied `--period`
+or fresh samples. The plan and console show the resolved choices
 per vendor. Review notes label payment dates and derived invoice dates and
 periods. Payment dates remain in the note and exported input; `due_date` stays
 unknown unless explicitly supplied. Overall amounts remain unchanged, while
