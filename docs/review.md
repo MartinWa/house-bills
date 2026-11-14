@@ -196,6 +196,12 @@ A bulk backfill of ledger rows uses the same manual-entry service through
 `import_ledger_invoices`. Keep source files, exported inputs, plans and repair
 artifacts with the private ledger data, outside version control. The command is a
 dry run unless `--commit` is supplied; `--export` writes a self-contained input.
+Reviewed rows may supply integer `amount_due_minor` independently of the invoice
+total, including a known zero. This value survives export/replay and is explicitly
+confirmed through normal approval. An unknown supplied amount remains invalid;
+incomplete historical records must keep their unknowns in staging.
+Inputs and exports with explicit payable amounts use `house-bills-manual-import-input`;
+the older `house-bills-ledger-import-input` format remains supported for legacy rows.
 
 Dates default to invoice dates and billing periods default to the vendor's median
 invoice-to-period offset. For a payment-dated vendor, explicitly select

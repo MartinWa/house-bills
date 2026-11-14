@@ -936,6 +936,75 @@ def test_ledger_export_is_a_self_contained_live_input(configured, tmp_path):
     assert invoice.invoice_total_minor == 12500 and invoice.vat_minor == 2500
 
 
+@pytest.mark.parametrize("amount_due_minor", [0, 12000])
+@pytest.mark.parametrize("exact", [False, True])
+def test_ledger_import_and_export_preserve_explicit_amount_due(
+    configured, tmp_path, amount_due_minor, exact
+):
+    actor, vendor, houses = configured
+    fields = {"amount_due_minor": amount_due_minor}
+    if exact:
+        fields["allocations"] = [
+            {
+                "category": "electricity",
+                "subcategory": "electricity_supply",
+                "net_minor": 10000,
+                "vat_minor": 2500,
+                "gross_minor": 12500,
+                "start": "2024-01-01",
+                "end": "2024-02-01",
+            }
+        ]
+    source = ledger_source(tmp_path, houses[0].pk, **fields)
+    live = tmp_path / "live.json"
+    call_command(
+        "import_ledger_invoices",
+        *import_arguments(source, actor, vendor, houses[0], tmp_path / "plan.json", False),
+        "--export",
+        str(live),
+        stdout=StringIO(),
+    )
+    assert not Invoice.objects.exists()
+    assert (
+        json.loads(live.read_text(encoding="utf-8"))["format"] == "house-bills-manual-import-input"
+    )
+    assert (
+        json.loads(live.read_text(encoding="utf-8"))["rows"][0]["amount_due_minor"]
+        == amount_due_minor
+    )
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(live),
+        "--actor",
+        actor.username,
+        "--commit",
+        stdout=StringIO(),
+    )
+    invoice = Invoice.objects.get()
+    assert invoice.invoice_total_minor == 12500
+    assert invoice.amount_due_minor == amount_due_minor
+    assert "Amount due was transcribed explicitly" in invoice.reviews.get().note
+
+
+@pytest.mark.parametrize("amount_due_minor", [None, True, "0", 1.5])
+def test_ledger_import_rejects_unknown_or_noninteger_explicit_amount_due(
+    configured, tmp_path, amount_due_minor
+):
+    actor, vendor, houses = configured
+    source = ledger_source(tmp_path, houses[0].pk, amount_due_minor=amount_due_minor)
+    errors = StringIO()
+    with pytest.raises(CommandError, match="Some rows failed"):
+        call_command(
+            "import_ledger_invoices",
+            *import_arguments(source, actor, vendor, houses[0], tmp_path / "plan.json", True),
+            stdout=StringIO(),
+            stderr=errors,
+        )
+    assert "amount_due_minor must be integer" in errors.getvalue()
+    assert not Invoice.objects.exists() and not Document.objects.exists()
+
+
 @pytest.mark.parametrize(
     ("date_semantics", "ledger_date"), [("invoice", "2024-04-15"), ("payment", "2024-05-05")]
 )

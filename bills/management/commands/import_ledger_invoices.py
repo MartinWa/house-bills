@@ -34,6 +34,8 @@ review note and exported input; they do not become due dates.
 An input row may instead supply exact ``allocations`` with integer net/VAT/gross,
 explicit billed periods and optional reported usages. This path preserves waste
 classification and partial/zero weights without deriving tax or collection periods.
+An explicit integer ``amount_due_minor`` preserves a reviewed payable amount,
+including zero, independently of the invoice total.
 """
 
 import json
@@ -72,6 +74,7 @@ DEFAULT_LENGTH = 30
 EARLY_PAYMENT_DAY = 25
 PARSER_REVISION = "ledger-import-v2"
 LIVE_FORMAT = "house-bills-ledger-import-input"
+MANUAL_FORMAT = "house-bills-manual-import-input"
 
 
 def repair_text(value):
@@ -141,7 +144,7 @@ class Command(BaseCommand):
             "--source",
             required=True,
             type=Path,
-            help="Reviewed comparison JSON; only the only_manual rows are imported.",
+            help="Reviewed comparison JSON or a self-contained manual import input.",
         )
         parser.add_argument("--actor", required=True, help="Active username recorded as reviewer.")
         parser.add_argument(
@@ -206,7 +209,10 @@ class Command(BaseCommand):
             payload = json.loads(source.read_text(encoding="utf-8"))
         except OSError, ValueError:
             raise CommandError("The comparison file is unreadable or not JSON.") from None
-        live_input = isinstance(payload, dict) and payload.get("format") == LIVE_FORMAT
+        live_input = isinstance(payload, dict) and payload.get("format") in (
+            LIVE_FORMAT,
+            MANUAL_FORMAT,
+        )
         rows = (
             payload.get("rows")
             if live_input
@@ -330,7 +336,9 @@ class Command(BaseCommand):
         """Freeze resolved slugs and periods so a live import needs only this file."""
         rows = [self.live_row(item) for item in resolved if not item["error"]]
         payload = {
-            "format": LIVE_FORMAT,
+            "format": MANUAL_FORMAT
+            if any("amount_due_minor" in row for row in rows)
+            else LIVE_FORMAT,
             "version": 1,
             "generated_at": timezone.now().isoformat(),
             "source": {"path": str(source), "rows": len(rows)},
@@ -361,6 +369,11 @@ class Command(BaseCommand):
             "services": item["services"],
             "allocations": item["source_allocations"],
             "total": item["total"],
+            **(
+                {"amount_due_minor": item["source_amount_due_minor"]}
+                if item["source_amount_due_minor"] is not None
+                else {}
+            ),
             "offset_days": item["offset"] if item["period_mode"] == "offset" else None,
             "length_days": item["length"] if item["period_mode"] == "offset" else None,
         }
@@ -403,6 +416,7 @@ class Command(BaseCommand):
             "services": row.get("services") or {},
             "source_allocations": row.get("allocations"),
             "total": row.get("total"),
+            "source_amount_due_minor": row.get("amount_due_minor"),
             "ledger_row": row.get("row") or {},
             "status": "error",
             "error": "",
@@ -437,6 +451,10 @@ class Command(BaseCommand):
                 f"LEDGER-{item['date']}-P{item['property'].pk}"
             )
             self.money(item)
+            if "amount_due_minor" in row:
+                if type(row["amount_due_minor"]) is not int:
+                    raise ValueError("An explicit amount_due_minor must be integer öre.")
+                item["amount_due_minor"] = row["amount_due_minor"]
         except (
             CommandError,
             ValueError,
@@ -707,6 +725,8 @@ class Command(BaseCommand):
                 f"{derivation} Payment date retained here as provenance; "
                 "due date is recorded only when explicitly supplied."
             )
+        if item["source_amount_due_minor"] is not None:
+            note += " Amount due was transcribed explicitly from the supplied reviewed input."
         document = Document.objects.create(
             source=Document.Source.MANUAL,
             state=Document.State.REVIEW,
@@ -757,7 +777,7 @@ class Command(BaseCommand):
             extraction=None,
             kind=Invoice.Kind.INVOICE,
             note=note,
-            amount_due_confirmed=False,
+            amount_due_confirmed=item["source_amount_due_minor"] is not None,
         )
         invoice = document.invoices.get()
         item["invoice_id"] = invoice.pk
