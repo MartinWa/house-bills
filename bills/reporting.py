@@ -82,8 +82,9 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             reader,
             f"""
             SELECT property_id, property_name, category, service, subcategory, currency,
-                   sum(net_minor) AS net_minor, sum(vat_minor) AS vat_minor,
-                   sum(gross_minor) AS gross_minor
+                   CASE WHEN count(net_minor)=count(*) THEN sum(net_minor) END AS net_minor,
+                   CASE WHEN count(vat_minor)=count(*) THEN sum(vat_minor) END AS vat_minor,
+                   CASE WHEN count(gross_minor)=count(*) THEN sum(gross_minor) END AS gross_minor
             FROM reporting_costs WHERE {cost_where}
             GROUP BY property_id, property_name, category, service, subcategory, currency
             ORDER BY property_name, property_id, category, subcategory

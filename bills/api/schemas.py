@@ -489,6 +489,14 @@ class ReportFilters(Schema):
     date_to: date | None = None
 
 
+class CostFilters(ReportFilters):
+    currency: str | None = None
+
+
+class ConsumptionFilters(ReportFilters):
+    unit: str | None = None
+
+
 class DateBounds(Schema):
     date_from: date | None
     date_to: date | None
@@ -516,9 +524,9 @@ class WasteWeightSource(Schema):
     source_page: int | None = None
 
 
-class ReportRow(Schema):
-    property_id: int
-    property_name: str
+class ReportFields(Schema):
+    property_id: int | None = None
+    property_name: str | None = None
     vendor_id: int | None = None
     vendor_name: str | None = None
     invoice_id: int | None = None
@@ -527,13 +535,17 @@ class ReportRow(Schema):
     invoice_month: date | None = None
     invoice_month_time: int | None = None
     category: str | None = None
+    category_name: str | None = None
     subcategory: str | None = None
+    subcategory_name: str | None = None
     currency: str | None = None
     net_minor: int | None = None
     vat_minor: int | None = None
     gross_minor: int | None = None
     utility: str | None = None
+    utility_name: str | None = None
     unit: str | None = None
+    unit_label: str | None = None
     quantity_milli: int | None = None
     period_start: date | None = None
     period_end: date | None = None
@@ -543,6 +555,7 @@ class ReportRow(Schema):
     source_service: str | None = None
     source_selection: str | None = None
     selection_reason: str | None = None
+    reason: str | None = None
     source: str | None = None
     allocation_id: int | None = None
     usage_id: int | None = None
@@ -551,7 +564,20 @@ class ReportRow(Schema):
     reference: str | None = None
 
 
+class ReportRow(ReportFields):
+    property_id: int
+    property_name: str
+
+
+class AggregateGroup(ReportFields):
+    invoice_count: int
+    allocation_count: int
+    usage_count: int | None = None
+
+
 class CostReportRow(ReportRow):
+    invoice_kind: str
+    review_revision: int
     weights: list[WasteWeightSource] = []
 
 
@@ -595,45 +621,59 @@ class WasteFields(Schema):
     waste_other_services: list[WasteEntry] = []
 
 
-class AggregateOut(Schema):
+class ReportingMetadata(Schema):
+    generated_at: datetime
+    contract_version: int
+
+
+class AggregateOut(ReportingMetadata):
     mode: str
-    filters: ReportFilters
+    filters: ConsumptionFilters
     effective_date_bounds: DateBounds
     group_count: int
-    totals: list[ReportRow]
-    groups: list[ReportRow]
+    totals: list[AggregateGroup]
+    groups: list[AggregateGroup]
+    group_by: list[str] | None = None
 
 
-class ReportPage(Page[ReportRow]):
+class ReportPage(Page[ReportRow], ReportingMetadata):
     mode: str
     filters: ReportFilters
     effective_date_bounds: DateBounds
+    has_more: bool
+
+
+class ConsumptionReportPage(ReportPage):
+    filters: ConsumptionFilters
 
 
 class CostAggregateOut(AggregateOut, WasteFields):
-    pass
+    filters: CostFilters
 
 
 class CostReportPage(ReportPage, WasteFields):
+    filters: CostFilters
     items: list[CostReportRow]
 
 
-class SummaryOut(WasteFields):
+class SummaryOut(WasteFields, ReportingMetadata):
     filters: ReportFilters
     effective_date_bounds: DateBounds
-    costs: list[ReportRow]
-    consumption: list[ReportRow]
+    costs: list[AggregateGroup]
+    consumption: list[AggregateGroup]
     total_invoices: int
     pdf_invoices: int
     manual_invoices: int
     exclusion_count: int
+    latest_approval: datetime | None
 
 
-class SelectorsOut(Schema):
+class SelectorsOut(ReportingMetadata):
     properties: list[dict]
     vendors: list[dict]
     categories: list[dict]
     subcategories: list[dict]
+    units: list[dict]
 
 
 class CoverageOut(Schema):
