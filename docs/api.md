@@ -26,10 +26,15 @@ deletion cascade. Confirmations require `add_serviceinvoiceexception`; annotatio
 reads, corrections and deletion require staff and the corresponding permissions.
 
 Reporting tokens can GET `/me`, `/reports/selectors`, `/reports/summary`,
-`/reports/costs`, `/reports/consumption`, `/reports/billed-power` and `/reports/consumption-issues`.
-They cannot access configuration, pending proposals, originals, coverage or writes,
+`/reports/costs`, `/reports/consumption`, `/reports/billed-power`, `/reports/consumption-issues`,
+`/reports/missing-invoices`, `/reports/review-queue`, `/reports/attention` and `/reports/invoice-costs`.
+The new projections expose declared coverage facts and content-review metadata.
+They cannot access configuration, proposal bodies, originals, legacy `/reports/invoice-coverage` or writes,
 even when owned by a superuser. HTML workflow access remains available to signed-in
 active accounts, and automation tokens inherit that same shared-installation access.
+
+Reporting tokens cover the shared installation. Property filters select data; they
+are not an authorization boundary. Property-scoped credentials are a separate future feature.
 
 `GET /api/v1/openapi.json` accepts either token profile or a staff session.
 `/api/v1/docs` is a staff-session-only interactive viewer using collected local
@@ -371,7 +376,7 @@ container is replaced when both applications retain their state.
 Build the development and browser images, then run the disposable integration:
 
 ```sh
-uv run --no-project --python 3.14 tools/check_api_grafana.py
+python -m tools.check_api_grafana
 ```
 
 The driver keeps disposable API tokens in memory and passes only their SHA-256 digests
@@ -384,6 +389,14 @@ selections, UTC month/period endpoints, live approvals/corrections, the sequenti
 client example and visible bounds failures, then removes only
 that check project's containers and volume. It uses Grafana 13.2.4 and Infinity 4.1.6.
 Installation Grafana provisioning is separate deployment work.
+
+The [coverage, review and invoice-list contract](api/reporting-contract.md) describes
+the four new projections and consumer handoff. The
+[synthetic responses and Infinity queries](api/reporting-examples.json) include
+empty, unknown, shared, missing and paginated cases. Regenerate or verify them in
+the Linux development image with `python -m tools.generate_reporting_examples`
+or `python -m tools.generate_reporting_examples --check`. The integration driver
+checks these examples and the live routes without a companion dashboard.
 
 To validate the companion repository's generated overview through the same disposable
 Infinity backend, run `python -m tools.check_api_grafana --overview

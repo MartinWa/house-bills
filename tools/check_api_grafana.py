@@ -350,6 +350,9 @@ def check(credentials, environment, overview=None):
     assert status != 200 or result["results"]["A"].get("error"), "Broad filters must fail visibly."
     dashboard = json.loads(Path("docs/api/grafana-dashboard.json").read_text(encoding="utf-8"))
     check_dashboard_group_totals(dashboard)
+    from .check_reporting_projections import run as check_reporting_projections
+
+    check_reporting_projections()
     if overview is not None:
         from .check_reporting_overview import run
 

@@ -103,9 +103,11 @@ WITH selected_usage AS (
 """
 
 
-def filters_sql(filters, *, usage=False, dates=True):
+def filters_sql(filters, *, usage=False, dates=True, strict_ids=False):
     clauses, params = [], []
     for name in ("property_id", "vendor_id"):
+        if strict_ids and filters.get(name) is not None and not filters[name]:
+            clauses.append("0=1")
         if filters.get(name):
             clauses.append(f"{name} IN ({','.join('?' for _ in filters[name])})")
             params.extend(filters[name])
@@ -128,9 +130,9 @@ def filters_sql(filters, *, usage=False, dates=True):
     return " AND ".join(clauses) or "1=1", params
 
 
-def resolved_filters(reader, filters, kind):
+def resolved_filters(reader, filters, kind, *, strict_ids=False):
     result = dict(filters)
-    if len(set(result.get("property_id", []))) > MAX_PROPERTIES:
+    if len(set(result.get("property_id") or [])) > MAX_PROPERTIES:
         raise ReportTooBroad("100 property IDs")
     bounds = []
     projections = (
@@ -144,7 +146,7 @@ def resolved_filters(reader, filters, kind):
     )
     for projection in projections:
         usage = projection != "costs"
-        where, params = filters_sql(filters, usage=usage)
+        where, params = filters_sql(filters, usage=usage, strict_ids=strict_ids)
         table = {
             "costs": "reporting_costs",
             "consumption": "selected_usage",
@@ -409,3 +411,78 @@ def read_selectors():
             ],
             "subcategories": subcategories,
         }
+
+
+INVOICE_COST_SORT = (
+    "invoice_date",
+    "invoice_id",
+    "vendor_name",
+    "currency",
+    "invoice_kind",
+    "review_revision",
+    "net_minor",
+    "vat_minor",
+    "gross_minor",
+)
+
+
+def read_invoice_costs(*, filters, limit=50, offset=0, sort=None):
+    """Paginate complete invoice shares, without returning allocation details."""
+    with reporting_reader() as reader:
+        catalogue = report_labels(reader)
+        if filters.get("subcategory") is not None and filters["subcategory"] not in catalogue:
+            from .api.errors import invalid_parameter
+
+            invalid_parameter("subcategory")
+        filters = resolved_filters(reader, filters, "costs", strict_ids=True)
+        base = {
+            **metadata(),
+            "filters": filters,
+            "effective_date_bounds": {key: filters.get(key) for key in ("date_from", "date_to")},
+        }
+        where, params = filters_sql(filters, strict_ids=True)
+        cte = f"WITH selected AS (SELECT * FROM reporting_costs WHERE {where}), grouped AS (" + (
+            "SELECT invoice_id, currency, document_id, vendor_id, vendor_name, invoice_date, "
+            "invoice_kind, review_revision, "
+            + ", ".join(
+                f"CASE WHEN count({field})=count(*) THEN sum({field}) END AS {field}"
+                for field in ("net_minor", "vat_minor", "gross_minor")
+            )
+            + ", count(*) AS allocation_count FROM selected GROUP BY invoice_id, currency) "
+        )
+        count = reader.execute(cte + "SELECT count(*) FROM grouped", params).fetchone()[0]
+        if count > MAX_GROUPS:
+            raise ReportTooBroad("10,000 invoice cost groups")
+        order = []
+        for key in sort or ("-invoice_date", "invoice_id"):
+            name = key.removeprefix("-")
+            if name not in INVOICE_COST_SORT:
+                raise ValueError("Unsupported invoice sort key")
+            order += [
+                f"g.{name} IS NULL",
+                f"g.{name}" + (" DESC" if key.startswith("-") else " ASC"),
+            ]
+        rows = [
+            dict(row)
+            for row in reader.execute(
+                cte
+                + "SELECT g.*, d.source FROM grouped g JOIN bills_document d ON d.id=g.document_id "
+                + f"ORDER BY {', '.join(order)} LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            )
+        ]
+        properties = {}
+        if rows:
+            ids = [row["invoice_id"] for row in rows]
+            for property_row in reader.execute(
+                cte
+                + "SELECT DISTINCT invoice_id, property_id, property_name FROM selected "
+                + f"WHERE invoice_id IN ({','.join('?' for _ in ids)}) ORDER BY property_id",
+                [*params, *ids],
+            ):
+                properties.setdefault(property_row["invoice_id"], []).append(
+                    {key: property_row[key] for key in ("property_id", "property_name")}
+                )
+        for row in rows:
+            row["properties"] = properties.get(row["invoice_id"], [])
+        return {**base, "count": count, "items": timestamps(rows)}

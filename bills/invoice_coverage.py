@@ -2,6 +2,7 @@
 
 import json
 from collections import Counter, defaultdict
+from contextlib import nullcontext
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 
@@ -50,34 +51,94 @@ def _matches(allocation, service):
     )
 
 
-def _snapshot(start, end):
+def _snapshot(start, end, *, reader=None, selection=None):
     """Configuration and receipt states belong to the same read-only snapshot."""
     params = (start.isoformat(), add_months(end, 1).isoformat())
-    with reporting_reader() as reader:
+    with reporting_reader() if reader is None else nullcontext(reader) as reader:
+        service_where, service_params = "1=1", []
+        if selection is not None:
+            from .api_reporting import filters_sql
+
+            selected_where, selected_params = filters_sql(
+                {key: value for key, value in selection.items() if key != "vendor_id"},
+                dates=False,
+                strict_ids=True,
+            )
+            vendor_where, vendor_params = filters_sql(
+                {"vendor_id": selection.get("vendor_id")},
+                dates=False,
+                strict_ids=True,
+            )
+            selected_where += " AND start_month <= ? AND (end_month IS NULL OR end_month >= ?)"
+            selected_params += [end.isoformat(), start.isoformat()]
+            selected_sql = f"SELECT id FROM bills_propertyservice WHERE {selected_where}"
+            relevant_vendors = (
+                "SELECT vendor_id FROM bills_servicevendorassignment "
+                f"WHERE property_service_id IN ({selected_sql}) AND {vendor_where} "
+                "AND start_month <= ? AND (end_month IS NULL OR end_month >= ?)"
+            )
+            service_where = (
+                f"s.id IN ({selected_sql}) OR s.id IN ("
+                "SELECT property_service_id FROM bills_servicevendorassignment "
+                f"WHERE vendor_id IN ({relevant_vendors}))"
+            )
+            service_params = [
+                *selected_params,
+                *selected_params,
+                *vendor_params,
+                end.isoformat(),
+                start.isoformat(),
+            ]
         services = [
             SimpleNamespace(**dict(row))
             for row in reader.execute(
                 "SELECT s.*, p.name AS property_name FROM bills_propertyservice s "
-                "JOIN bills_property p ON p.id=s.property_id ORDER BY p.name, s.id"
+                f"JOIN bills_property p ON p.id=s.property_id WHERE {service_where} "
+                "ORDER BY p.name, s.id",
+                service_params,
             )
         ]
+        # SQL subqueries avoid parameter limits for shared bills with many services.
+        service_subquery = "SELECT s.id FROM bills_propertyservice s WHERE " + service_where
+        assignment_where = (
+            f"a.property_service_id IN ({service_subquery})" if selection is not None else "1=1"
+        )
         assignments = [
             SimpleNamespace(**dict(row))
             for row in reader.execute(
                 "SELECT a.*, v.name AS vendor_name FROM bills_servicevendorassignment a "
-                "JOIN bills_vendor v ON v.id=a.vendor_id ORDER BY a.start_month, a.id"
+                f"JOIN bills_vendor v ON v.id=a.vendor_id WHERE {assignment_where} "
+                "ORDER BY a.start_month, a.id",
+                service_params if selection is not None else [],
             )
         ]
+        receipt_where = "1=1"
+        if selection is not None:
+            receipt_where = (
+                "vendor_id IN (SELECT a.vendor_id FROM bills_servicevendorassignment a WHERE "
+                + assignment_where
+                + ")"
+            )
+        receipt_params = service_params if selection is not None else []
+        section_receipt_where = receipt_where.replace("vendor_id IN", "i.vendor_id IN", 1)
+        pending_where = receipt_where.replace(
+            "vendor_id IN", "json_extract(e.candidate, '$.routing.vendor_id') IN", 1
+        )
         schedules = [
             SimpleNamespace(**dict(row))
             for row in reader.execute(
-                "SELECT * FROM bills_vendorbillingschedule ORDER BY start_month, id"
+                f"SELECT * FROM bills_vendorbillingschedule WHERE {receipt_where} "
+                "ORDER BY start_month, id",
+                receipt_params,
             )
         ]
         patterns = [
             SimpleNamespace(**dict(row))
             for row in reader.execute(
-                "SELECT * FROM bills_servicecostschedule ORDER BY start_month, id"
+                "SELECT c.* FROM bills_servicecostschedule c JOIN bills_servicevendorassignment a "
+                f"ON a.id=c.service_vendor_assignment_id WHERE {assignment_where} "
+                "ORDER BY c.start_month, c.id",
+                receipt_params,
             )
         ]
         exceptions = [
@@ -90,17 +151,20 @@ def _snapshot(start, end):
         invoices = [
             dict(row)
             for row in reader.execute(
-                "SELECT * FROM bills_invoice WHERE kind='invoice' "
+                "SELECT id, document_id, vendor_id, status, invoice_date, review_revision "
+                f"FROM bills_invoice WHERE kind='invoice' AND {receipt_where} "
                 "AND invoice_date >= ? AND invoice_date < ?",
-                params,
+                [*receipt_params, *params],
             )
         ]
         sections = [
             dict(row)
             for row in reader.execute(
-                "SELECT b.* FROM bills_billingsection b JOIN bills_invoice i ON i.id=b.invoice_id "
-                "WHERE i.kind='invoice' AND i.invoice_date >= ? AND i.invoice_date < ?",
-                params,
+                "SELECT b.invoice_id, b.property_id, b.category, b.subcategory, b.start, b.end "
+                "FROM bills_billingsection b JOIN bills_invoice i ON i.id=b.invoice_id "
+                f"WHERE i.kind='invoice' AND {section_receipt_where} "
+                "AND i.invoice_date >= ? AND i.invoice_date < ?",
+                [*receipt_params, *params],
             )
         ]
         pending = [
@@ -109,7 +173,9 @@ def _snapshot(start, end):
                 "SELECT e.document_id, e.candidate FROM bills_extractionattempt e "
                 "JOIN bills_document d ON d.id=e.document_id AND d.extraction_revision=e.revision "
                 "WHERE NOT EXISTS (SELECT 1 FROM bills_invoice i "
-                "WHERE i.document_id=e.document_id AND i.status='approved')"
+                "WHERE i.document_id=e.document_id AND i.status='approved') "
+                f"AND {pending_where}",
+                receipt_params,
             )
         ]
     for row in [*services, *assignments, *schedules, *patterns]:
@@ -162,7 +228,9 @@ def _snapshot(start, end):
     return services, assignments, schedules, patterns, exceptions, receipts
 
 
-def _allocation(configured, assignment, schedule, month, as_of, bills, exceptions, patterns):
+def _allocation(
+    configured, assignment, schedule, month, as_of, bills, exceptions, patterns, catalogue=None
+):
     approved = [bill for bill in bills if bill["status"] == "approved"]
     pending = [bill for bill in bills if bill["status"] != "approved"]
     approved_matches = [
@@ -188,8 +256,13 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         and scoped["reviewed_invoice_id"] == approved[0]["id"]
         and scoped["reviewed_revision"] == approved[0]["review_revision"]
     )
-    not_sent_exception = any(
-        item and item["reviewed_invoice_id"] is None for item in (scoped, global_exception)
+    not_sent_exception = next(
+        (
+            item
+            for item in (scoped, global_exception)
+            if item and item["reviewed_invoice_id"] is None
+        ),
+        None,
     )
     cost_required = cost_is_expected(configured, assignment, month, patterns)
     pattern = cost_pattern(assignment, month, patterns)
@@ -214,6 +287,9 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         if as_of >= add_months(month, 1) + timedelta(days=schedule.grace_days)
         else "expected"
     )
+    confirmation = (
+        (scoped if reviewed_exception else not_sent_exception) if status == "not_expected" else None
+    )
     return {
         "property_service_id": configured.id,
         "property_id": configured.property_id,
@@ -221,7 +297,9 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         "category": configured.category,
         "category_label": CATEGORY_LABELS[configured.category],
         "subcategory": configured.subcategory or "",
-        "subcategory_label": subcategory_label(configured.category, configured.subcategory)
+        "subcategory_label": subcategory_label(
+            configured.category, configured.subcategory, catalogue=catalogue
+        )
         if configured.subcategory
         else "",
         "status": status,
@@ -234,6 +312,7 @@ def _allocation(configured, assignment, schedule, month, as_of, bills, exception
         else ("Required on every vendor bill" if configured.mode == "regular" else "As needed"),
         "exception_id": scoped["id"] if scoped else None,
         "exception_reason": scoped["reason"] if scoped else "",
+        "confirmation_reason": confirmation["reason"] if confirmation else None,
         "approved_invoice_count": len(approved_matches),
         "review_document_count": len(pending_matches),
         "can_confirm_not_sent": status == "incomplete" and len(approved) == 1 and not pending,
@@ -250,15 +329,92 @@ def read_invoice_coverage(
     date_to=None,
     as_of=None,
 ):
+    result = build_invoice_coverage(
+        property_id=property_id,
+        vendor_id=vendor_id,
+        service=service,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        as_of=as_of,
+    )
+    for row in result["coverage_rows"]:
+        row.pop("approved_document_ids")
+        row.pop("billed_periods")
+        for service in [*row["required_services"], *row["optional_services"]]:
+            service.pop("confirmation_reason")
+    return result
+
+
+def build_invoice_coverage(
+    *,
+    property_id=None,
+    vendor_id=None,
+    service="",
+    status="",
+    date_from=None,
+    date_to=None,
+    as_of=None,
+    reader=None,
+    property_ids=None,
+    vendor_ids=None,
+    subcategory=None,
+    max_groups=None,
+    catalogue=None,
+):
+    """Construct domain facts using an optional caller-owned read snapshot."""
     as_of = as_of or datetime.now(UTC).date()
     start = (date_from or as_of.replace(month=1, day=1)).replace(day=1)
     end = (date_to or as_of).replace(day=1)
-    services, assignments, schedules, patterns, exceptions, receipts = _snapshot(start, end)
+    if reader is not None and catalogue is None:
+        catalogue = {
+            row["key"]: row["name"]
+            for row in reader.execute("SELECT key, name FROM bills_subcategory")
+        }
+    services, assignments, schedules, patterns, exceptions, receipts = _snapshot(
+        start,
+        end,
+        reader=reader,
+        selection={
+            "property_id": property_ids,
+            "vendor_id": vendor_ids,
+            "category": service or None,
+            "subcategory": subcategory,
+        }
+        if reader is not None
+        else None,
+    )
     grouped = defaultdict(list)
+    selected_service_ids = {
+        row.id
+        for row in services
+        if (property_id is None or row.property_id == property_id)
+        and (property_ids is None or row.property_id in property_ids)
+        and (not service or row.category == service)
+        and (subcategory is None or row.subcategory == subcategory)
+    }
+    relevant_vendors = {
+        row.vendor_id for row in assignments if row.property_service_id in selected_service_ids
+    }
+    materialized_groups = set()
+
+    def append_group(key, item):
+        if reader is not None and key[0] is not None and key[0] not in relevant_vendors:
+            return
+        if item[0].id in selected_service_ids:
+            materialized_groups.add(key)
+            if max_groups is not None and len(materialized_groups) > max_groups:
+                from .waste_reporting import ReportTooBroad
+
+                raise ReportTooBroad("10,000 coverage groups")
+        grouped[key].append(item)
+
     configured_services = []
     for configured in services:
         history = [row for row in assignments if row.property_service_id == configured.id]
         if vendor_id is not None and not any(row.vendor_id == vendor_id for row in history):
+            continue
+        if vendor_ids is not None and not any(row.vendor_id in vendor_ids for row in history):
             continue
         if configured.start_month > end or (configured.end_month and configured.end_month < start):
             continue
@@ -267,7 +423,9 @@ def read_invoice_coverage(
                 **vars(configured),
                 "service": configured.category,
                 "category_label": CATEGORY_LABELS[configured.category],
-                "subcategory_label": subcategory_label(configured.category, configured.subcategory)
+                "subcategory_label": subcategory_label(
+                    configured.category, configured.subcategory, catalogue=catalogue
+                )
                 if configured.subcategory
                 else "",
                 "frequency_label": PropertyService.Mode(configured.mode).label,
@@ -294,10 +452,18 @@ def read_invoice_coverage(
         month = max(start, configured.start_month)
         while month <= end and contains(configured, month):
             applicable = [row for row in history if row.is_active and contains(row, month)]
-            if not applicable and vendor_id is None and configured.mode == "regular":
-                grouped[(None, month, configured.id)].append((configured, None, None))
+            if (
+                not applicable
+                and vendor_id is None
+                and vendor_ids is None
+                and configured.mode == "regular"
+            ):
+                if reader is None or configured.id in selected_service_ids:
+                    append_group((None, month, configured.id), (configured, None, None))
             for assignment in applicable:
                 if vendor_id is not None and assignment.vendor_id != vendor_id:
+                    continue
+                if vendor_ids is not None and assignment.vendor_id not in vendor_ids:
                     continue
                 schedule = next(
                     (
@@ -310,17 +476,30 @@ def read_invoice_coverage(
                     None,
                 )
                 if schedule is None or expected(schedule, month):
-                    grouped[(assignment.vendor_id, month, None)].append(
-                        (configured, assignment, schedule)
+                    append_group(
+                        (assignment.vendor_id, month, None), (configured, assignment, schedule)
                     )
             month = add_months(month, 1)
     configured_services = [
         item
         for item in configured_services
         if (property_id is None or item["property_id"] == property_id)
+        and (property_ids is None or item["property_id"] in property_ids)
         and (not service or item["category"] == service)
+        and (subcategory is None or item["subcategory"] == subcategory)
     ]
     displayed_service_ids = {item["id"] for item in configured_services}
+    if max_groups is not None:
+        from .waste_reporting import ReportTooBroad
+
+        if (
+            sum(
+                any(item[0].id in displayed_service_ids for item in required)
+                for required in grouped.values()
+            )
+            > max_groups
+        ):
+            raise ReportTooBroad("10,000 coverage groups")
     rows = []
     for (vendor, month, _), required in grouped.items():
         # Receipt eligibility belongs to the whole vendor bill, including hidden services.
@@ -342,7 +521,7 @@ def read_invoice_coverage(
             (item for item in relevant_exceptions if item["property_service_id"] is None), None
         )
         allocation_rows = [
-            _allocation(*item, month, as_of, bills, relevant_exceptions, patterns)
+            _allocation(*item, month, as_of, bills, relevant_exceptions, patterns, catalogue)
             for item in required
         ]
         required_rows = [item for item in allocation_rows if item["cost_required"]]
@@ -407,6 +586,13 @@ def read_invoice_coverage(
                 "invoice_id": approved[0]["id"] if approved else None,
                 "invoice_revision": approved[0]["review_revision"] if approved else None,
                 "invoice_ids": [bill["id"] for bill in approved],
+                "approved_document_ids": [bill["document_id"] for bill in approved],
+                "billed_periods": [
+                    (allocation.get("start"), allocation.get("end"))
+                    for bill in approved
+                    for allocation in bill["sections"]
+                    if any(_matches(allocation, item[0]) for item in required)
+                ],
                 "review_document_id": pending[0]["document_id"] if pending else None,
                 "review_document_ids": [bill["document_id"] for bill in pending],
                 "exception_id": global_exception["id"] if global_exception else None,

@@ -16,6 +16,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from filelock import Timeout
 
+from .content_review import CONTENT_REVIEW_STATES
 from .deleting import StaleDeletionError, deletion_token
 from .deleting import delete_document as remove_document
 from .forms import (
@@ -176,7 +177,13 @@ def _documents_response(request, *, upload_form=None, status=200):
         processing = form.cleaned_data["processing"]
         if processing == DocumentFilterForm.ATTENTION:
             records = records.filter(
-                ~Q(state=Document.State.READY)
+                Q(
+                    state__in=[
+                        *CONTENT_REVIEW_STATES,
+                        Document.State.PENDING,
+                        Document.State.PROCESSING,
+                    ]
+                )
                 | Q(state=Document.State.READY, storage_state=Document.StorageState.INBOX)
                 | Q(
                     storage_state__in=[

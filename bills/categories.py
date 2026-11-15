@@ -99,11 +99,13 @@ def waste_cost_subcategory(source_texts):
     return next(iter(categories)) if len(categories) == 1 else ""
 
 
-def subcategory_label(service, subcategory=""):
+def subcategory_label(service, subcategory="", *, catalogue=None):
     key = getattr(subcategory, "pk", subcategory) or ""
     if not key and service in ("electricity_network", "electricity_supply"):
         key = service
     if key:
+        if catalogue is not None:
+            return catalogue.get(key, SUBCATEGORY_LABELS.get(key, key))
         from .models import Subcategory
 
         row = Subcategory.objects.filter(pk=key).first()

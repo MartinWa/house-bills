@@ -11088,11 +11088,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -11103,11 +11103,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -12722,7 +12722,7 @@
           }
         },
         "tags": [
-          "Approved reporting"
+          "Read-only reporting"
         ],
         "security": [
           {
@@ -12742,11 +12742,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -12757,11 +12757,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -12922,7 +12922,7 @@
           }
         },
         "tags": [
-          "Approved reporting"
+          "Read-only reporting"
         ],
         "security": [
           {
@@ -12942,11 +12942,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -12957,11 +12957,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -13200,7 +13200,7 @@
           }
         },
         "tags": [
-          "Approved reporting"
+          "Read-only reporting"
         ],
         "security": [
           {
@@ -13220,11 +13220,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -13235,11 +13235,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -13480,7 +13480,7 @@
           }
         },
         "tags": [
-          "Approved reporting"
+          "Read-only reporting"
         ],
         "security": [
           {
@@ -13500,11 +13500,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -13515,11 +13515,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -13726,7 +13726,7 @@
           }
         },
         "tags": [
-          "Approved reporting"
+          "Read-only reporting"
         ],
         "security": [
           {
@@ -13746,11 +13746,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -13761,11 +13761,11 @@
             "required": false,
             "schema": {
               "type": "array",
-              "maxItems": 100,
               "items": {
                 "type": "integer",
                 "minimum": 1
-              }
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
             },
             "style": "form",
             "explode": true
@@ -13972,7 +13972,7 @@
           }
         },
         "tags": [
-          "Approved reporting"
+          "Read-only reporting"
         ],
         "security": [
           {
@@ -14175,7 +14175,1057 @@
           }
         },
         "tags": [
-          "Approved reporting"
+          "Read-only reporting"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/missing-invoices": {
+      "get": {
+        "operationId": "bills_api_reports_missing_invoices",
+        "summary": "Missing Invoices",
+        "parameters": [
+          {
+            "name": "property_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "missing",
+                "needs_review",
+                "received",
+                "expected",
+                "not_expected",
+                "unassigned",
+                "unscheduled",
+                "incomplete",
+                "all",
+                "attention"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rows",
+                "summary"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: expected_month, vendor_id, vendor_name, status, missing_after, days_overdue, expectation_key"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MissingInvoicesPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CoverageSummary"
+                    }
+                  ],
+                  "title": "Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Read-only reporting"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/review-queue": {
+      "get": {
+        "operationId": "bills_api_reports_review_queue",
+        "summary": "Review Queue",
+        "parameters": [
+          {
+            "name": "property_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "reason_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "manual_entry",
+                "parse_failed",
+                "proposal_changes",
+                "reparse_confirmation",
+                "vendor_unresolved",
+                "property_unresolved",
+                "validation_required",
+                "awaiting_approval"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rows",
+                "summary"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: attention_since, age_days, invoice_date, vendor_name, reason_key, document_id"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ReviewQueuePage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ReviewQueueSummary"
+                    }
+                  ],
+                  "title": "Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Read-only reporting"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/attention": {
+      "get": {
+        "operationId": "bills_api_reports_attention",
+        "summary": "Attention",
+        "parameters": [
+          {
+            "name": "property_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "coverage_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "coverage_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "review_date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "review_date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "rows",
+                "summary"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: attention_date, kind, reason_key, attention_key"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AttentionPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AttentionSummary"
+                    }
+                  ],
+                  "title": "Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Read-only reporting"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/invoice-costs": {
+      "get": {
+        "operationId": "bills_api_reports_invoice_costs",
+        "summary": "Invoice Costs",
+        "parameters": [
+          {
+            "name": "property_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SEK"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: invoice_date, invoice_id, vendor_name, currency, invoice_kind, review_revision, net_minor, vat_minor, gross_minor"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceCostsPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Read-only reporting"
         ],
         "security": [
           {
@@ -20569,6 +21619,1815 @@
           "counts"
         ],
         "title": "CoverageOut",
+        "type": "object"
+      },
+      "CoverageFilters": {
+        "properties": {
+          "property_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "date_from": {
+            "format": "date",
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "format": "date",
+            "title": "Date To",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "date_from",
+          "date_to",
+          "as_of",
+          "status"
+        ],
+        "title": "CoverageFilters",
+        "type": "object"
+      },
+      "CoverageRow": {
+        "properties": {
+          "expectation_key": {
+            "title": "Expectation Key",
+            "type": "string"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "expected_month": {
+            "format": "date",
+            "title": "Expected Month",
+            "type": "string"
+          },
+          "expected_month_time": {
+            "title": "Expected Month Time",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "receipt_status": {
+            "title": "Receipt Status",
+            "type": "string"
+          },
+          "missing_after": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing After"
+          },
+          "days_overdue": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Overdue"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportProperty"
+            },
+            "title": "Properties"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageService"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "approved_invoice_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Approved Invoice Ids",
+            "type": "array"
+          },
+          "approved_document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Approved Document Ids",
+            "type": "array"
+          },
+          "pending_document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Pending Document Ids",
+            "type": "array"
+          },
+          "document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Document Ids",
+            "type": "array"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          }
+        },
+        "required": [
+          "expectation_key",
+          "vendor_id",
+          "vendor_name",
+          "expected_month",
+          "expected_month_time",
+          "status",
+          "status_label",
+          "receipt_status",
+          "missing_after",
+          "days_overdue",
+          "properties",
+          "services",
+          "approved_invoice_ids",
+          "approved_document_ids",
+          "pending_document_ids",
+          "document_ids",
+          "invoice_id",
+          "document_id",
+          "period_start",
+          "period_end"
+        ],
+        "title": "CoverageRow",
+        "type": "object"
+      },
+      "CoverageService": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "property_service_id": {
+            "title": "Property Service Id",
+            "type": "integer"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "category_name": {
+            "title": "Category Name",
+            "type": "string"
+          },
+          "subcategory": {
+            "title": "Subcategory",
+            "type": "string"
+          },
+          "subcategory_name": {
+            "title": "Subcategory Name",
+            "type": "string"
+          },
+          "classification": {
+            "enum": [
+              "required",
+              "optional"
+            ],
+            "title": "Classification",
+            "type": "string"
+          },
+          "cost_required": {
+            "title": "Cost Required",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_label": {
+            "title": "Status Label",
+            "type": "string"
+          },
+          "confirmation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmation Reason"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "property_service_id",
+          "category",
+          "category_name",
+          "subcategory",
+          "subcategory_name",
+          "classification",
+          "cost_required",
+          "status",
+          "status_label",
+          "confirmation_reason"
+        ],
+        "title": "CoverageService",
+        "type": "object"
+      },
+      "CoverageSummary": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/CoverageFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "expectation_count": {
+            "title": "Expectation Count",
+            "type": "integer"
+          },
+          "expected_invoice_count": {
+            "title": "Expected Invoice Count",
+            "type": "integer"
+          },
+          "received_invoice_count": {
+            "title": "Received Invoice Count",
+            "type": "integer"
+          },
+          "missing_invoice_count": {
+            "title": "Missing Invoice Count",
+            "type": "integer"
+          },
+          "review_invoice_count": {
+            "title": "Review Invoice Count",
+            "type": "integer"
+          },
+          "counts_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Status",
+            "type": "object"
+          },
+          "oldest_missing_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Missing Month"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "mode",
+          "as_of",
+          "filters",
+          "effective_date_bounds",
+          "expectation_count",
+          "expected_invoice_count",
+          "received_invoice_count",
+          "missing_invoice_count",
+          "review_invoice_count",
+          "counts_by_status",
+          "oldest_missing_month"
+        ],
+        "title": "CoverageSummary",
+        "type": "object"
+      },
+      "MissingInvoicesPage": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/CoverageFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "expectation_count": {
+            "title": "Expectation Count",
+            "type": "integer"
+          },
+          "expected_invoice_count": {
+            "title": "Expected Invoice Count",
+            "type": "integer"
+          },
+          "received_invoice_count": {
+            "title": "Received Invoice Count",
+            "type": "integer"
+          },
+          "missing_invoice_count": {
+            "title": "Missing Invoice Count",
+            "type": "integer"
+          },
+          "review_invoice_count": {
+            "title": "Review Invoice Count",
+            "type": "integer"
+          },
+          "counts_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Status",
+            "type": "object"
+          },
+          "oldest_missing_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Missing Month"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "mode",
+          "as_of",
+          "filters",
+          "effective_date_bounds",
+          "expectation_count",
+          "expected_invoice_count",
+          "received_invoice_count",
+          "missing_invoice_count",
+          "review_invoice_count",
+          "counts_by_status",
+          "oldest_missing_month",
+          "items",
+          "count",
+          "next",
+          "previous",
+          "has_more"
+        ],
+        "title": "MissingInvoicesPage",
+        "type": "object"
+      },
+      "ReportProperty": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name"
+        ],
+        "title": "ReportProperty",
+        "type": "object"
+      },
+      "ReviewFilters": {
+        "properties": {
+          "property_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Id"
+          },
+          "reason_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Key"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "reason_key",
+          "date_from",
+          "date_to",
+          "as_of"
+        ],
+        "title": "ReviewFilters",
+        "type": "object"
+      },
+      "ReviewProperty": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "association": {
+            "enum": [
+              "proposed",
+              "approved",
+              "both"
+            ],
+            "title": "Association",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "association"
+        ],
+        "title": "ReviewProperty",
+        "type": "object"
+      },
+      "ReviewQueuePage": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReviewFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "review_document_count": {
+            "title": "Review Document Count",
+            "type": "integer"
+          },
+          "counts_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Reason",
+            "type": "object"
+          },
+          "oldest_attention_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Attention Since"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "mode",
+          "as_of",
+          "filters",
+          "effective_date_bounds",
+          "review_document_count",
+          "counts_by_reason",
+          "oldest_attention_since",
+          "items",
+          "count",
+          "next",
+          "previous",
+          "has_more"
+        ],
+        "title": "ReviewQueuePage",
+        "type": "object"
+      },
+      "ReviewQueueRow": {
+        "properties": {
+          "reason_key": {
+            "title": "Reason Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Kind"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "value_source": {
+            "enum": [
+              "proposal",
+              "empty"
+            ],
+            "title": "Value Source",
+            "type": "string"
+          },
+          "routing_status": {
+            "enum": [
+              "resolved",
+              "partial",
+              "unresolved"
+            ],
+            "title": "Routing Status",
+            "type": "string"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewProperty"
+            },
+            "title": "Properties"
+          },
+          "reason_details": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewReason"
+            },
+            "title": "Reason Details",
+            "type": "array"
+          },
+          "attention_since": {
+            "format": "date-time",
+            "title": "Attention Since",
+            "type": "string"
+          },
+          "age_days": {
+            "title": "Age Days",
+            "type": "integer"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          }
+        },
+        "required": [
+          "reason_key",
+          "reason",
+          "document_id",
+          "invoice_id",
+          "vendor_id",
+          "vendor_name",
+          "invoice_date",
+          "invoice_kind",
+          "net_minor",
+          "vat_minor",
+          "gross_minor",
+          "currency",
+          "value_source",
+          "routing_status",
+          "properties",
+          "reason_details",
+          "attention_since",
+          "age_days",
+          "period_start",
+          "period_end"
+        ],
+        "title": "ReviewQueueRow",
+        "type": "object"
+      },
+      "ReviewQueueSummary": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReviewFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "review_document_count": {
+            "title": "Review Document Count",
+            "type": "integer"
+          },
+          "counts_by_reason": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Reason",
+            "type": "object"
+          },
+          "oldest_attention_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Attention Since"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "mode",
+          "as_of",
+          "filters",
+          "effective_date_bounds",
+          "review_document_count",
+          "counts_by_reason",
+          "oldest_attention_since"
+        ],
+        "title": "ReviewQueueSummary",
+        "type": "object"
+      },
+      "ReviewReason": {
+        "properties": {
+          "reason_key": {
+            "title": "Reason Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason_key",
+          "reason"
+        ],
+        "title": "ReviewReason",
+        "type": "object"
+      },
+      "AttentionDateBounds": {
+        "properties": {
+          "coverage_date_from": {
+            "format": "date",
+            "title": "Coverage Date From",
+            "type": "string"
+          },
+          "coverage_date_to": {
+            "format": "date",
+            "title": "Coverage Date To",
+            "type": "string"
+          },
+          "review_date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Date From"
+          },
+          "review_date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Date To"
+          }
+        },
+        "required": [
+          "coverage_date_from",
+          "coverage_date_to",
+          "review_date_from",
+          "review_date_to"
+        ],
+        "title": "AttentionDateBounds",
+        "type": "object"
+      },
+      "AttentionFilters": {
+        "properties": {
+          "property_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Id"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "coverage_date_from": {
+            "format": "date",
+            "title": "Coverage Date From",
+            "type": "string"
+          },
+          "coverage_date_to": {
+            "format": "date",
+            "title": "Coverage Date To",
+            "type": "string"
+          },
+          "review_date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Date From"
+          },
+          "review_date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Date To"
+          }
+        },
+        "required": [
+          "property_id",
+          "as_of",
+          "coverage_date_from",
+          "coverage_date_to",
+          "review_date_from",
+          "review_date_to"
+        ],
+        "title": "AttentionFilters",
+        "type": "object"
+      },
+      "AttentionPage": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AttentionFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/AttentionDateBounds"
+          },
+          "attention_count": {
+            "title": "Attention Count",
+            "type": "integer"
+          },
+          "review_document_count": {
+            "title": "Review Document Count",
+            "type": "integer"
+          },
+          "coverage_attention_count": {
+            "title": "Coverage Attention Count",
+            "type": "integer"
+          },
+          "missing_invoice_count": {
+            "title": "Missing Invoice Count",
+            "type": "integer"
+          },
+          "oldest_missing_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Missing Month"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "mode",
+          "as_of",
+          "filters",
+          "effective_date_bounds",
+          "attention_count",
+          "review_document_count",
+          "coverage_attention_count",
+          "missing_invoice_count",
+          "oldest_missing_month",
+          "items",
+          "count",
+          "next",
+          "previous",
+          "has_more"
+        ],
+        "title": "AttentionPage",
+        "type": "object"
+      },
+      "AttentionRow": {
+        "properties": {
+          "reason_key": {
+            "title": "Reason Key",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "attention_key": {
+            "title": "Attention Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "document",
+              "coverage"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "attention_date": {
+            "format": "date",
+            "title": "Attention Date",
+            "type": "string"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReviewProperty"
+                },
+                {
+                  "$ref": "#/components/schemas/ReportProperty"
+                }
+              ]
+            },
+            "title": "Properties"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageService"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "related_expectation_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Expectation Keys",
+            "type": "array"
+          },
+          "expected_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Month"
+          },
+          "expected_months": {
+            "items": {
+              "format": "date",
+              "type": "string"
+            },
+            "title": "Expected Months",
+            "type": "array"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "document_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Document Ids",
+            "type": "array"
+          },
+          "review_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Path"
+          },
+          "coverage_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Path"
+          }
+        },
+        "required": [
+          "reason_key",
+          "reason",
+          "attention_key",
+          "kind",
+          "attention_date",
+          "properties",
+          "services",
+          "related_expectation_keys",
+          "expected_month",
+          "expected_months",
+          "period_start",
+          "period_end",
+          "document_id",
+          "invoice_id",
+          "document_ids",
+          "review_path",
+          "coverage_path"
+        ],
+        "title": "AttentionRow",
+        "type": "object"
+      },
+      "AttentionSummary": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AttentionFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/AttentionDateBounds"
+          },
+          "attention_count": {
+            "title": "Attention Count",
+            "type": "integer"
+          },
+          "review_document_count": {
+            "title": "Review Document Count",
+            "type": "integer"
+          },
+          "coverage_attention_count": {
+            "title": "Coverage Attention Count",
+            "type": "integer"
+          },
+          "missing_invoice_count": {
+            "title": "Missing Invoice Count",
+            "type": "integer"
+          },
+          "oldest_missing_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Missing Month"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "mode",
+          "as_of",
+          "filters",
+          "effective_date_bounds",
+          "attention_count",
+          "review_document_count",
+          "coverage_attention_count",
+          "missing_invoice_count",
+          "oldest_missing_month"
+        ],
+        "title": "AttentionSummary",
+        "type": "object"
+      },
+      "InvoiceCostFilters": {
+        "properties": {
+          "property_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          }
+        },
+        "required": [
+          "property_id",
+          "vendor_id",
+          "category",
+          "subcategory",
+          "currency",
+          "date_from",
+          "date_to"
+        ],
+        "title": "InvoiceCostFilters",
+        "type": "object"
+      },
+      "InvoiceCostRow": {
+        "properties": {
+          "invoice_id": {
+            "title": "Invoice Id",
+            "type": "integer"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "integer"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "integer"
+          },
+          "vendor_name": {
+            "title": "Vendor Name",
+            "type": "string"
+          },
+          "invoice_date": {
+            "format": "date",
+            "title": "Invoice Date",
+            "type": "string"
+          },
+          "invoice_time": {
+            "title": "Invoice Time",
+            "type": "integer"
+          },
+          "invoice_kind": {
+            "title": "Invoice Kind",
+            "type": "string"
+          },
+          "review_revision": {
+            "title": "Review Revision",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportProperty"
+            },
+            "title": "Properties"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "allocation_count": {
+            "title": "Allocation Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "invoice_id",
+          "document_id",
+          "vendor_id",
+          "vendor_name",
+          "invoice_date",
+          "invoice_time",
+          "invoice_kind",
+          "review_revision",
+          "source",
+          "properties",
+          "currency",
+          "net_minor",
+          "vat_minor",
+          "gross_minor",
+          "allocation_count"
+        ],
+        "title": "InvoiceCostRow",
+        "type": "object"
+      },
+      "InvoiceCostsPage": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvoiceCostRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/InvoiceCostFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "items",
+          "count",
+          "next",
+          "previous",
+          "filters",
+          "effective_date_bounds",
+          "has_more"
+        ],
+        "title": "InvoiceCostsPage",
         "type": "object"
       },
       "ErrorBody": {

@@ -45,6 +45,20 @@ for that revision. Corrections invalidate that review binding while retaining it
 history; a stale confirmation cannot excuse a missing bill. A later matching
 allocation takes precedence.
 
+Reporting-only API credentials can read labelled expectations, an independent
+content-review queue, and a combined attention table through
+`/reports/missing-invoices`, `/reports/review-queue` and `/reports/attention`.
+Combined rows count each human document decision once and attach its related
+expectations. Coverage statistics still count bills, so these source statistics
+must not be added together. Worker waits and storage-only maintenance are outside
+the content-review queue. See the [reporting contract](api/reporting-contract.md).
+
+For an invoice list with costs, use `/reports/invoice-costs`. Each row contains
+the complete cost for that invoice under the selected filters, including all
+matching allocations before invoice pagination. A property filter returns that
+house's allocated share of a shared bill. The list includes approved invoices
+and signed credits; unknown amounts remain null. It contains no allocation details.
+
 Active regular services without vendors show **Needs vendor**. Assigned vendors
 without applicable schedules show **Needs billing schedule**. Configuration links
 lead to the appropriate editors. The service detail table also retains occasional,
