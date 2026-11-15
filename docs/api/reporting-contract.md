@@ -97,6 +97,10 @@ Service metadata contains IDs, category/subcategory keys and names, required/opt
 classification, status and applicable confirmation reason. Configuration rules and
 private document contents are excluded.
 
+Service `confirmation_reason` is populated only when a confirmation excuses that
+service (`status=not_expected`). Applicable scoped confirmations take precedence
+over bill-wide confirmations; retained annotations that no longer apply are omitted.
+
 The deadline is the following month's first day plus grace days. On the deadline
 `days_overdue` is zero; it is `(as_of - missing_after).days` for missing bills,
 and null for every other status. Actual `period_start`/`period_end` are nullable
@@ -114,6 +118,8 @@ including unfinished manual entries and approved invoices returned to review.
 Pending/processing documents await the worker. Storage-only maintenance on a
 completed document is outside this queue. Identical re-parsing still needs the
 application's explicit completion decision.
+Documents with several retained invoice records still produce one row using the
+review workflow's current invoice.
 
 Rows project the latest compatible extraction candidate, with nullable invoice ID,
 vendor/name, invoice date/kind, net/VAT/gross and currency. `value_source=proposal`

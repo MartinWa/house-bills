@@ -256,8 +256,13 @@ def _allocation(
         and scoped["reviewed_invoice_id"] == approved[0]["id"]
         and scoped["reviewed_revision"] == approved[0]["review_revision"]
     )
-    not_sent_exception = any(
-        item and item["reviewed_invoice_id"] is None for item in (scoped, global_exception)
+    not_sent_exception = next(
+        (
+            item
+            for item in (scoped, global_exception)
+            if item and item["reviewed_invoice_id"] is None
+        ),
+        None,
     )
     cost_required = cost_is_expected(configured, assignment, month, patterns)
     pattern = cost_pattern(assignment, month, patterns)
@@ -282,6 +287,9 @@ def _allocation(
         if as_of >= add_months(month, 1) + timedelta(days=schedule.grace_days)
         else "expected"
     )
+    confirmation = (
+        (scoped if reviewed_exception else not_sent_exception) if status == "not_expected" else None
+    )
     return {
         "property_service_id": configured.id,
         "property_id": configured.property_id,
@@ -304,6 +312,7 @@ def _allocation(
         else ("Required on every vendor bill" if configured.mode == "regular" else "As needed"),
         "exception_id": scoped["id"] if scoped else None,
         "exception_reason": scoped["reason"] if scoped else "",
+        "confirmation_reason": confirmation["reason"] if confirmation else None,
         "approved_invoice_count": len(approved_matches),
         "review_document_count": len(pending_matches),
         "can_confirm_not_sent": status == "incomplete" and len(approved) == 1 and not pending,
@@ -332,6 +341,8 @@ def read_invoice_coverage(
     for row in result["coverage_rows"]:
         row.pop("approved_document_ids")
         row.pop("billed_periods")
+        for service in [*row["required_services"], *row["optional_services"]]:
+            service.pop("confirmation_reason")
     return result
 
 

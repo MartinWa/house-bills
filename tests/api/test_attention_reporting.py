@@ -7,6 +7,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from bills.attention_reporting import read_attention_report
+from bills.invoice_coverage import mark_invoice_not_sent
 from bills.models import (
     ApiToken,
     BillingSection,
@@ -20,7 +21,7 @@ from bills.models import (
     Vendor,
     VendorBillingSchedule,
 )
-from bills.services import record_extraction
+from bills.services import approve_review, record_extraction
 
 from ..test_invoice_coverage import coverage  # noqa: F401
 from .helpers import BASE
@@ -188,6 +189,126 @@ def test_manual_failed_worker_and_storage_membership(api_client, coverage):  # n
     summary = get(client, "review-queue?mode=summary")
     assert sum(summary["counts_by_reason"].values()) == summary["review_document_count"] == 2
     assert get(client, "review-queue?date_to=2020-01-01")["count"] == 0
+
+
+@pytest.mark.parametrize("approved", [False, True])
+def test_review_reports_select_one_current_invoice_per_document(api_client, coverage, approved):  # noqa: F811
+    client, _, _, _ = api_client
+    coverage["schedule"]()
+    proposed, properties = coverage["candidate"](
+        [(coverage["houses"][0], "water", "")], invoice_date=date(2024, 2, 20)
+    )
+    doc = coverage["document"](proposed.reference)
+    current = Invoice.objects.create(document=doc)
+    if approved:
+        # An approved record outranks an earlier draft as well as a later draft.
+        current = Invoice.objects.create(document=doc)
+        current = approve_review(
+            current.pk,
+            expected_revision=0,
+            candidate=proposed,
+            vendor=coverage["vendor"],
+            section_properties=properties,
+            actor=coverage["actor"],
+        )
+        properties = {proposed.sections[0].section_id: coverage["houses"][1]}
+    Invoice.objects.create(document=doc)
+    record_extraction(
+        doc.pk,
+        candidate=proposed,
+        page_evidence=[],
+        routing={
+            "vendor_id": coverage["vendor"].pk,
+            "section_properties": {key: house.pk for key, house in properties.items()},
+            "kind": "invoice",
+        },
+    )
+    queue = get(client, "review-queue?limit=1")
+    assert queue["count"] == queue["review_document_count"] == 1 and not queue["has_more"]
+    row = queue["items"][0]
+    assert row["document_id"] == doc.pk and row["invoice_id"] == current.pk
+    assert row["reason_key"] == ("proposal_changes" if approved else "awaiting_approval")
+    if approved:
+        assert {house["association"] for house in row["properties"]} == {"approved", "proposed"}
+        selected = get(client, f"review-queue?property_id={coverage['houses'][0].pk}")
+        assert selected["count"] == 1 and selected["items"][0]["invoice_id"] == current.pk
+    summary = get(client, "review-queue?mode=summary")
+    assert summary["review_document_count"] == sum(summary["counts_by_reason"].values()) == 1
+    combined_path = "attention?coverage_date_from=2024-02-01&coverage_date_to=2024-02-01"
+    combined = get(client, combined_path + "&limit=1")
+    assert combined["count"] == combined["review_document_count"] == 1 and not combined["has_more"]
+    assert combined["items"][0]["attention_key"] == f"document:{doc.pk}"
+    assert combined["items"][0]["invoice_id"] == current.pk
+    assert get(client, combined_path + "&offset=1")["items"] == []
+
+
+def test_coverage_confirmation_reasons_preserve_legacy_rows(api_client, coverage):  # noqa: F811
+    client, _, _, _ = api_client
+    first = coverage["schedule"]()
+    second = coverage["schedule"](coverage["houses"][1])
+    mark_invoice_not_sent(
+        first.pk, coverage["vendor"].pk, date(2024, 2, 1), reason="Synthetic scoped confirmation"
+    )
+    mark_invoice_not_sent(
+        None, coverage["vendor"].pk, date(2024, 2, 1), reason="Synthetic combined bill confirmation"
+    )
+    bounds = "date_from=2024-02-01&date_to=2024-02-01&as_of=2024-03-01"
+    row = get(client, "missing-invoices?" + bounds)["items"][0]
+    assert row["status"] == "not_expected"
+    services = {item["property_service_id"]: item for item in row["services"]}
+    assert services[first.pk]["confirmation_reason"] == "Synthetic scoped confirmation"
+    assert services[second.pk]["confirmation_reason"] == "Synthetic combined bill confirmation"
+    response = client.get(BASE + "/reports/invoice-coverage?" + bounds)
+    assert response.status_code == 200
+    legacy = response.json()["coverage_rows"][0]
+    legacy_services = {item["property_service_id"]: item for item in legacy["required_services"]}
+    assert legacy_services[first.pk]["exception_reason"] == "Synthetic scoped confirmation"
+    assert legacy_services[second.pk]["exception_reason"] == ""
+    assert all("confirmation_reason" not in item for item in legacy_services.values())
+
+
+def test_coverage_confirmation_reason_expires_with_review_revision(api_client, coverage):  # noqa: F811
+    client, _, _, _ = api_client
+    coverage["schedule"]()
+    waste = coverage["schedule"](service="waste")
+    invoice, proposed, properties = coverage["approve"](
+        [(coverage["houses"][0], "water", "")], invoice_date=date(2024, 2, 20)
+    )
+    confirmation, _ = mark_invoice_not_sent(
+        waste.pk,
+        invoice.vendor_id,
+        date(2024, 2, 1),
+        reason="Synthetic reviewed allocation confirmation",
+        reviewed_invoice_id=invoice.pk,
+        reviewed_revision=invoice.review_revision,
+    )
+    path = "missing-invoices?date_from=2024-02-01&date_to=2024-02-01&as_of=2024-03-01"
+    row = get(client, path)["items"][0]
+    assert row["status"] == "received"
+    services = {item["property_service_id"]: item for item in row["services"]}
+    assert services[waste.pk]["status"] == "not_expected"
+    assert services[waste.pk]["confirmation_reason"] == confirmation.reason
+    assert all(
+        item["confirmation_reason"] is None
+        for item in row["services"]
+        if item["status"] == "received"
+    )
+    approve_review(
+        invoice.pk,
+        expected_revision=invoice.review_revision,
+        candidate=proposed,
+        vendor=coverage["vendor"],
+        section_properties=properties,
+        actor=coverage["actor"],
+    )
+    row = get(client, path)["items"][0]
+    assert row["status"] == "incomplete"
+    services = {item["property_service_id"]: item for item in row["services"]}
+    assert services[waste.pk]["status"] == "incomplete"
+    assert services[waste.pk]["confirmation_reason"] is None
+    confirmation.refresh_from_db()
+    assert confirmation.reviewed_revision == 1
+    assert confirmation.reason == "Synthetic reviewed allocation confirmation"
 
 
 def test_incomplete_and_receipt_precedence(api_client, coverage):  # noqa: F811
