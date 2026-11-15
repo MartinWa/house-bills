@@ -274,6 +274,17 @@ def test_unit_currency_filters_labels_and_empty_data(api_client):
     assert absent["latest_approval"] is None and absent["total_invoices"] == 0
 
 
+@pytest.mark.parametrize("kind", ["costs", "consumption"])
+@pytest.mark.parametrize(("utility", "label"), [("waste", "Unspecified"), ("water", "")])
+def test_empty_subcategory_labels_in_filtered_custom_groups(api_client, kind, utility, label):
+    client, *_ = records(api_client, utility=utility)
+    result = get(client, f"{kind}?category={utility}&group_by=subcategory")
+    group = result["groups"][0]
+    assert group["subcategory"] == "" and group["subcategory_name"] == label
+    assert group["category"] is None and group["category_name"] is None
+    assert result["totals"][0]["subcategory_name"] == label
+
+
 def test_historical_catalogue_labels_and_issue_reasons(api_client):
     Subcategory.objects.create(
         key="synthetic-fraction",

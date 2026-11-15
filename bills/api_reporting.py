@@ -249,7 +249,7 @@ def report_labels(reader):
     }
 
 
-def labels(rows, catalogue):
+def labels(rows, catalogue, *, category=None):
     for row in rows:
         for field, display in (("category", "category_name"), ("utility", "utility_name")):
             if row.get(field) is not None:
@@ -260,7 +260,7 @@ def labels(rows, catalogue):
                 catalogue.get(key, SUBCATEGORY_LABELS.get(key, key))
                 if key
                 else "Unspecified"
-                if row.get("category", row.get("utility")) == "waste"
+                if (row.get("category") or row.get("utility") or category) == "waste"
                 else ""
             )
         if row.get("unit") is not None:
@@ -337,7 +337,7 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0, sort=None
             return {
                 **base,
                 "mode": mode,
-                "groups": labels(groups, catalogue),
+                "groups": labels(groups, catalogue, category=filters.get("category")),
                 "totals": labels(totals, catalogue),
                 "group_count": len(groups),
                 **({"group_by": group_by} if mode == "grouped" else {}),
