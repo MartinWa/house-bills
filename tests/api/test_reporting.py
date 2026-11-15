@@ -166,11 +166,19 @@ def test_electricity_selection_precedes_vendor_subcategory_filters(api_client, l
         issuer=supply_vendor,
     )
     for query in (f"vendor_id={supply_vendor.pk}", "subcategory=electricity_supply"):
-        result = client.get(BASE + "/reports/consumption?mode=totals&" + query)
-        assert result.status_code == 200, result.content
-        assert result.json()["groups"] == []
+        for mode in ("mode=totals", "group_by=subcategory,source_selection&unit=kWh"):
+            result = client.get(BASE + "/reports/consumption?" + mode + "&" + query)
+            assert result.status_code == 200, result.content
+            assert result.json()["groups"] == []
     assert (
         client.get(BASE + "/reports/consumption?mode=totals").json()["groups"][0]["quantity_milli"]
         == 1000
     )
     assert len(client.get(BASE + "/reports/costs?mode=totals").json()["groups"]) == 2
+    custom = client.get(BASE + "/reports/consumption?group_by=subcategory,source_selection").json()
+    assert custom["groups"][0]["subcategory"] == "electricity_network"
+    assert custom["groups"][0]["source_selection"] == "network"
+    assert (
+        client.get(BASE + "/reports/consumption?mode=totals").json()["groups"][0]["subcategory"]
+        == ""
+    )

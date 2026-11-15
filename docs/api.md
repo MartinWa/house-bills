@@ -260,6 +260,87 @@ matching source row in one read-only snapshot. Limits are 100 distinct selected 
 `filter_too_broad`; they never return a partial total. Raw modes retain record pagination.
 Currencies and units remain separate, and signed reversals remain signed.
 
+All reporting pages, aggregates, summary and selectors include `contract_version: 1`
+and `generated_at`, the UTC server time when their read snapshot is acquired.
+Each request acquires its own snapshot; generation time is neither a last-approval
+timestamp nor a reusable snapshot identifier. Consumers must reject an unsupported
+contract visibly. Additive fields and opt-in parameters retain version 1. Breaking
+shapes or meanings require an explicit compatible/versioned API migration; changing
+the response number alone is insufficient. Responses retain `Cache-Control: no-store`.
+Summary adds nullable `latest_approval`: the maximum UTC approval/correction timestamp
+over the filtered union of cost, selected usage and excluded issue invoices used for
+its source counts. Empty unions return null. Cost dates and overlapping usage dates
+retain their respective meanings in that union.
+
+Rows accept `sort` with comma-separated public keys and optional `-` prefixes.
+For newest details use `costs?sort=-invoice_date`,
+`consumption-issues?sort=-invoice_date`, or `consumption?sort=-period_start`.
+The sortable allowlist is published for each projection in OpenAPI. Unknown, empty,
+duplicate and repeated-minus keys are rejected, as is sorting on aggregates.
+Default ordering stays ascending by invoice date/invoice/allocation for costs, and
+period start/end/invoice/usage for usage-derived rows. Explicit sorts append
+`allocation_id` (costs) or `usage_id` as an ascending unique tiebreaker unless supplied.
+Continuation links preserve all filters and sorting. Reporting pages add `has_more`,
+defined as `next != null`: a final page can omit earlier matches without having more
+rows after it. Compare `len(items)` with complete `count` when showing an arbitrary
+page. The default limit remains 50, maximum 200; aggregates are complete and unpaginated.
+
+Costs also accept `currency=SEK`; consumption accepts `unit=kWh`, `m3` or `kg`.
+These filters apply to rows, counts, grouping, totals, inferred bounds and applicable
+waste supplements, and appear in resolved `filters`. Supported values with no data
+return empty reports. Billed `kW` remains separate. These parameters are undefined
+for summary and selectors and are strictly rejected there. Electricity source
+selection always precedes consumption filters.
+
+Flexible aggregation uses `mode=grouped&group_by=...`. Supplying `group_by` alone
+selects grouped mode; explicit grouped mode requires a nonempty list. Reject duplicate,
+empty or unsupported dimensions and `group_by` with explicit legacy/row modes.
+
+| Projection | Allowed dimensions | Automatically retained |
+| --- | --- | --- |
+| Costs | `property_id`, `vendor_id`, `category`, `subcategory`, `currency`, `invoice_month`, `period_start`, `period_end` | `currency` |
+| Consumption | `property_id`, `vendor_id`, `utility`, `unit`, `subcategory`, `period_start`, `period_end`, `basis`, `source_service`, `source_selection` | `utility`, `unit` |
+
+Custom responses return the effective `group_by` list with mandatory dimensions
+appended. `groups` follow that list; `totals` keep legacy totals grouping, with both
+computed from the same filtered source rows/read snapshot and subject to breadth
+guards. IDs identify groups and carry matching display names; names are not dimensions.
+Unselected dimensions serialize as null, including property on aggregates. Source rows
+still require property. Ordering is deterministic and aggregates never silently truncate.
+Consumption uses `utility` for grouping while its existing `category` filter maps to
+utility. Legacy consumption `totals` blank electricity subcategory to combine selected
+sources. Custom subcategory grouping uses the stored selected-row subcategory.
+Grouping by period start sums whole intervals sharing that start, without proration.
+Summary, issues and billed power do not accept custom grouping.
+
+For example, request `costs?group_by=currency` for overall costs,
+`costs?group_by=invoice_month,category,subcategory&currency=SEK` for monthly costs,
+`consumption?group_by=utility,unit` for consumption totals, or
+`consumption?group_by=period_start,subcategory&category=waste&unit=kg` for waste fractions.
+Grafana owns presentation pivots, colours and chosen service buckets.
+
+Cost and consumption groups/totals add `invoice_count`, the distinct contributing
+invoice records, including credits; this is an unsigned record count. Cost
+`allocation_count` counts source allocations. Consumption `allocation_count` counts
+distinct allocations and `usage_count` counts selected usage rows. Counts are computed
+independently from source rows for every grouping: adding subgroup counts cannot
+produce a distinct invoice/allocation total. Summary source/exclusion counts retain
+their broader union-based population. Arithmetic sums signed integer minor/milli units.
+If any contributing money field is unknown, that aggregate field stays null; a known
+partial amount must not be displayed as a complete total. Recorded zero and no groups
+are distinct from unknown amounts and from one another.
+
+Costs expose `category_name`, consumption exposes `utility_name`, and both expose
+`subcategory_name` where that dimension is present. Labels come from application
+categories and the catalogue in the same reporting snapshot, including disabled
+historical entries and unknown-key fallbacks. Empty waste subcategory means
+`Unspecified`, matching the Reports page; other empty subcategories have an empty label.
+Issue items add human-readable `reason` while retaining `selection_reason`.
+Usage rows/groups retain storage `unit` keys and add `unit_label` (`m3` → `m³`).
+Selectors include `units` as key/name pairs, including billed-power `kW`, without
+exposing automation-only metadata. Cost source rows add `invoice_kind` and
+`review_revision`; neither is an aggregate dimension.
+
 Billing dates also have integer UTC-midnight Unix-second markers:
 `invoice_time`, `invoice_month_time`, `period_start_time`, `period_end_time`.
 Configure Infinity's backend parser against `groups`, its time columns as
@@ -303,3 +384,9 @@ selections, UTC month/period endpoints, live approvals/corrections, the sequenti
 client example and visible bounds failures, then removes only
 that check project's containers and volume. It uses Grafana 13.2.4 and Infinity 4.1.6.
 Installation Grafana provisioning is separate deployment work.
+
+To validate the companion repository's generated overview through the same disposable
+Infinity backend, run `python -m tools.check_api_grafana --overview
+../olympus-stacks/stacks/grafana/provisioning/dashboards/house-bills/overview.json`.
+The optional `HOUSE_BILLS_CHECK_API_PORT` and `HOUSE_BILLS_CHECK_GRAFANA_PORT`
+environment variables override the check's default local ports 8002 and 3002.

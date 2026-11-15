@@ -1,16 +1,98 @@
 """Bounded approved projections and complete SQL aggregates in one read snapshot."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from django.core.exceptions import ValidationError
 
+from .categories import CATEGORY_LABELS, SUBCATEGORY_LABELS
 from .configuration import month_number
-from .reporting import reporting_reader
+from .reporting import SELECTION_REASONS, reporting_reader
 from .waste_reporting import ReportTooBroad, attach_waste_weights, read_waste_report
 
 MAX_PROPERTIES = 100
 MAX_MONTHS = 600
 MAX_GROUPS = 10_000
+CONTRACT_VERSION = 1
+UNIT_LABELS = {"kWh": "kWh", "m3": "m³", "kg": "kg", "kW": "kW"}
+COST_DIMENSIONS = {
+    name: name
+    for name in (
+        "property_id",
+        "vendor_id",
+        "category",
+        "subcategory",
+        "currency",
+        "period_start",
+        "period_end",
+    )
+}
+COST_DIMENSIONS["invoice_month"] = "date(invoice_date, 'start of month')"
+CONSUMPTION_DIMENSIONS = {
+    name: name
+    for name in (
+        "property_id",
+        "vendor_id",
+        "utility",
+        "unit",
+        "subcategory",
+        "period_start",
+        "period_end",
+        "basis",
+        "source_service",
+        "source_selection",
+    )
+}
+DIMENSIONS = {"costs": COST_DIMENSIONS, "consumption": CONSUMPTION_DIMENSIONS}
+MANDATORY_DIMENSIONS = {"costs": ("currency",), "consumption": ("utility", "unit")}
+COST_SORT = {
+    name: f"r.{name}"
+    for name in (
+        "invoice_date",
+        "invoice_id",
+        "allocation_id",
+        "property_id",
+        "vendor_id",
+        "category",
+        "subcategory",
+        "currency",
+        "period_start",
+        "period_end",
+        "net_minor",
+        "vat_minor",
+        "gross_minor",
+        "invoice_kind",
+        "review_revision",
+    )
+}
+USAGE_SORT = {
+    name: f"r.{name}"
+    for name in (
+        "period_start",
+        "period_end",
+        "invoice_date",
+        "invoice_id",
+        "allocation_id",
+        "usage_id",
+        "property_id",
+        "vendor_id",
+        "utility",
+        "subcategory",
+        "unit",
+        "quantity_milli",
+        "basis",
+        "source_service",
+    )
+}
+SORT_FIELDS = {
+    "costs": COST_SORT,
+    "consumption": {**USAGE_SORT, "source_selection": "r.source_selection"},
+    "issues": {
+        **USAGE_SORT,
+        "selection_reason": "r.selection_reason",
+        "source_selection": "r.source_selection",
+    },
+    "power": USAGE_SORT,
+}
 SELECTED = """
 WITH selected_usage AS (
     SELECT * FROM reporting_electricity_usage
@@ -32,6 +114,10 @@ def filters_sql(filters, *, usage=False, dates=True):
             column = "utility" if usage and name == "category" else name
             clauses.append(f"{column} = ?")
             params.append(filters[name])
+    dimension = "unit" if usage else "currency"
+    if filters.get(dimension) is not None:
+        clauses.append(f"{dimension} = ?")
+        params.append(filters[dimension])
     if dates:
         if filters.get("date_from"):
             clauses.append("period_end > ?" if usage else "invoice_date >= ?")
@@ -91,10 +177,18 @@ def resolved_filters(reader, filters, kind):
     return result
 
 
-def aggregate(reader, filters, kind, mode):
+def aggregate(reader, filters, kind, mode, group_by=None):
     usage = kind == "consumption"
     where, params = filters_sql(filters, usage=usage)
-    if usage:
+    if mode == "grouped":
+        dimensions = DIMENSIONS[kind]
+        columns = [f"{dimensions[name]} AS {name}" for name in group_by]
+        group = [dimensions[name] for name in group_by]
+        for name in ("property", "vendor"):
+            if f"{name}_id" in group_by:
+                columns.append(f"{name}_name")
+                group.append(f"{name}_name")
+    elif usage:
         # Electricity totals combine selected sources; classified water/waste remain separate.
         subcategory = (
             "CASE WHEN utility='electricity' THEN '' ELSE subcategory END AS subcategory"
@@ -106,20 +200,28 @@ def aggregate(reader, filters, kind, mode):
         if mode == "billed_period":
             columns += ["period_start", "period_end", "basis", "source_service", "source_selection"]
             group += ["period_start", "period_end", "basis", "source_service", "source_selection"]
-        summed = "sum(quantity_milli) AS quantity_milli"
-        source = SELECTED + "SELECT "
-        table = "selected_usage"
     else:
         columns = ["property_id", "property_name", "category", "subcategory", "currency"]
         group = list(columns)
         if mode == "invoice_month":
             columns += ["date(invoice_date, 'start of month') AS invoice_month"]
             group += ["date(invoice_date, 'start of month')"]
+    if usage:
         summed = (
-            "sum(net_minor) AS net_minor, sum(vat_minor) AS vat_minor, "
-            "sum(gross_minor) AS gross_minor"
+            "sum(quantity_milli) AS quantity_milli, "
+            "count(DISTINCT allocation_id) AS allocation_count, count(*) AS usage_count"
+        )
+        source, table = SELECTED + "SELECT ", "selected_usage"
+    else:
+        summed = (
+            ", ".join(
+                f"CASE WHEN count({field})=count(*) THEN sum({field}) END AS {field}"
+                for field in ("net_minor", "vat_minor", "gross_minor")
+            )
+            + ", count(*) AS allocation_count"
         )
         source, table = "SELECT ", "reporting_costs"
+    summed += ", count(DISTINCT invoice_id) AS invoice_count"
     sql = (
         source
         + f"{', '.join(columns)}, {summed} FROM {table} WHERE {where} "
@@ -141,10 +243,48 @@ def timestamps(rows):
     return rows
 
 
-def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
+def report_labels(reader):
+    return {
+        row["key"]: row["name"] for row in reader.execute("SELECT key, name FROM bills_subcategory")
+    }
+
+
+def labels(rows, catalogue, *, category=None):
+    for row in rows:
+        for field, display in (("category", "category_name"), ("utility", "utility_name")):
+            if row.get(field) is not None:
+                row[display] = CATEGORY_LABELS.get(row[field], row[field])
+        if row.get("subcategory") is not None:
+            key = row["subcategory"]
+            row["subcategory_name"] = (
+                catalogue.get(key, SUBCATEGORY_LABELS.get(key, key))
+                if key
+                else "Unspecified"
+                if (row.get("category") or row.get("utility") or category) == "waste"
+                else ""
+            )
+        if row.get("unit") is not None:
+            row["unit_label"] = UNIT_LABELS.get(row["unit"], row["unit"])
+        if row.get("selection_reason"):
+            row["reason"] = SELECTION_REASONS.get(row["selection_reason"], row["selection_reason"])
+    return rows
+
+
+def metadata():
+    return {"generated_at": datetime.now(UTC), "contract_version": CONTRACT_VERSION}
+
+
+def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0, sort=None, group_by=None):
     with reporting_reader() as reader:
+        catalogue = report_labels(reader)
+        generated = metadata()
+        if filters.get("subcategory") is not None and filters["subcategory"] not in catalogue:
+            from .api.errors import invalid_parameter
+
+            invalid_parameter("subcategory")
         filters = resolved_filters(reader, filters, kind)
         base = {
+            **generated,
             "filters": filters,
             "effective_date_bounds": {name: filters.get(name) for name in ("date_from", "date_to")},
         }
@@ -162,7 +302,8 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
                 SELECTED
                 + f"""
                 SELECT count(*) AS total_invoices,
-                       coalesce(sum(d.source='manual'), 0) AS manual_invoices
+                       coalesce(sum(d.source='manual'), 0) AS manual_invoices,
+                       max(i.approved_at) AS latest_approval
                 FROM bills_invoice i JOIN bills_document d ON d.id=i.document_id
                 WHERE i.id IN (
                     SELECT invoice_id FROM reporting_costs WHERE {cost_where}
@@ -180,22 +321,26 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
             ).fetchone()[0]
             return {
                 **base,
-                "costs": costs,
-                "consumption": consumption,
+                "costs": labels(costs, catalogue),
+                "consumption": labels(consumption, catalogue),
                 "total_invoices": sources[0],
                 "manual_invoices": sources[1],
                 "pdf_invoices": sources[0] - sources[1],
                 "exclusion_count": exclusions,
+                "latest_approval": datetime.fromisoformat(sources[2]).replace(tzinfo=UTC)
+                if sources[2] is not None
+                else None,
             }
         if mode != "rows":
-            groups = aggregate(reader, filters, kind, mode)
+            groups = aggregate(reader, filters, kind, mode, group_by)
             totals = groups if mode == "totals" else aggregate(reader, filters, kind, "totals")
             return {
                 **base,
                 "mode": mode,
-                "groups": groups,
-                "totals": totals,
+                "groups": labels(groups, catalogue, category=filters.get("category")),
+                "totals": labels(totals, catalogue),
                 "group_count": len(groups),
+                **({"group_by": group_by} if mode == "grouped" else {}),
             }
         usage = kind != "costs"
         where, params = filters_sql(filters, usage=usage)
@@ -216,6 +361,12 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
             if kind == "costs"
             else "period_start, period_end, invoice_id, usage_id"
         )
+        if sort:
+            order = ", ".join(
+                SORT_FIELDS[kind][key.removeprefix("-")]
+                + (" DESC" if key.startswith("-") else " ASC")
+                for key in sort
+            )
         rows = [
             dict(row)
             for row in reader.execute(
@@ -231,14 +382,23 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0):
         return {
             **base,
             "mode": "rows",
-            "items": timestamps(rows),
+            "items": labels(timestamps(rows), catalogue),
             "count": count,
         }
 
 
 def read_selectors():
     with reporting_reader() as reader:
+        subcategories = [
+            dict(row)
+            for row in reader.execute(
+                "SELECT key, name, category, is_active, is_waste_fraction "
+                "FROM bills_subcategory ORDER BY key"
+            )
+        ]
         return {
+            **metadata(),
+            "units": [{"key": key, "name": name} for key, name in UNIT_LABELS.items()],
             "properties": [
                 dict(row)
                 for row in reader.execute("SELECT id, name FROM bills_property ORDER BY name, id")
@@ -247,11 +407,5 @@ def read_selectors():
                 dict(row)
                 for row in reader.execute("SELECT id, name FROM bills_vendor ORDER BY name, id")
             ],
-            "subcategories": [
-                dict(row)
-                for row in reader.execute(
-                    "SELECT key, name, category, is_active, is_waste_fraction "
-                    "FROM bills_subcategory ORDER BY key"
-                )
-            ],
+            "subcategories": subcategories,
         }

@@ -1,5 +1,6 @@
 """Verify Infinity backend queries using HTTP only, with disposable Compose state."""
 
+import argparse
 import base64
 import hashlib
 import json
@@ -13,7 +14,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-GRAFANA = "http://127.0.0.1:3002"
+GRAFANA = "http://127.0.0.1:" + os.environ.get("HOUSE_BILLS_CHECK_GRAFANA_PORT", "3002")
+APP = "http://127.0.0.1:" + os.environ.get("HOUSE_BILLS_CHECK_API_PORT", "8002")
 PLUGIN = "yesoreyeram-infinity-datasource"
 DATASOURCE_UID = "house-bills-api"
 COMPOSE = ["docker", "compose", "-f", "compose.api-check.yaml"]
@@ -119,7 +121,11 @@ def check_dashboard_group_totals(dashboard):
             (groups[:1], {("Shared house (#1)", february * 1000): 100 / scale}),
             ([], {}),
         ):
-            inline = {**target, "source": "inline", "data": json.dumps({"groups": rows})}
+            inline = {
+                **target,
+                "source": "inline",
+                "data": json.dumps({"contract_version": 1, "groups": rows}),
+            }
             inline.pop("url")
             inline.pop("url_options")
             status, result = request(
@@ -159,7 +165,7 @@ def check_live_updates(credential):
     def call(method, path, body=None):
         with urlopen(
             Request(
-                "http://127.0.0.1:8002" + path,
+                APP + path,
                 method=method,
                 headers={
                     "Authorization": f"Bearer {credential}",
@@ -276,7 +282,7 @@ print('Documented sequential setup, upload, approval, correction and reports pas
     )
 
 
-def check(credentials, environment):
+def check(credentials, environment, overview=None):
     deadline = time.monotonic() + 55
     while True:
         try:
@@ -300,6 +306,23 @@ def check(credentials, environment):
         },
     )
     assert status == 200, "Datasource creation failed."
+    deadline = time.monotonic() + 55
+    while True:
+        try:
+            with urlopen(
+                Request(
+                    APP + "/api/v1/me",
+                    headers={"Authorization": f"Bearer {credentials['reporting']}"},
+                ),
+                timeout=2,
+            ) as response:
+                if response.status == 200:
+                    break
+        except URLError, TimeoutError, HTTPException:
+            pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Synthetic API server did not become ready.")
+        time.sleep(0.5)
     for ids, expected in (
         ([], 551 * 125 + 550 * 250),
         ([1], 551 * 125),
@@ -327,6 +350,10 @@ def check(credentials, environment):
     assert status != 200 or result["results"]["A"].get("error"), "Broad filters must fail visibly."
     dashboard = json.loads(Path("docs/api/grafana-dashboard.json").read_text(encoding="utf-8"))
     check_dashboard_group_totals(dashboard)
+    if overview is not None:
+        from .check_reporting_overview import run
+
+        run(json.loads(overview.read_text(encoding="utf-8")))
     status, _ = request("/api/dashboards/db", {"dashboard": dashboard, "overwrite": True})
     assert status == 200, "Dashboard creation failed."
     assert dashboard["timezone"] == "utc" and len(dashboard["panels"]) == 2
@@ -354,7 +381,10 @@ def check(credentials, environment):
     )
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--overview", type=Path, help="Companion generated household overview JSON")
+    args = parser.parse_args(argv)
     credentials = {profile: secrets.token_urlsafe(32) for profile in ("reporting", "automation")}
     # Docker metadata may persist environment values: send only digests to Compose.
     environment = os.environ | {
@@ -365,7 +395,10 @@ def main():
     }
     try:
         subprocess.run([*COMPOSE, "up", "-d"], env=environment, check=True)
-        check(credentials, environment)
+        if args.overview is None:
+            check(credentials, environment)
+        else:
+            check(credentials, environment, args.overview)
     finally:
         # Only the explicitly named check project's containers and volume are removed.
         subprocess.run([*COMPOSE, "down", "--volumes"], env=environment, check=True)

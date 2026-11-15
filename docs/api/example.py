@@ -99,15 +99,14 @@ def main():
         document["links"]["reviews"],
         {"review_token": source["review_token"], "edits": source["edits"]},
     )
-    print(
-        json.dumps(
-            call(
-                "GET",
-                f"/reports/costs?mode=totals&property_id={house['id']}&date_to={date.today().isoformat()}",
-            ),
-            indent=2,
-        )
+    report = call(
+        "GET",
+        f"/reports/costs?group_by=currency&currency=SEK&property_id={house['id']}"
+        f"&date_to={date.today().isoformat()}",
     )
+    if report.get("contract_version") != 1:
+        raise SystemExit("Unsupported reporting contract.")
+    print(json.dumps(report, indent=2))
 
 
 if __name__ == "__main__":

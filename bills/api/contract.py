@@ -5,7 +5,7 @@ from ninja import NinjaAPI
 from .schemas import ErrorOut
 
 
-def query_parameters(names, *, repeated=(), sortable=()):
+def query_parameters(names, *, repeated=(), sortable=(), groupable=(), mandatory=()):
     parameters = []
     for name in names:
         schema = {"type": "string"}
@@ -23,6 +23,18 @@ def query_parameters(names, *, repeated=(), sortable=()):
             schema["description"] = "Comma-separated keys, optional - prefix: " + ", ".join(
                 sortable
             )
+        elif name == "group_by":
+            schema["description"] = (
+                "Distinct comma-separated dimensions: "
+                + ", ".join(groupable)
+                + ". Automatically retained: "
+                + ", ".join(mandatory)
+                + ". Requires grouped mode, selected implicitly if mode is omitted."
+            )
+        elif name == "currency":
+            schema["enum"] = ["SEK"]
+        elif name == "unit":
+            schema["enum"] = ["kWh", "m3", "kg"]
         if name in repeated:
             schema = {"type": "array", "maxItems": 100, "items": schema}
         parameters.append(
@@ -38,9 +50,11 @@ def query_parameters(names, *, repeated=(), sortable=()):
     return parameters
 
 
-def documented_query(*names, repeated=(), sortable=()):
+def documented_query(*names, repeated=(), sortable=(), groupable=(), mandatory=()):
     def decorate(view):
-        view.api_parameters = query_parameters(names, repeated=repeated, sortable=sortable)
+        view.api_parameters = query_parameters(
+            names, repeated=repeated, sortable=sortable, groupable=groupable, mandatory=mandatory
+        )
         return view
 
     return decorate

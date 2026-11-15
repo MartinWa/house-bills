@@ -4,9 +4,15 @@ from datetime import UTC, datetime
 
 from ninja import Router
 
-from bills.api_reporting import read_api_report, read_selectors
+from bills.api_reporting import (
+    DIMENSIONS,
+    MANDATORY_DIMENSIONS,
+    SORT_FIELDS,
+    read_api_report,
+    read_selectors,
+)
 from bills.invoice_coverage import read_invoice_coverage
-from bills.models import Category, Subcategory
+from bills.models import Category
 
 from . import schemas as s
 from .collections import integer, iso_date, page_response, pagination, query_values
@@ -16,12 +22,14 @@ from .errors import ApiError, invalid_parameter
 router = Router(tags=["Approved reporting"])
 
 
-def report_filters(request, modes=(), *, raw=False):
+def report_filters(request, modes=(), *, raw=False, kind=None):
     allowed = ["property_id", "vendor_id", "category", "subcategory", "date_from", "date_to"]
     if modes:
         allowed.append("mode")
     if raw:
-        allowed += ["limit", "offset"]
+        allowed += ["limit", "offset", "sort"]
+    if kind in DIMENSIONS:
+        allowed += ["group_by", "currency" if kind == "costs" else "unit"]
     values = query_values(request, allowed, repeated=["property_id", "vendor_id"])
     filters = {}
     for name in ("property_id", "vendor_id"):
@@ -42,19 +50,45 @@ def report_filters(request, modes=(), *, raw=False):
     if filters["category"] is not None and filters["category"] not in Category.values:
         invalid_parameter("category")
     filters["subcategory"] = values.get("subcategory")
-    if (
-        filters["subcategory"] is not None
-        and not Subcategory.objects.filter(pk=filters["subcategory"]).exists()
-    ):
-        invalid_parameter("subcategory")
-    mode = values.get("mode", "rows")
+    if kind in DIMENSIONS:
+        name, supported = (
+            ("currency", ("SEK",)) if kind == "costs" else ("unit", ("kWh", "m3", "kg"))
+        )
+        filters[name] = values.get(name)
+        if filters[name] is not None and filters[name] not in supported:
+            invalid_parameter(name)
+    mode = values.get("mode", "grouped" if "group_by" in values else "rows")
     if modes and mode not in modes:
         invalid_parameter("mode", "Unknown aggregate mode.")
     if mode != "rows" and ("limit" in values or "offset" in values):
         invalid_parameter(
             "limit" if "limit" in values else "offset", "Aggregate groups are not paginated."
         )
-    return filters, mode, pagination(request, values) if raw else (50, 0)
+    group_by = None
+    if mode == "grouped":
+        group_by = keys(values.get("group_by", ""), "group_by", DIMENSIONS[kind])
+        group_by += [name for name in MANDATORY_DIMENSIONS[kind] if name not in group_by]
+    elif "group_by" in values:
+        invalid_parameter("group_by", "Use mode=grouped or omit mode when grouping.")
+    sort = None
+    if "sort" in values:
+        if mode != "rows":
+            invalid_parameter("sort", "Sorting is only supported for source rows.")
+        sort = keys(values["sort"], "sort", SORT_FIELDS[kind], descending=True)
+        unique = "allocation_id" if kind == "costs" else "usage_id"
+        if unique not in [key.removeprefix("-") for key in sort]:
+            sort.append(unique)
+    return filters, mode, pagination(request, values) if raw else (50, 0), sort, group_by
+
+
+def keys(value, parameter, allowed, *, descending=False):
+    result, seen = value.split(","), set()
+    for key in result:
+        name = key.removeprefix("-") if descending else key
+        if name not in allowed or name in seen:
+            invalid_parameter(parameter, "Use distinct supported keys without empty entries.")
+        seen.add(name)
+    return result
 
 
 @router.get("/selectors", response=s.SelectorsOut)
@@ -76,15 +110,26 @@ def selectors(request):
     repeated=["property_id", "vendor_id"],
 )
 def summary(request):
-    filters, _, _ = report_filters(request)
+    filters, _, _, _, _ = report_filters(request)
     return read_api_report(filters=filters, kind="summary")
 
 
 def report_response(request, kind, modes):
-    filters, mode, (limit, offset) = report_filters(request, modes, raw=True)
-    result = read_api_report(filters=filters, kind=kind, mode=mode, limit=limit, offset=offset)
+    filters, mode, (limit, offset), sort, group_by = report_filters(
+        request, modes, raw=True, kind=kind
+    )
+    result = read_api_report(
+        filters=filters,
+        kind=kind,
+        mode=mode,
+        limit=limit,
+        offset=offset,
+        sort=sort,
+        group_by=group_by,
+    )
     if mode == "rows":
         result.update(page_response(request, result["items"], result["count"], limit, offset))
+        result["has_more"] = result["next"] is not None
     return result
 
 
@@ -97,15 +142,21 @@ def report_response(request, kind, modes):
     "date_from",
     "date_to",
     "mode",
+    "group_by",
+    "currency",
+    "sort",
     "limit",
     "offset",
     repeated=["property_id", "vendor_id"],
+    sortable=SORT_FIELDS["costs"],
+    groupable=DIMENSIONS["costs"],
+    mandatory=MANDATORY_DIMENSIONS["costs"],
 )
 def costs(request):
-    return report_response(request, "costs", ("rows", "totals", "invoice_month"))
+    return report_response(request, "costs", ("rows", "totals", "invoice_month", "grouped"))
 
 
-@router.get("/consumption", response=s.AggregateOut | s.ReportPage)
+@router.get("/consumption", response=s.AggregateOut | s.ConsumptionReportPage)
 @documented_query(
     "property_id",
     "vendor_id",
@@ -114,12 +165,18 @@ def costs(request):
     "date_from",
     "date_to",
     "mode",
+    "group_by",
+    "unit",
+    "sort",
     "limit",
     "offset",
     repeated=["property_id", "vendor_id"],
+    sortable=SORT_FIELDS["consumption"],
+    groupable=DIMENSIONS["consumption"],
+    mandatory=MANDATORY_DIMENSIONS["consumption"],
 )
 def consumption(request):
-    return report_response(request, "consumption", ("rows", "totals", "billed_period"))
+    return report_response(request, "consumption", ("rows", "totals", "billed_period", "grouped"))
 
 
 @router.get("/billed-power", response=s.ReportPage)
@@ -131,9 +188,11 @@ def consumption(request):
     "date_from",
     "date_to",
     "mode",
+    "sort",
     "limit",
     "offset",
     repeated=["property_id", "vendor_id"],
+    sortable=SORT_FIELDS["power"],
 )
 def billed_power(request):
     return report_response(request, "power", ("rows",))
@@ -148,9 +207,11 @@ def billed_power(request):
     "date_from",
     "date_to",
     "mode",
+    "sort",
     "limit",
     "offset",
     repeated=["property_id", "vendor_id"],
+    sortable=SORT_FIELDS["issues"],
 )
 def consumption_issues(request):
     return report_response(request, "issues", ("rows",))

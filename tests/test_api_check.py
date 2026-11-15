@@ -25,7 +25,7 @@ def test_probe_keeps_credentials_out_of_docker_commands_and_environment(monkeypa
 
     monkeypatch.setattr(check_api_grafana.subprocess, "run", run)
     monkeypatch.setattr(check_api_grafana, "check", check)
-    check_api_grafana.main()
+    check_api_grafana.main([])
 
     assert len(commands) == 3
     for command, options in commands:

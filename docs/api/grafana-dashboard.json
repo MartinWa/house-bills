@@ -77,8 +77,8 @@
           "source": "url",
           "parser": "backend",
           "format": "timeseries",
-          "url": "http://app:8000/api/v1/reports/costs?mode=invoice_month&$__combineValues(property_id=,,&,${property:csv})&date_from=${__timeFrom:date:YYYY-MM-DD}&date_to=${__timeTo:date:YYYY-MM-DD}",
-          "root_selector": "$count(groups) = 0 ? [] : ($grouped := groups{$string(property_id) & \":\" & $string(invoice_month_time) & \":\" & currency: {\"invoice_month_time\": $min(invoice_month_time), \"property\": (property_name)[0] & \" (#\" & $string($min(property_id)) & \")\", \"currency\": (currency)[0], \"value\": $sum(gross_minor) / 100}}; $each($grouped, function($row) { $row })^(invoice_month_time, property, currency))",
+          "url": "http://app:8000/api/v1/reports/costs?mode=grouped&group_by=property_id,invoice_month&currency=SEK&$__combineValues(property_id=,,&,${property:csv})&date_from=${__timeFrom:date:YYYY-MM-DD}&date_to=${__timeTo:date:YYYY-MM-DD}",
+          "root_selector": "(contract_version = 1 ? ($count(groups) = 0 ? [] : ($grouped := groups{$string(property_id) & \":\" & $string(invoice_month_time) & \":\" & currency: {\"invoice_month_time\": $min(invoice_month_time), \"property\": (property_name)[0] & \" (#\" & $string($min(property_id)) & \")\", \"currency\": (currency)[0], \"value\": ($sum($map($, function($r) { $type($r.gross_minor) != \"number\" ? 1 : 0 })) > 0 ? null : $sum(gross_minor) / 100)}}; $each($grouped, function($row) { $row })^(invoice_month_time, property, currency))) : $unsupported_reporting_contract())",
           "columns": [
             {
               "selector": "invoice_month_time",
@@ -149,8 +149,8 @@
           "source": "url",
           "parser": "backend",
           "format": "timeseries",
-          "url": "http://app:8000/api/v1/reports/consumption?mode=billed_period&category=water&$__combineValues(property_id=,,&,${property:csv})&date_from=${__timeFrom:date:YYYY-MM-DD}&date_to=${__timeTo:date:YYYY-MM-DD}",
-          "root_selector": "$count(groups) = 0 ? [] : ($grouped := groups{$string(property_id) & \":\" & $string(period_end_time) & \":\" & unit: {\"period_end_time\": $min(period_end_time), \"property\": (property_name)[0] & \" (#\" & $string($min(property_id)) & \")\", \"unit\": (unit)[0], \"value\": $sum(quantity_milli) / 1000}}; $each($grouped, function($row) { $row })^(period_end_time, property, unit))",
+          "url": "http://app:8000/api/v1/reports/consumption?mode=grouped&group_by=property_id,period_end&unit=m3&category=water&$__combineValues(property_id=,,&,${property:csv})&date_from=${__timeFrom:date:YYYY-MM-DD}&date_to=${__timeTo:date:YYYY-MM-DD}",
+          "root_selector": "(contract_version = 1 ? ($count(groups) = 0 ? [] : ($grouped := groups{$string(property_id) & \":\" & $string(period_end_time) & \":\" & unit: {\"period_end_time\": $min(period_end_time), \"property\": (property_name)[0] & \" (#\" & $string($min(property_id)) & \")\", \"unit\": (unit)[0], \"value\": $sum(quantity_milli) / 1000}}; $each($grouped, function($row) { $row })^(period_end_time, property, unit))) : $unsupported_reporting_contract())",
           "columns": [
             {
               "selector": "period_end_time",

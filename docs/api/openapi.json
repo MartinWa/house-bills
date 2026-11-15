@@ -13019,6 +13019,41 @@
             "explode": true
           },
           {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Distinct comma-separated dimensions: property_id, vendor_id, category, subcategory, currency, period_start, period_end, invoice_month. Automatically retained: currency. Requires grouped mode, selected implicitly if mode is omitted."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SEK"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: invoice_date, invoice_id, allocation_id, property_id, vendor_id, category, subcategory, currency, period_start, period_end, net_minor, vat_minor, gross_minor, invoice_kind, review_revision"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -13262,6 +13297,43 @@
             "explode": true
           },
           {
+            "name": "group_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Distinct comma-separated dimensions: property_id, vendor_id, utility, unit, subcategory, period_start, period_end, basis, source_service, source_selection. Automatically retained: utility, unit. Requires grouped mode, selected implicitly if mode is omitted."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "kWh",
+                "m3",
+                "kg"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: period_start, period_end, invoice_date, invoice_id, allocation_id, usage_id, property_id, vendor_id, utility, subcategory, unit, quantity_milli, basis, source_service, source_selection"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -13298,7 +13370,7 @@
                       "$ref": "#/components/schemas/AggregateOut"
                     },
                     {
-                      "$ref": "#/components/schemas/ReportPage"
+                      "$ref": "#/components/schemas/ConsumptionReportPage"
                     }
                   ],
                   "title": "Response"
@@ -13500,6 +13572,17 @@
             "required": false,
             "schema": {
               "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: period_start, period_end, invoice_date, invoice_id, allocation_id, usage_id, property_id, vendor_id, utility, subcategory, unit, quantity_milli, basis, source_service"
             },
             "style": "form",
             "explode": true
@@ -13735,6 +13818,17 @@
             "required": false,
             "schema": {
               "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated keys, optional - prefix: period_start, period_end, invoice_date, invoice_id, allocation_id, usage_id, property_id, vendor_id, utility, subcategory, unit, quantity_milli, basis, source_service, selection_reason, source_selection"
             },
             "style": "form",
             "explode": true
@@ -17963,6 +18057,15 @@
       },
       "SelectorsOut": {
         "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
           "properties": {
             "type": "array",
             "items": {
@@ -17994,15 +18097,466 @@
             },
             "title": "Subcategories",
             "type": "array"
+          },
+          "units": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Units",
+            "type": "array"
           }
         },
         "required": [
+          "generated_at",
+          "contract_version",
           "properties",
           "vendors",
           "categories",
-          "subcategories"
+          "subcategories",
+          "units"
         ],
         "title": "SelectorsOut",
+        "type": "object"
+      },
+      "AggregateGroup": {
+        "properties": {
+          "property_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Id"
+          },
+          "property_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Name"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Time"
+          },
+          "invoice_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month"
+          },
+          "invoice_month_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month Time"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "quantity_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Milli"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Time"
+          },
+          "period_end_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End Time"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "source_service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Service"
+          },
+          "source_selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Selection"
+          },
+          "selection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Reason"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "allocation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Id"
+          },
+          "usage_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "invoice_count": {
+            "title": "Invoice Count",
+            "type": "integer"
+          },
+          "allocation_count": {
+            "title": "Allocation Count",
+            "type": "integer"
+          },
+          "usage_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Count"
+          }
+        },
+        "required": [
+          "invoice_count",
+          "allocation_count"
+        ],
+        "title": "AggregateGroup",
         "type": "object"
       },
       "DateBounds": {
@@ -18107,360 +18661,17 @@
         "title": "ReportFilters",
         "type": "object"
       },
-      "ReportRow": {
-        "properties": {
-          "property_id": {
-            "title": "Property Id",
-            "type": "integer"
-          },
-          "property_name": {
-            "title": "Property Name",
-            "type": "string"
-          },
-          "vendor_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vendor Id"
-          },
-          "vendor_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vendor Name"
-          },
-          "invoice_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoice Id"
-          },
-          "invoice_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoice Date"
-          },
-          "invoice_time": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoice Time"
-          },
-          "invoice_month": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoice Month"
-          },
-          "invoice_month_time": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invoice Month Time"
-          },
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
-          },
-          "subcategory": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subcategory"
-          },
-          "currency": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Currency"
-          },
-          "net_minor": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Net Minor"
-          },
-          "vat_minor": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vat Minor"
-          },
-          "gross_minor": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gross Minor"
-          },
-          "utility": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Utility"
-          },
-          "unit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unit"
-          },
-          "quantity_milli": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quantity Milli"
-          },
-          "period_start": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period Start"
-          },
-          "period_end": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period End"
-          },
-          "period_start_time": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period Start Time"
-          },
-          "period_end_time": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period End Time"
-          },
-          "basis": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Basis"
-          },
-          "source_service": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Service"
-          },
-          "source_selection": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Selection"
-          },
-          "selection_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selection Reason"
-          },
-          "source": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source"
-          },
-          "allocation_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Allocation Id"
-          },
-          "usage_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Usage Id"
-          },
-          "document_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Document Id"
-          },
-          "section_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Section Key"
-          },
-          "reference": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reference"
-          }
-        },
-        "required": [
-          "property_id",
-          "property_name"
-        ],
-        "title": "ReportRow",
-        "type": "object"
-      },
       "SummaryOut": {
         "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
           "waste_total": {
             "anyOf": [
               {
@@ -18511,14 +18722,14 @@
           },
           "costs": {
             "items": {
-              "$ref": "#/components/schemas/ReportRow"
+              "$ref": "#/components/schemas/AggregateGroup"
             },
             "title": "Costs",
             "type": "array"
           },
           "consumption": {
             "items": {
-              "$ref": "#/components/schemas/ReportRow"
+              "$ref": "#/components/schemas/AggregateGroup"
             },
             "title": "Consumption",
             "type": "array"
@@ -18538,9 +18749,23 @@
           "exclusion_count": {
             "title": "Exclusion Count",
             "type": "integer"
+          },
+          "latest_approval": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Approval"
           }
         },
         "required": [
+          "generated_at",
+          "contract_version",
           "filters",
           "effective_date_bounds",
           "costs",
@@ -18548,7 +18773,8 @@
           "total_invoices",
           "pdf_invoices",
           "manual_invoices",
-          "exclusion_count"
+          "exclusion_count",
+          "latest_approval"
         ],
         "title": "SummaryOut",
         "type": "object"
@@ -18807,12 +19033,21 @@
             "title": "Waste Other Services",
             "type": "array"
           },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
           "mode": {
             "title": "Mode",
             "type": "string"
           },
           "filters": {
-            "$ref": "#/components/schemas/ReportFilters"
+            "$ref": "#/components/schemas/CostFilters"
           },
           "effective_date_bounds": {
             "$ref": "#/components/schemas/DateBounds"
@@ -18823,20 +19058,36 @@
           },
           "totals": {
             "items": {
-              "$ref": "#/components/schemas/ReportRow"
+              "$ref": "#/components/schemas/AggregateGroup"
             },
             "title": "Totals",
             "type": "array"
           },
           "groups": {
             "items": {
-              "$ref": "#/components/schemas/ReportRow"
+              "$ref": "#/components/schemas/AggregateGroup"
             },
             "title": "Groups",
             "type": "array"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group By"
           }
         },
         "required": [
+          "generated_at",
+          "contract_version",
           "mode",
           "filters",
           "effective_date_bounds",
@@ -18845,6 +19096,85 @@
           "groups"
         ],
         "title": "CostAggregateOut",
+        "type": "object"
+      },
+      "CostFilters": {
+        "properties": {
+          "property_id": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Property Id",
+            "type": "array"
+          },
+          "vendor_id": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Vendor Id",
+            "type": "array"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "title": "CostFilters",
         "type": "object"
       },
       "CostReportPage": {
@@ -18891,6 +19221,15 @@
             "title": "Waste Other Services",
             "type": "array"
           },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/CostReportRow"
@@ -18929,20 +19268,27 @@
             "type": "string"
           },
           "filters": {
-            "$ref": "#/components/schemas/ReportFilters"
+            "$ref": "#/components/schemas/CostFilters"
           },
           "effective_date_bounds": {
             "$ref": "#/components/schemas/DateBounds"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
           }
         },
         "required": [
+          "generated_at",
+          "contract_version",
           "items",
           "count",
           "next",
           "previous",
           "mode",
           "filters",
-          "effective_date_bounds"
+          "effective_date_bounds",
+          "has_more"
         ],
         "title": "CostReportPage",
         "type": "object"
@@ -19047,6 +19393,17 @@
             ],
             "title": "Category"
           },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
           "subcategory": {
             "anyOf": [
               {
@@ -19057,6 +19414,17 @@
               }
             ],
             "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
           },
           "currency": {
             "anyOf": [
@@ -19113,6 +19481,17 @@
             ],
             "title": "Utility"
           },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
           "unit": {
             "anyOf": [
               {
@@ -19123,6 +19502,17 @@
               }
             ],
             "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
           },
           "quantity_milli": {
             "anyOf": [
@@ -19225,6 +19615,17 @@
             ],
             "title": "Selection Reason"
           },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
           "source": {
             "anyOf": [
               {
@@ -19291,6 +19692,14 @@
             ],
             "title": "Reference"
           },
+          "invoice_kind": {
+            "title": "Invoice Kind",
+            "type": "string"
+          },
+          "review_revision": {
+            "title": "Review Revision",
+            "type": "integer"
+          },
           "weights": {
             "default": [],
             "items": {
@@ -19302,7 +19711,9 @@
         },
         "required": [
           "property_id",
-          "property_name"
+          "property_name",
+          "invoice_kind",
+          "review_revision"
         ],
         "title": "CostReportRow",
         "type": "object"
@@ -19421,12 +19832,21 @@
       },
       "AggregateOut": {
         "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
           "mode": {
             "title": "Mode",
             "type": "string"
           },
           "filters": {
-            "$ref": "#/components/schemas/ReportFilters"
+            "$ref": "#/components/schemas/ConsumptionFilters"
           },
           "effective_date_bounds": {
             "$ref": "#/components/schemas/DateBounds"
@@ -19437,20 +19857,36 @@
           },
           "totals": {
             "items": {
-              "$ref": "#/components/schemas/ReportRow"
+              "$ref": "#/components/schemas/AggregateGroup"
             },
             "title": "Totals",
             "type": "array"
           },
           "groups": {
             "items": {
-              "$ref": "#/components/schemas/ReportRow"
+              "$ref": "#/components/schemas/AggregateGroup"
             },
             "title": "Groups",
             "type": "array"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group By"
           }
         },
         "required": [
+          "generated_at",
+          "contract_version",
           "mode",
           "filters",
           "effective_date_bounds",
@@ -19461,8 +19897,577 @@
         "title": "AggregateOut",
         "type": "object"
       },
+      "ConsumptionFilters": {
+        "properties": {
+          "property_id": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Property Id",
+            "type": "array"
+          },
+          "vendor_id": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Vendor Id",
+            "type": "array"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "title": "ConsumptionFilters",
+        "type": "object"
+      },
+      "ConsumptionReportPage": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReportRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ConsumptionFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "items",
+          "count",
+          "next",
+          "previous",
+          "mode",
+          "filters",
+          "effective_date_bounds",
+          "has_more"
+        ],
+        "title": "ConsumptionReportPage",
+        "type": "object"
+      },
+      "ReportRow": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Time"
+          },
+          "invoice_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month"
+          },
+          "invoice_month_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month Time"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "quantity_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Milli"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Time"
+          },
+          "period_end_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End Time"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "source_service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Service"
+          },
+          "source_selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Selection"
+          },
+          "selection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Reason"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "allocation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Id"
+          },
+          "usage_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name"
+        ],
+        "title": "ReportRow",
+        "type": "object"
+      },
       "ReportPage": {
         "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/ReportRow"
@@ -19505,16 +20510,23 @@
           },
           "effective_date_bounds": {
             "$ref": "#/components/schemas/DateBounds"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
           }
         },
         "required": [
+          "generated_at",
+          "contract_version",
           "items",
           "count",
           "next",
           "previous",
           "mode",
           "filters",
-          "effective_date_bounds"
+          "effective_date_bounds",
+          "has_more"
         ],
         "title": "ReportPage",
         "type": "object"
