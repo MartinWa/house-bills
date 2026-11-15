@@ -189,12 +189,23 @@ def final_day(value):
         return "Unknown"
 
 
-def _comparison_values(values, *, vendor_id, properties, kind):
+def _comparison_values(values, *, vendor_id, properties, kind, lookups=None):
     """Compare values that affect the bill, excluding extraction text and geometry."""
     values = cost_totals_candidate(values)
     result = {}
-    vendor = Vendor.objects.filter(pk=vendor_id).first() if vendor_id else None
-    houses = Property.objects.in_bulk({pk for pk in properties.values() if type(pk) is int})
+    vendor = (
+        lookups["vendors"].get(vendor_id)
+        if lookups is not None
+        else Vendor.objects.filter(pk=vendor_id).first()
+        if vendor_id
+        else None
+    )
+    houses = (
+        lookups["properties"]
+        if lookups is not None
+        else Property.objects.in_bulk({pk for pk in properties.values() if type(pk) is int})
+    )
+    catalogue = lookups["subcategories"] if lookups is not None else None
 
     def put(key, label, value, *, display=None):
         comparison = "Unknown" if value is None or value == "" else str(value)
@@ -250,7 +261,9 @@ def _comparison_values(values, *, vendor_id, properties, kind):
         put(
             f"{prefix}.subcategory",
             f"{label} cost subcategory",
-            subcategory_label(section.get("service"), section.get("subcategory", ""))
+            subcategory_label(
+                section.get("service"), section.get("subcategory", ""), catalogue=catalogue
+            )
             if section.get("service") != "waste" or section.get("subcategory")
             else "",
         )
@@ -280,7 +293,9 @@ def _comparison_values(values, *, vendor_id, properties, kind):
             put(
                 f"{row_key}.subcategory",
                 f"{row_label} subcategory",
-                subcategory_label(section.get("service"), usage.get("subcategory", "")),
+                subcategory_label(
+                    section.get("service"), usage.get("subcategory", ""), catalogue=catalogue
+                ),
             )
             put(
                 f"{row_key}.period",
@@ -293,6 +308,28 @@ def _comparison_values(values, *, vendor_id, properties, kind):
                 dict(Usage.Basis.choices).get(usage.get("basis")),
             )
     return result
+
+
+def proposal_has_changes(snapshot, candidate, *, lookups):
+    """Use the workflow's semantic comparison without ORM reads in a report."""
+    routing = candidate.get("routing", {})
+    approved = _comparison_values(
+        snapshot["values"],
+        vendor_id=snapshot["vendor_id"],
+        properties=snapshot["properties"],
+        kind=snapshot["kind"],
+        lookups=lookups,
+    )
+    proposed = _comparison_values(
+        candidate,
+        vendor_id=routing.get("vendor_id"),
+        properties=routing.get("section_properties", {}),
+        kind=routing.get("kind", "invoice"),
+        lookups=lookups,
+    )
+    return {key: value[1] for key, value in approved.items()} != {
+        key: value[1] for key, value in proposed.items()
+    }
 
 
 def proposal_differences(invoice, attempt, *, pending_only=False):

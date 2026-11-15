@@ -1,0 +1,705 @@
+{
+  "contract_version": 1,
+  "examples": [
+    {
+      "name": "empty",
+      "endpoint": "missing-invoices",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "mode": "rows",
+        "as_of": "2026-03-01",
+        "filters": {
+          "property_id": null,
+          "vendor_id": null,
+          "category": null,
+          "subcategory": null,
+          "date_from": "2026-02-01",
+          "date_to": "2026-02-01",
+          "as_of": "2026-03-01",
+          "status": "all"
+        },
+        "effective_date_bounds": {
+          "date_from": "2026-02-01",
+          "date_to": "2026-02-01"
+        },
+        "expectation_count": 0,
+        "expected_invoice_count": 0,
+        "received_invoice_count": 0,
+        "missing_invoice_count": 0,
+        "review_invoice_count": 0,
+        "counts_by_status": {
+          "missing": 0,
+          "needs_review": 0,
+          "received": 0,
+          "expected": 0,
+          "not_expected": 0,
+          "unassigned": 0,
+          "unscheduled": 0,
+          "incomplete": 0
+        },
+        "oldest_missing_month": null,
+        "items": [],
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "has_more": false
+      }
+    },
+    {
+      "name": "missing-shared",
+      "endpoint": "missing-invoices",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "mode": "rows",
+        "as_of": "2026-03-01",
+        "filters": {
+          "property_id": null,
+          "vendor_id": null,
+          "category": null,
+          "subcategory": null,
+          "date_from": "2026-02-01",
+          "date_to": "2026-02-01",
+          "as_of": "2026-03-01",
+          "status": "all"
+        },
+        "effective_date_bounds": {
+          "date_from": "2026-02-01",
+          "date_to": "2026-02-01"
+        },
+        "expectation_count": 1,
+        "expected_invoice_count": 1,
+        "received_invoice_count": 0,
+        "missing_invoice_count": 1,
+        "review_invoice_count": 0,
+        "counts_by_status": {
+          "missing": 1,
+          "needs_review": 0,
+          "received": 0,
+          "expected": 0,
+          "not_expected": 0,
+          "unassigned": 0,
+          "unscheduled": 0,
+          "incomplete": 0
+        },
+        "oldest_missing_month": "2026-02-01",
+        "items": [
+          {
+            "expectation_key": "vendor:1:month:2026-02",
+            "vendor_id": 1,
+            "vendor_name": "Synthetic utility",
+            "expected_month": "2026-02-01",
+            "expected_month_time": 1769904000,
+            "status": "missing",
+            "status_label": "Missing",
+            "receipt_status": "missing",
+            "missing_after": "2026-03-01",
+            "days_overdue": 0,
+            "properties": [
+              {
+                "property_id": 1,
+                "property_name": "Synthetic house 1"
+              },
+              {
+                "property_id": 2,
+                "property_name": "Synthetic house 2"
+              }
+            ],
+            "services": [
+              {
+                "property_id": 1,
+                "property_name": "Synthetic house 1",
+                "property_service_id": 1,
+                "category": "water",
+                "category_name": "Water",
+                "subcategory": "",
+                "subcategory_name": "",
+                "classification": "required",
+                "cost_required": true,
+                "status": "missing",
+                "status_label": "Missing",
+                "confirmation_reason": null
+              },
+              {
+                "property_id": 2,
+                "property_name": "Synthetic house 2",
+                "property_service_id": 2,
+                "category": "water",
+                "category_name": "Water",
+                "subcategory": "",
+                "subcategory_name": "",
+                "classification": "required",
+                "cost_required": true,
+                "status": "missing",
+                "status_label": "Missing",
+                "confirmation_reason": null
+              }
+            ],
+            "approved_invoice_ids": [],
+            "approved_document_ids": [],
+            "pending_document_ids": [],
+            "document_ids": [],
+            "invoice_id": null,
+            "document_id": null,
+            "period_start": null,
+            "period_end": null
+          }
+        ],
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "has_more": false
+      }
+    },
+    {
+      "name": "empty",
+      "endpoint": "review-queue",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "mode": "rows",
+        "as_of": "2026-03-01",
+        "filters": {
+          "property_id": null,
+          "reason_key": null,
+          "date_from": null,
+          "date_to": null,
+          "as_of": "2026-03-01"
+        },
+        "effective_date_bounds": {
+          "date_from": null,
+          "date_to": null
+        },
+        "review_document_count": 0,
+        "counts_by_reason": {
+          "manual_entry": 0,
+          "parse_failed": 0,
+          "proposal_changes": 0,
+          "reparse_confirmation": 0,
+          "vendor_unresolved": 0,
+          "property_unresolved": 0,
+          "validation_required": 0,
+          "awaiting_approval": 0
+        },
+        "oldest_attention_since": null,
+        "items": [],
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "has_more": false
+      }
+    },
+    {
+      "name": "unknown-manual",
+      "endpoint": "review-queue",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "mode": "rows",
+        "as_of": "2026-03-01",
+        "filters": {
+          "property_id": null,
+          "reason_key": null,
+          "date_from": null,
+          "date_to": null,
+          "as_of": "2026-03-01"
+        },
+        "effective_date_bounds": {
+          "date_from": null,
+          "date_to": null
+        },
+        "review_document_count": 1,
+        "counts_by_reason": {
+          "manual_entry": 1,
+          "parse_failed": 0,
+          "proposal_changes": 0,
+          "reparse_confirmation": 0,
+          "vendor_unresolved": 0,
+          "property_unresolved": 0,
+          "validation_required": 0,
+          "awaiting_approval": 0
+        },
+        "oldest_attention_since": "2026-02-28T00:00:00Z",
+        "items": [
+          {
+            "reason_key": "manual_entry",
+            "reason": "Complete the manual invoice entry.",
+            "document_id": 3,
+            "invoice_id": null,
+            "vendor_id": null,
+            "vendor_name": null,
+            "invoice_date": null,
+            "invoice_kind": null,
+            "net_minor": null,
+            "vat_minor": null,
+            "gross_minor": null,
+            "currency": null,
+            "value_source": "empty",
+            "routing_status": "unresolved",
+            "properties": [],
+            "reason_details": [
+              {
+                "reason_key": "manual_entry",
+                "reason": "Complete the manual invoice entry."
+              }
+            ],
+            "attention_since": "2026-02-28T00:00:00Z",
+            "age_days": 1,
+            "period_start": null,
+            "period_end": null
+          }
+        ],
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "has_more": false
+      }
+    },
+    {
+      "name": "empty",
+      "endpoint": "attention",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "mode": "rows",
+        "as_of": "2026-03-01",
+        "filters": {
+          "property_id": null,
+          "as_of": "2026-03-01",
+          "coverage_date_from": "2026-02-01",
+          "coverage_date_to": "2026-02-01",
+          "review_date_from": null,
+          "review_date_to": null
+        },
+        "effective_date_bounds": {
+          "coverage_date_from": "2026-02-01",
+          "coverage_date_to": "2026-02-01",
+          "review_date_from": null,
+          "review_date_to": null
+        },
+        "attention_count": 0,
+        "review_document_count": 0,
+        "coverage_attention_count": 0,
+        "missing_invoice_count": 0,
+        "oldest_missing_month": null,
+        "items": [],
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "has_more": false
+      }
+    },
+    {
+      "name": "missing-and-unknown",
+      "endpoint": "attention",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "mode": "rows",
+        "as_of": "2026-03-01",
+        "filters": {
+          "property_id": null,
+          "as_of": "2026-03-01",
+          "coverage_date_from": "2026-02-01",
+          "coverage_date_to": "2026-02-01",
+          "review_date_from": null,
+          "review_date_to": null
+        },
+        "effective_date_bounds": {
+          "coverage_date_from": "2026-02-01",
+          "coverage_date_to": "2026-02-01",
+          "review_date_from": null,
+          "review_date_to": null
+        },
+        "attention_count": 2,
+        "review_document_count": 1,
+        "coverage_attention_count": 1,
+        "missing_invoice_count": 1,
+        "oldest_missing_month": "2026-02-01",
+        "items": [
+          {
+            "reason_key": "manual_entry",
+            "reason": "Complete the manual invoice entry.",
+            "attention_key": "document:3",
+            "kind": "document",
+            "attention_date": "2026-02-28",
+            "properties": [],
+            "services": [],
+            "related_expectation_keys": [],
+            "expected_month": null,
+            "expected_months": [],
+            "period_start": null,
+            "period_end": null,
+            "document_id": 3,
+            "invoice_id": null,
+            "document_ids": [
+              3
+            ],
+            "review_path": "/documents/3/review/",
+            "coverage_path": null
+          }
+        ],
+        "count": 2,
+        "next": "/api/v1/reports/attention?as_of=2026-03-01&coverage_date_from=2026-02-01&coverage_date_to=2026-02-01&mode=rows&limit=1&offset=1",
+        "previous": null,
+        "has_more": true
+      }
+    },
+    {
+      "name": "empty",
+      "endpoint": "invoice-costs",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "items": [],
+        "count": 0,
+        "next": null,
+        "previous": null,
+        "filters": {
+          "property_id": null,
+          "vendor_id": null,
+          "category": null,
+          "subcategory": null,
+          "currency": "SEK",
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "effective_date_bounds": {
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "has_more": false
+      }
+    },
+    {
+      "name": "shared-complete",
+      "endpoint": "invoice-costs",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "items": [
+          {
+            "invoice_id": 4,
+            "document_id": 4,
+            "vendor_id": 1,
+            "vendor_name": "Synthetic utility",
+            "invoice_date": "2026-02-20",
+            "invoice_time": 1771545600,
+            "invoice_kind": "invoice",
+            "review_revision": 1,
+            "source": "manual",
+            "properties": [
+              {
+                "property_id": 1,
+                "property_name": "Synthetic house 1"
+              },
+              {
+                "property_id": 2,
+                "property_name": "Synthetic house 2"
+              }
+            ],
+            "currency": "SEK",
+            "net_minor": 200,
+            "vat_minor": 50,
+            "gross_minor": 250,
+            "allocation_count": 2
+          }
+        ],
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "filters": {
+          "property_id": null,
+          "vendor_id": null,
+          "category": null,
+          "subcategory": null,
+          "currency": "SEK",
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "effective_date_bounds": {
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "has_more": false
+      }
+    },
+    {
+      "name": "unknown-amount",
+      "endpoint": "invoice-costs",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "items": [
+          {
+            "invoice_id": 4,
+            "document_id": 4,
+            "vendor_id": 1,
+            "vendor_name": "Synthetic utility",
+            "invoice_date": "2026-02-20",
+            "invoice_time": 1771545600,
+            "invoice_kind": "invoice",
+            "review_revision": 1,
+            "source": "manual",
+            "properties": [
+              {
+                "property_id": 1,
+                "property_name": "Synthetic house 1"
+              },
+              {
+                "property_id": 2,
+                "property_name": "Synthetic house 2"
+              }
+            ],
+            "currency": "SEK",
+            "net_minor": null,
+            "vat_minor": 50,
+            "gross_minor": null,
+            "allocation_count": 2
+          }
+        ],
+        "count": 1,
+        "next": null,
+        "previous": null,
+        "filters": {
+          "property_id": null,
+          "vendor_id": null,
+          "category": null,
+          "subcategory": null,
+          "currency": "SEK",
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "effective_date_bounds": {
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "has_more": false
+      }
+    },
+    {
+      "name": "paginated-credit",
+      "endpoint": "invoice-costs",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "items": [
+          {
+            "invoice_id": 4,
+            "document_id": 4,
+            "vendor_id": 1,
+            "vendor_name": "Synthetic utility",
+            "invoice_date": "2026-02-20",
+            "invoice_time": 1771545600,
+            "invoice_kind": "invoice",
+            "review_revision": 1,
+            "source": "manual",
+            "properties": [
+              {
+                "property_id": 1,
+                "property_name": "Synthetic house 1"
+              },
+              {
+                "property_id": 2,
+                "property_name": "Synthetic house 2"
+              }
+            ],
+            "currency": "SEK",
+            "net_minor": 200,
+            "vat_minor": 50,
+            "gross_minor": 250,
+            "allocation_count": 2
+          }
+        ],
+        "count": 2,
+        "next": "/api/v1/reports/invoice-costs?currency=SEK&date_from=2026-02-20&date_to=2026-02-20&limit=1&offset=1",
+        "previous": null,
+        "filters": {
+          "property_id": null,
+          "vendor_id": null,
+          "category": null,
+          "subcategory": null,
+          "currency": "SEK",
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "effective_date_bounds": {
+          "date_from": "2026-02-20",
+          "date_to": "2026-02-20"
+        },
+        "has_more": true
+      }
+    }
+  ],
+  "infinity_queries": [
+    {
+      "endpoint": "missing-invoices",
+      "target": {
+        "refId": "A",
+        "type": "json",
+        "source": "url",
+        "parser": "backend",
+        "format": "table",
+        "url": "http://app:8000/api/v1/reports/missing-invoices?property_id=1&limit=200",
+        "root_selector": "(contract_version = 1 ? ($p := $; $message := \"Showing \" & $string($count(items)) & \" of \" & $string(count) & \" matching\" & (has_more ? \"; more pages available\" : \"\"); $count(items) = 0 ? [{\"page_message\": (count = 0 ? \"No matching records\" : $message)}] : $map(items, function($r) { $merge([$r, {\"page_message\": $message, \"cost_display\": ($type($r.gross_minor) = \"number\" ? $string($r.gross_minor / 100) & \" \" & $r.currency : \"Unknown\")}]) })) : $unsupported_reporting_contract())",
+        "url_options": {
+          "method": "GET"
+        },
+        "columns": [
+          {
+            "selector": "expectation_key",
+            "text": "expectation_key",
+            "type": "string"
+          },
+          {
+            "selector": "expected_month",
+            "text": "expected_month",
+            "type": "string"
+          },
+          {
+            "selector": "status_label",
+            "text": "status_label",
+            "type": "string"
+          },
+          {
+            "selector": "page_message",
+            "text": "page_message",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "endpoint": "review-queue",
+      "target": {
+        "refId": "A",
+        "type": "json",
+        "source": "url",
+        "parser": "backend",
+        "format": "table",
+        "url": "http://app:8000/api/v1/reports/review-queue?property_id=1&limit=200",
+        "root_selector": "(contract_version = 1 ? ($p := $; $message := \"Showing \" & $string($count(items)) & \" of \" & $string(count) & \" matching\" & (has_more ? \"; more pages available\" : \"\"); $count(items) = 0 ? [{\"page_message\": (count = 0 ? \"No matching records\" : $message)}] : $map(items, function($r) { $merge([$r, {\"page_message\": $message, \"cost_display\": ($type($r.gross_minor) = \"number\" ? $string($r.gross_minor / 100) & \" \" & $r.currency : \"Unknown\")}]) })) : $unsupported_reporting_contract())",
+        "url_options": {
+          "method": "GET"
+        },
+        "columns": [
+          {
+            "selector": "document_id",
+            "text": "document_id",
+            "type": "number"
+          },
+          {
+            "selector": "reason",
+            "text": "reason",
+            "type": "string"
+          },
+          {
+            "selector": "vendor_name",
+            "text": "vendor_name",
+            "type": "string"
+          },
+          {
+            "selector": "page_message",
+            "text": "page_message",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "endpoint": "attention",
+      "target": {
+        "refId": "A",
+        "type": "json",
+        "source": "url",
+        "parser": "backend",
+        "format": "table",
+        "url": "http://app:8000/api/v1/reports/attention?property_id=1&limit=200",
+        "root_selector": "(contract_version = 1 ? ($p := $; $message := \"Showing \" & $string($count(items)) & \" of \" & $string(count) & \" matching\" & (has_more ? \"; more pages available\" : \"\"); $count(items) = 0 ? [{\"page_message\": (count = 0 ? \"No matching records\" : $message)}] : $map(items, function($r) { $merge([$r, {\"page_message\": $message, \"cost_display\": ($type($r.gross_minor) = \"number\" ? $string($r.gross_minor / 100) & \" \" & $r.currency : \"Unknown\")}]) })) : $unsupported_reporting_contract())",
+        "url_options": {
+          "method": "GET"
+        },
+        "columns": [
+          {
+            "selector": "attention_key",
+            "text": "attention_key",
+            "type": "string"
+          },
+          {
+            "selector": "reason",
+            "text": "reason",
+            "type": "string"
+          },
+          {
+            "selector": "expected_month",
+            "text": "expected_month",
+            "type": "string"
+          },
+          {
+            "selector": "review_path",
+            "text": "review_path",
+            "type": "string"
+          },
+          {
+            "selector": "page_message",
+            "text": "page_message",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    {
+      "endpoint": "invoice-costs",
+      "target": {
+        "refId": "A",
+        "type": "json",
+        "source": "url",
+        "parser": "backend",
+        "format": "table",
+        "url": "http://app:8000/api/v1/reports/invoice-costs?property_id=1&limit=200",
+        "root_selector": "(contract_version = 1 ? ($p := $; $message := \"Showing \" & $string($count(items)) & \" of \" & $string(count) & \" matching\" & (has_more ? \"; more pages available\" : \"\"); $count(items) = 0 ? [{\"page_message\": (count = 0 ? \"No matching records\" : $message)}] : $map(items, function($r) { $merge([$r, {\"page_message\": $message, \"cost_display\": ($type($r.gross_minor) = \"number\" ? $string($r.gross_minor / 100) & \" \" & $r.currency : \"Unknown\")}]) })) : $unsupported_reporting_contract())",
+        "url_options": {
+          "method": "GET"
+        },
+        "columns": [
+          {
+            "selector": "invoice_id",
+            "text": "invoice_id",
+            "type": "number"
+          },
+          {
+            "selector": "vendor_name",
+            "text": "vendor_name",
+            "type": "string"
+          },
+          {
+            "selector": "invoice_date",
+            "text": "invoice_date",
+            "type": "string"
+          },
+          {
+            "selector": "gross_minor",
+            "text": "gross_minor",
+            "type": "number"
+          },
+          {
+            "selector": "currency",
+            "text": "currency",
+            "type": "string"
+          },
+          {
+            "selector": "page_message",
+            "text": "page_message",
+            "type": "string"
+          },
+          {
+            "selector": "cost_display",
+            "text": "cost_display",
+            "type": "string"
+          }
+        ]
+      }
+    }
+  ]
+}

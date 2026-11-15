@@ -5,7 +5,7 @@ from ninja import NinjaAPI
 from .schemas import ErrorOut
 
 
-def query_parameters(names, *, repeated=(), sortable=(), groupable=(), mandatory=()):
+def query_parameters(names, *, repeated=(), sortable=(), groupable=(), mandatory=(), choices=None):
     parameters = []
     for name in names:
         schema = {"type": "string"}
@@ -35,8 +35,14 @@ def query_parameters(names, *, repeated=(), sortable=(), groupable=(), mandatory
             schema["enum"] = ["SEK"]
         elif name == "unit":
             schema["enum"] = ["kWh", "m3", "kg"]
+        if choices and name in choices:
+            schema["enum"] = list(choices[name])
         if name in repeated:
-            schema = {"type": "array", "maxItems": 100, "items": schema}
+            schema = {
+                "type": "array",
+                "items": schema,
+                "description": "At most 100 distinct IDs; repeat the parameter to select several.",
+            }
         parameters.append(
             {
                 "name": name,
@@ -50,10 +56,15 @@ def query_parameters(names, *, repeated=(), sortable=(), groupable=(), mandatory
     return parameters
 
 
-def documented_query(*names, repeated=(), sortable=(), groupable=(), mandatory=()):
+def documented_query(*names, repeated=(), sortable=(), groupable=(), mandatory=(), choices=None):
     def decorate(view):
         view.api_parameters = query_parameters(
-            names, repeated=repeated, sortable=sortable, groupable=groupable, mandatory=mandatory
+            names,
+            repeated=repeated,
+            sortable=sortable,
+            groupable=groupable,
+            mandatory=mandatory,
+            choices=choices,
         )
         return view
 

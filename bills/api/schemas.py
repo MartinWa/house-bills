@@ -681,3 +681,209 @@ class CoverageOut(Schema):
     coverage_rows: list[dict]
     property_services: list[dict]
     counts: dict[str, int]
+
+
+class ReportProperty(Schema):
+    property_id: int
+    property_name: str
+
+
+class ReviewProperty(ReportProperty):
+    association: Literal["proposed", "approved", "both"]
+
+
+class CoverageService(ReportProperty):
+    property_service_id: int
+    category: str
+    category_name: str
+    subcategory: str
+    subcategory_name: str
+    classification: Literal["required", "optional"]
+    cost_required: bool
+    status: str
+    status_label: str
+    confirmation_reason: str | None
+
+
+class CoverageFilters(Schema):
+    property_id: list[int] | None
+    vendor_id: list[int] | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    date_from: date
+    date_to: date
+    as_of: date
+    status: str
+
+
+class ReviewFilters(Schema):
+    property_id: list[int] | None
+    reason_key: str | None
+    date_from: date | None
+    date_to: date | None
+    as_of: date
+
+
+class AttentionFilters(Schema):
+    property_id: list[int] | None
+    as_of: date
+    coverage_date_from: date
+    coverage_date_to: date
+    review_date_from: date | None
+    review_date_to: date | None
+
+
+class AttentionDateBounds(Schema):
+    coverage_date_from: date
+    coverage_date_to: date
+    review_date_from: date | None
+    review_date_to: date | None
+
+
+class CoverageRow(Schema):
+    expectation_key: str
+    vendor_id: int | None
+    vendor_name: str | None
+    expected_month: date
+    expected_month_time: int
+    status: str
+    status_label: str
+    receipt_status: str
+    missing_after: date | None
+    days_overdue: int | None
+    properties: list[ReportProperty]
+    services: list[CoverageService]
+    approved_invoice_ids: list[int]
+    approved_document_ids: list[int]
+    pending_document_ids: list[int]
+    document_ids: list[int]
+    invoice_id: int | None
+    document_id: int | None
+    period_start: date | None
+    period_end: date | None
+
+
+class CoverageSummary(ReportingMetadata):
+    mode: str
+    as_of: date
+    filters: CoverageFilters
+    effective_date_bounds: DateBounds
+    expectation_count: int
+    expected_invoice_count: int
+    received_invoice_count: int
+    missing_invoice_count: int
+    review_invoice_count: int
+    counts_by_status: dict[str, int]
+    oldest_missing_month: date | None
+
+
+class MissingInvoicesPage(Page[CoverageRow], CoverageSummary):
+    has_more: bool
+
+
+class ReviewReason(Schema):
+    reason_key: str
+    reason: str
+
+
+class ReviewQueueRow(ReviewReason):
+    document_id: int
+    invoice_id: int | None
+    vendor_id: int | None
+    vendor_name: str | None
+    invoice_date: date | None
+    invoice_kind: str | None
+    net_minor: int | None
+    vat_minor: int | None
+    gross_minor: int | None
+    currency: str | None
+    value_source: Literal["proposal", "empty"]
+    routing_status: Literal["resolved", "partial", "unresolved"]
+    properties: list[ReviewProperty]
+    reason_details: list[ReviewReason]
+    attention_since: datetime
+    age_days: int
+    period_start: date | None
+    period_end: date | None
+
+
+class ReviewQueueSummary(ReportingMetadata):
+    mode: str
+    as_of: date
+    filters: ReviewFilters
+    effective_date_bounds: DateBounds
+    review_document_count: int
+    counts_by_reason: dict[str, int]
+    oldest_attention_since: datetime | None
+
+
+class ReviewQueuePage(Page[ReviewQueueRow], ReviewQueueSummary):
+    has_more: bool
+
+
+class AttentionRow(ReviewReason):
+    attention_key: str
+    kind: Literal["document", "coverage"]
+    attention_date: date
+    properties: list[ReviewProperty | ReportProperty]
+    services: list[CoverageService]
+    related_expectation_keys: list[str]
+    expected_month: date | None
+    expected_months: list[date]
+    period_start: date | None
+    period_end: date | None
+    document_id: int | None
+    invoice_id: int | None
+    document_ids: list[int]
+    review_path: str | None
+    coverage_path: str | None
+
+
+class AttentionSummary(ReportingMetadata):
+    mode: str
+    as_of: date
+    filters: AttentionFilters
+    effective_date_bounds: AttentionDateBounds
+    attention_count: int
+    review_document_count: int
+    coverage_attention_count: int
+    missing_invoice_count: int
+    oldest_missing_month: date | None
+
+
+class AttentionPage(Page[AttentionRow], AttentionSummary):
+    has_more: bool
+
+
+class InvoiceCostFilters(Schema):
+    property_id: list[int] | None
+    vendor_id: list[int] | None
+    category: str | None
+    subcategory: str | None
+    currency: str | None
+    date_from: date | None
+    date_to: date | None
+
+
+class InvoiceCostRow(Schema):
+    invoice_id: int
+    document_id: int
+    vendor_id: int
+    vendor_name: str
+    invoice_date: date
+    invoice_time: int
+    invoice_kind: str
+    review_revision: int
+    source: str
+    properties: list[ReportProperty]
+    currency: str
+    net_minor: int | None
+    vat_minor: int | None
+    gross_minor: int | None
+    allocation_count: int
+
+
+class InvoiceCostsPage(Page[InvoiceCostRow], ReportingMetadata):
+    filters: InvoiceCostFilters
+    effective_date_bounds: DateBounds
+    has_more: bool

@@ -20,6 +20,10 @@ REPORTING_PATHS = frozenset(
         "/reports/consumption",
         "/reports/billed-power",
         "/reports/consumption-issues",
+        "/reports/missing-invoices",
+        "/reports/review-queue",
+        "/reports/attention",
+        "/reports/invoice-costs",
     }
 )
 
@@ -43,7 +47,7 @@ def verify_credential(request, *, check_profile=True):
         and token.profile == ApiToken.Profile.REPORTING
         and (request.method != "GET" or path not in REPORTING_PATHS)
     ):
-        raise ApiError(403, "forbidden", "This credential permits approved reporting only.")
+        raise ApiError(403, "forbidden", "This credential permits read-only reporting only.")
     request.user, request.auth = token.owner, token
     return token
 

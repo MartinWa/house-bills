@@ -107,6 +107,20 @@ def main():
     if report.get("contract_version") != 1:
         raise SystemExit("Unsupported reporting contract.")
     print(json.dumps(report, indent=2))
+    # One complete cost row per invoice. Follow continuations for the complete list.
+    path = f"/reports/invoice-costs?property_id={house['id']}&currency=SEK&sort=-invoice_date"
+    while path:
+        invoices = call("GET", path)
+        if invoices.get("contract_version") != 1:
+            raise SystemExit("Unsupported reporting contract.")
+        for invoice in invoices["items"]:
+            print(
+                invoice["invoice_date"],
+                invoice["vendor_name"],
+                invoice["gross_minor"],
+                invoice["currency"],
+            )
+        path = invoices["next"]
 
 
 if __name__ == "__main__":

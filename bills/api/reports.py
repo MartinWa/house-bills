@@ -6,20 +6,25 @@ from ninja import Router
 
 from bills.api_reporting import (
     DIMENSIONS,
+    INVOICE_COST_SORT,
     MANDATORY_DIMENSIONS,
     SORT_FIELDS,
     read_api_report,
+    read_invoice_costs,
     read_selectors,
 )
-from bills.invoice_coverage import read_invoice_coverage
+from bills.attention_reporting import REASONS, read_attention_report
+from bills.attention_reporting import SORT_FIELDS as ATTENTION_SORT_FIELDS
+from bills.invoice_coverage import STATUS_LABELS, read_invoice_coverage
 from bills.models import Category
 
 from . import schemas as s
+from .attention import QUERY_FIELDS, parse_filters, pinned_page
 from .collections import integer, iso_date, page_response, pagination, query_values
 from .contract import documented_query
 from .errors import ApiError, invalid_parameter
 
-router = Router(tags=["Approved reporting"])
+router = Router(tags=["Read-only reporting"])
 
 
 def report_filters(request, modes=(), *, raw=False, kind=None):
@@ -251,3 +256,56 @@ def invoice_coverage(request):
         "property_services": result["property_services"],
         "counts": {key: value for key, value in result.items() if key.endswith("_count")},
     }
+
+
+def attention_response(request, kind):
+    filters, mode, sort, limit, offset = parse_filters(request, kind)
+    result = read_attention_report(
+        kind=kind, filters=filters, mode=mode, sort=sort, limit=limit, offset=offset
+    )
+    return pinned_page(request, result, mode, sort, limit, offset)
+
+
+@router.get("/missing-invoices", response=s.MissingInvoicesPage | s.CoverageSummary)
+@documented_query(
+    *QUERY_FIELDS["coverage"],
+    repeated=("property_id", "vendor_id"),
+    sortable=ATTENTION_SORT_FIELDS["coverage"],
+    choices={"mode": ("rows", "summary"), "status": (*STATUS_LABELS, "all", "attention")},
+)
+def missing_invoices(request):
+    return attention_response(request, "coverage")
+
+
+@router.get("/review-queue", response=s.ReviewQueuePage | s.ReviewQueueSummary)
+@documented_query(
+    *QUERY_FIELDS["review"],
+    repeated=("property_id",),
+    sortable=ATTENTION_SORT_FIELDS["review"],
+    choices={"mode": ("rows", "summary"), "reason_key": REASONS},
+)
+def review_queue(request):
+    return attention_response(request, "review")
+
+
+@router.get("/attention", response=s.AttentionPage | s.AttentionSummary)
+@documented_query(
+    *QUERY_FIELDS["attention"],
+    repeated=("property_id",),
+    sortable=ATTENTION_SORT_FIELDS["attention"],
+    choices={"mode": ("rows", "summary")},
+)
+def attention(request):
+    return attention_response(request, "attention")
+
+
+@router.get("/invoice-costs", response=s.InvoiceCostsPage)
+@documented_query(
+    *QUERY_FIELDS["invoice_costs"],
+    repeated=("property_id", "vendor_id"),
+    sortable=INVOICE_COST_SORT,
+)
+def invoice_costs(request):
+    filters, mode, sort, limit, offset = parse_filters(request, "invoice_costs")
+    result = read_invoice_costs(filters=filters, sort=sort, limit=limit, offset=offset)
+    return pinned_page(request, result, mode, sort, limit, offset)
