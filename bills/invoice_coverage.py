@@ -51,8 +51,11 @@ def _matches(allocation, service):
     )
 
 
-def _snapshot(start, end, *, reader=None, selection=None):
+def _snapshot(start, end, *, reader=None, selection=None, receipt_bounds=None):
     """Configuration and receipt states belong to the same read-only snapshot."""
+    receipt_start, receipt_end = receipt_bounds or (None, None)
+    receipt_start = receipt_start or start
+    receipt_limit = receipt_end + timedelta(days=1) if receipt_end else add_months(end, 1)
     params = (start.isoformat(), add_months(end, 1).isoformat())
     with reporting_reader() if reader is None else nullcontext(reader) as reader:
         service_where, service_params = "1=1", []
@@ -187,6 +190,7 @@ def _snapshot(start, end, *, reader=None, selection=None):
     for item in exceptions:
         item["month"] = _date(item["month"])
     receipts = defaultdict(dict)
+    outside_receipts = set()
     by_invoice = defaultdict(list)
     for section in sections:
         by_invoice[section["invoice_id"]].append(section)
@@ -196,8 +200,12 @@ def _snapshot(start, end, *, reader=None, selection=None):
             continue
         if invoice["status"] != "approved" and invoice["document_id"] in pending_documents:
             continue
+        invoice_date = _date(invoice["invoice_date"])
+        key = (invoice["vendor_id"], invoice_date.replace(day=1))
+        if not receipt_start <= invoice_date < receipt_limit:
+            outside_receipts.add(key)
+            continue
         invoice["sections"] = by_invoice[invoice["id"]]
-        key = (invoice["vendor_id"], _date(invoice["invoice_date"]).replace(day=1))
         receipts[key][invoice["document_id"]] = invoice
     # Pending headers count even when the property routing is unresolved.
     for attempt in pending:
@@ -214,6 +222,9 @@ def _snapshot(start, end, *, reader=None, selection=None):
         month = invoice_date.replace(day=1)
         if not start <= month <= end:
             continue
+        if not receipt_start <= invoice_date < receipt_limit:
+            outside_receipts.add((vendor, month))
+            continue
         allocations = [
             {**row, "property_id": routing.get("section_properties", {}).get(row.get("section_id"))}
             for row in values.get("sections", [])
@@ -225,6 +236,10 @@ def _snapshot(start, end, *, reader=None, selection=None):
             "sections": allocations,
             "review_revision": None,
         }
+    # Excluded receipts still invalidate confirmations for the whole vendor month.
+    exceptions = [
+        item for item in exceptions if (item["vendor_id"], item["month"]) not in outside_receipts
+    ]
     return services, assignments, schedules, patterns, exceptions, receipts
 
 
@@ -361,8 +376,9 @@ def build_invoice_coverage(
     subcategory=None,
     max_groups=None,
     catalogue=None,
+    exact_dates=False,
 ):
-    """Construct domain facts using an optional caller-owned read snapshot."""
+    """Construct monthly expectations, optionally restricting receipts to exact dates."""
     as_of = as_of or datetime.now(UTC).date()
     start = (date_from or as_of.replace(month=1, day=1)).replace(day=1)
     end = (date_to or as_of).replace(day=1)
@@ -383,6 +399,7 @@ def build_invoice_coverage(
         }
         if reader is not None
         else None,
+        receipt_bounds=(date_from, date_to) if exact_dates else None,
     )
     grouped = defaultdict(list)
     selected_service_ids = {

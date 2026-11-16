@@ -87,7 +87,9 @@ Costs/summary quality also includes actual contributing invoice-date bounds,
 vendor bill expectations and current receipt/confirmation facts, with `as_of`,
 expectation count, status counts and missing bill count. Complete means every
 selected expectation is received or explicitly not expected; absent schedules
-or assignments leave coverage unknown. It does not reconstruct historical
+or assignments leave coverage unknown. Receipts must fall within the exact inclusive
+invoice-date bounds; bills before the start or after a comparison cutoff cannot
+complete the selected expectations. It does not reconstruct historical
 approval or document availability and does not establish quantity continuity.
 
 Compact consumption groups with quality also carry their own `coverage`,
@@ -115,7 +117,9 @@ annuals and monthly cells for the focus year and its two predecessors.
 `metric=consumption` keeps separate house/utility/unit/fraction groups; selected
 electricity sources combine as kWh. `comparison_year` defaults to the focus year's
 predecessor and must differ from it. It supports 1–9998. `history=true` includes
-every available annual year, subject to the history breadth guard. Explicit dates
+every available annual year, subject to the history breadth guard, while retaining
+the focus year and its two predecessors even when they have no observations. The
+monthly grid always retains those three recent years. Explicit dates
 can replace a focus year; their end year determines the default focus.
 
 The current cutoff is the earlier of the requested end and the latest contributing
@@ -147,6 +151,10 @@ uses `alignment_policy: whole_periods_no_proration_v1`. It independently aggrega
 approved gross cost allocations and selected usage, then establishes a relationship
 between their whole billed periods. Invoice dates do not determine this numerator.
 One allocation with several readings contributes its cost once.
+
+Omitted date bounds resolve from known billed cost periods and selected quantity
+and exclusion periods. Invoice dates do not determine these bounds. Cost-only
+services and periods remain visible when quantities are missing.
 
 Groups retain house, utility/unit, currency and applicable waste fraction. They
 include aligned exclusive bounds/inclusive last day, `gross_minor`,

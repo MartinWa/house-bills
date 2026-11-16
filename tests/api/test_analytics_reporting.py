@@ -6,10 +6,12 @@ from decimal import Decimal
 
 import pytest
 
+from bills.invoice_coverage import build_invoice_coverage
 from bills.models import (
     BillingSection,
     Invoice,
     PropertyService,
+    ServiceInvoiceException,
     ServiceVendorAssignment,
     Usage,
     Vendor,
@@ -210,6 +212,135 @@ def test_cost_comparisons_use_expectations_and_unknown_cumulative(api_client, le
     )
 
 
+@pytest.mark.parametrize(
+    ("baseline_day", "start", "comparable"),
+    [(10, date(2024, 1, 15), False), (20, None, True), (31, None, False)],
+)
+def test_cost_comparison_receipts_respect_exact_bounds(
+    api_client, ledger, baseline_day, start, comparable
+):
+    house, vendor = ledger["houses"][0], ledger["vendor"]
+    network = Vendor.objects.create(name="Synthetic network", slug="synthetic-network")
+    for category, subcategory, issuer in (
+        ("water", None, vendor),
+        ("electricity", "electricity_network", network),
+    ):
+        service = PropertyService.objects.create(
+            property=house,
+            category=category,
+            subcategory_id=subcategory,
+            start_month=date(2023, 1, 1),
+        )
+        ServiceVendorAssignment.objects.create(
+            property_service=service, vendor=issuer, start_month=date(2023, 1, 1)
+        )
+        VendorBillingSchedule.objects.create(
+            vendor=issuer, start_month=date(2023, 1, 1), first_expected_month=date(2023, 1, 1)
+        )
+    for year, service, issuer, day, net in (
+        (2023, "water", vendor, 20, 10000),
+        (2023, "electricity_network", network, baseline_day, 20000),
+        (2024, "water", vendor, 20, 10000),
+        (2024, "electricity_network", network, 20, 20000),
+    ):
+        ledger["make"](
+            [
+                allocation(
+                    house, service=service, net=net, start=date(year, 1, 1), end=date(year, 2, 1)
+                )
+            ],
+            invoice_date=date(year, 1, day),
+            issuer=issuer,
+        )
+    window = f"date_from={start}&date_to=2024-01-31" if start else "year=2024"
+    comparison = get(api_client[0], f"comparisons?metric=costs&property_id={house.pk}&{window}")[
+        "comparisons"
+    ][0]
+    assert comparison["cutoff"] == "2024-01-20"
+    assert comparison["comparison_cutoff"] == "2023-01-20"
+    assert comparison["current_value"] == 37500
+    assert comparison["current_coverage"]["status"] == "complete"
+    assert comparison["comparable"] is comparable
+    if comparable:
+        assert comparison["comparison_value"] == 37500
+        assert comparison["absolute_change"] == 0
+        assert Decimal(comparison["percentage_change"]) == 0
+    else:
+        assert comparison["comparison_value"] == 12500
+        assert comparison["comparison_coverage"]["status"] == "partial"
+        assert comparison["comparison_coverage"]["counts_by_status"] == {
+            "missing": 1,
+            "received": 1,
+        }
+        assert comparison["absolute_change"] is None and comparison["percentage_change"] is None
+        assert "invoice_coverage_incomplete" in comparison["reasons"]
+    with reporting_reader() as reader:
+        monthly = build_invoice_coverage(
+            reader=reader,
+            property_ids=[house.pk],
+            date_from=start.replace(year=2023) if start else date(2023, 1, 1),
+            date_to=date(2023, 1, 20),
+        )
+    assert len(monthly["coverage_rows"]) == 2
+    assert all(row["status"] == "received" for row in monthly["coverage_rows"])
+
+
+@pytest.mark.parametrize(
+    ("invoice_day", "status", "counts"),
+    [
+        (None, "complete", {"not_expected": 1}),
+        (10, "partial", {"missing": 1}),
+        (20, "complete", {"received": 1}),
+        (31, "partial", {"missing": 1}),
+    ],
+)
+def test_cost_coverage_does_not_restore_invalidated_confirmations(
+    api_client, ledger, invoice_day, status, counts
+):
+    house, vendor = ledger["houses"][0], ledger["vendor"]
+    service = PropertyService.objects.create(
+        property=house, category="water", start_month=date(2023, 1, 1)
+    )
+    ServiceVendorAssignment.objects.create(
+        property_service=service, vendor=vendor, start_month=date(2023, 1, 1)
+    )
+    VendorBillingSchedule.objects.create(
+        vendor=vendor, start_month=date(2023, 1, 1), first_expected_month=date(2023, 1, 1)
+    )
+    ServiceInvoiceException.objects.create(
+        vendor=vendor,
+        month=date(2023, 1, 1),
+        reason="Synthetic confirmation before a later invoice arrived.",
+    )
+    if invoice_day is not None:
+        ledger["make"](
+            [allocation(house, service="water", start=date(2023, 1, 1), end=date(2023, 2, 1))],
+            invoice_date=date(2023, 1, invoice_day),
+        )
+    coverage = get(
+        api_client[0],
+        f"costs?property_id={house.pk}&category=water&mode=totals&include_quality=true&"
+        "date_from=2023-01-15&date_to=2023-01-20",
+    )["quality"]["invoice_coverage"]
+    assert coverage["status"] == status and coverage["counts_by_status"] == counts
+
+
+@pytest.mark.parametrize("metric", ("costs", "consumption"))
+def test_history_preserves_recent_absent_years_and_months(api_client, ledger, metric):
+    water(ledger, 2020, 1, 10000)
+    query = f"comparisons?metric={metric}&year=2024&category=water"
+    recent = get(api_client[0], query)
+    history = get(api_client[0], query + "&history=true")
+    assert history["available_years"] == [2020]
+    assert [row["year"] for row in history["annuals"]] == [2020, 2022, 2023, 2024]
+    assert history["annuals"][1:] == recent["annuals"]
+    assert history["monthly"] == recent["monthly"]
+    assert len(history["monthly"]) == 36
+    assert all(row["state"] == "absent" and row["value"] is None for row in history["monthly"])
+    if metric == "costs":
+        assert all(row["cumulative_gross_minor"] is None for row in history["monthly"])
+
+
 def test_unit_costs_aggregate_costs_and_usage_independently(api_client, ledger):  # noqa: F811
     client = api_client[0]
     start, end = date(2024, 1, 1), date(2024, 2, 1)
@@ -237,6 +368,58 @@ def test_unit_costs_aggregate_costs_and_usage_independently(api_client, ledger):
     Usage.objects.all().update(basis="estimated")
     group = get(client, "unit-costs?category=water")["groups"][0]
     assert "estimated_quantity" in group["reasons"] and group["rate_minor_per_unit"] is None
+
+
+@pytest.mark.parametrize("bounds", ("", "&date_from=2024-01-01", "&date_to=2024-02-29"))
+def test_unit_cost_bounds_include_billed_costs_without_quantities(api_client, ledger, bounds):
+    water(ledger, 2024, 1, 10000)
+    house = ledger["houses"][0]
+    ledger["make"](
+        [allocation(house, service="water", start=date(2024, 2, 1), end=date(2024, 3, 1))],
+        invoice_date=date(2026, 5, 1),
+    )
+    query = f"unit-costs?category=water&property_id={house.pk}"
+    response = get(api_client[0], query + bounds)
+    assert response["effective_date_bounds"] == {
+        "date_from": "2024-01-01",
+        "date_to": "2024-02-29",
+    }
+    group = response["groups"][0]
+    assert group["gross_minor"] == 25000 and group["quantity_milli"] == 10000
+    assert group["allocation_count"] == group["invoice_count"] == 2
+    assert not group["comparable"] and group["rate_minor_per_unit"] is None
+    assert "quantity_period_gap" in group["reasons"]
+    january = get(api_client[0], query + "&date_from=2024-01-01&date_to=2024-01-31")["groups"][0]
+    assert january["allocation_count"] == 1 and january["comparable"]
+    assert january["gross_minor"] == 12500 and january["quantity_milli"] == 10000
+
+
+def test_unit_cost_inference_retains_cost_only_utilities(api_client, ledger):
+    water(ledger, 2024, 1, 10000)
+    house = ledger["houses"][0]
+    ledger["make"](
+        [
+            allocation(
+                house,
+                service="waste",
+                subcategory="waste_collection",
+                start=date(2023, 11, 1),
+                end=date(2023, 12, 1),
+            )
+        ],
+        invoice_date=date(2026, 5, 1),
+    )
+    response = get(api_client[0], f"unit-costs?property_id={house.pk}")
+    assert response["effective_date_bounds"] == {
+        "date_from": "2023-11-01",
+        "date_to": "2024-01-31",
+    }
+    groups = {row["utility"]: row for row in response["groups"]}
+    assert set(groups) == {"water", "waste"}
+    waste = groups["waste"]
+    assert waste["gross_minor"] == 12500 and waste["quantity_milli"] is None
+    assert waste["allocation_count"] == 1 and waste["rate_minor_per_unit"] is None
+    assert "no_quantities" in waste["reasons"]
 
 
 def test_electricity_rate_includes_supply_fixed_and_demand_without_double_counting(

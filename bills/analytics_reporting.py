@@ -256,6 +256,7 @@ def cost_coverage(reader, filters):
             date_to=end,
             as_of=as_of,
             max_groups=MAX_GROUPS,
+            exact_dates=True,
         )
         rows = facts["coverage_rows"]
         counts = Counter(row["status"] for row in rows)
@@ -493,7 +494,8 @@ def read_comparisons(*, filters, metric, focus_year=None, comparison_year=None, 
                     "date_to": date(available_years[-1], 12, 31),
                 }
             )
-        years = available_years if history else [focus - 2, focus - 1, focus]
+        recent_years = [focus - 2, focus - 1, focus]
+        years = sorted(set(available_years) | set(recent_years)) if history else recent_years
         for identity, population in sorted(populations.items()):
             identity = dict(zip(fields, identity, strict=True))
             identity["property_name"] = population[0]["property_name"]
@@ -651,7 +653,7 @@ def read_comparisons(*, filters, metric, focus_year=None, comparison_year=None, 
                         ),
                     }
                 )
-                if year not in (focus, focus - 1, focus - 2):
+                if year not in recent_years:
                     continue
                 cumulative, known = 0, True
                 for month in range(1, 13):
@@ -842,6 +844,23 @@ def read_unit_costs(*, filters):
     with reporting_reader() as database:
         reader = ReportingSnapshot(database, filters)
         validate_catalogue(reader, filters)
+        if not (filters.get("date_from") and filters.get("date_to")):
+            periods = [
+                (row["period_start"], row["period_end"])
+                for kind in ("costs", "consumption", "issues")
+                for row in reader.selected(filters, kind, billed_costs=kind == "costs")
+                if row["period_start"]
+                and row["period_end"]
+                and (kind != "costs" or row["category"] in UNITS)
+            ]
+            if periods:
+                filters = {
+                    **filters,
+                    "date_from": filters.get("date_from")
+                    or date.fromisoformat(min(start for start, _ in periods)),
+                    "date_to": filters.get("date_to")
+                    or date.fromisoformat(max(end for _, end in periods)) - timedelta(days=1),
+                }
         filters = resolved_filters(reader, filters, "consumption")
         catalogue = {
             row["key"]: dict(row)
