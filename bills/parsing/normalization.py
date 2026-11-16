@@ -2,7 +2,7 @@
 
 import re
 from datetime import date, timedelta
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 MONTHS = {
     name: i
@@ -87,7 +87,3 @@ def source_period(value: str, *, end_inclusive: bool = False) -> tuple[date, dat
     if start >= end:
         raise ValueError("Service period must have positive duration")
     return start, end
-
-
-def rounded_vat(net_minor: int, rate: Decimal) -> int:
-    return int((Decimal(net_minor) * rate).quantize(Decimal(1), rounding=ROUND_HALF_UP))
