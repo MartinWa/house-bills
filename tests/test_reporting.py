@@ -3,13 +3,15 @@
 import copy
 import hashlib
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import connection, transaction
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from bills.models import (
@@ -20,6 +22,7 @@ from bills.models import (
     PropertyService,
     ServiceInvoiceException,
     ServiceVendorAssignment,
+    Subcategory,
     Usage,
     Vendor,
     VendorBillingSchedule,
@@ -212,6 +215,41 @@ def ledger(tmp_path, settings, django_user_model):
 def rows(view):
     with reporting_reader() as reader:
         return [dict(row) for row in reader.execute(f"SELECT * FROM {view}")]
+
+
+def test_report_labels_stay_in_snapshot_without_orm_queries(ledger, monkeypatch):
+    import bills.reporting as reporting
+
+    ledger["make"](
+        [allocation(ledger["houses"][0], usages=[usage(subcategory="electricity_network")])]
+    )
+    Subcategory.objects.filter(pk="electricity_network").update(
+        name="Snapshot network", is_active=False
+    )
+
+    @contextmanager
+    def concurrent_reader():
+        with reporting_reader() as reader:
+            yield reader
+            Subcategory.objects.filter(pk="electricity_network").update(name="Later network")
+
+    original_label = reporting.subcategory_label
+    lookups = []
+
+    def snapshot_label(*args, catalogue=None):
+        assert catalogue is not None
+        lookups.append(args)
+        return original_label(*args, catalogue=catalogue)
+
+    monkeypatch.setattr(reporting, "reporting_reader", concurrent_reader)
+    monkeypatch.setattr(reporting, "subcategory_label", snapshot_label)
+    with CaptureQueriesContext(connection) as queries:
+        result = read_report()
+    assert [query["sql"].split()[0] for query in queries] == ["UPDATE"]
+    assert lookups
+    assert result["costs"][0]["subcategory_label"] == "Snapshot network"
+    assert result["breakdown"][0]["subcategory_label"] == "Snapshot network"
+    assert Subcategory.objects.get(pk="electricity_network").name == "Later network"
 
 
 @pytest.mark.parametrize(
