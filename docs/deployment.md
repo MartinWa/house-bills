@@ -155,7 +155,8 @@ authenticated original downloads. Run the clean-restoration procedure independen
 image updates do not replace installation state or accepted corrections. If an upgrade
 fails, retain the failed instance for inspection and restore the verified pre-upgrade
 backup into a separate directory using its previous image. Do not assume that an older
-image can read a migrated database.
+image can read a migrated database. Reversing migrations can silently discard configuration;
+use backup restoration for rollback.
 
 Releases never deploy or update an installation automatically.
 

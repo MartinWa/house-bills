@@ -200,9 +200,10 @@ no normalized rows; their source text remains in the original PDF and extraction
 Migrations preserve invoice/document/assignment identities, money, signed quantities,
 units, periods, approval metadata, original storage and immutable history. They read
 older classification keys in memory and archive migrated service billing settings
-privately for recovery. Downgrades are guarded and stop when the current schema cannot
-represent saved data; in that case restore the verified pre-upgrade backup with the
-previous image. See [manual upgrades](deployment.md#manual-upgrades).
+privately for recovery. Only some migrations guard against data loss on reversal.
+Reversing waste-fraction support removes saved cost patterns and service-group/fraction-kind
+metadata without a guard. For rollback, restore the verified pre-upgrade backup with the
+previous image; see [manual upgrades](deployment.md#manual-upgrades).
 
 Money uses signed integer minor units: `100` is one SEK. Quantities use signed integer
 thousandths: `1000` is one kWh, kW, m³ or kg. Floats, booleans and strings are rejected by the
