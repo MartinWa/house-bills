@@ -64,21 +64,15 @@ without applicable schedules show **Needs billing schedule**. Configuration link
 lead to the appropriate editors. The service detail table also retains occasional,
 ended and disabled activity and vendor history.
 
-## SQLite contract, version 3
+## SQL views
 
-Migration `0008_reporting_views` creates five read-only SQL views in the application
-database. They use native SQLite functions and work through an ordinary SQLite
-connection, without Django functions or an export refresh. The migration adds indexes
-for property/service and utility/period queries; applying or reversing it does not
-change invoices, consumption, originals or private history.
-
-Migration `0009_usage_subcategories` adds `category` and `subcategory` to the cost
-and usage projections. Electricity costs use category `electricity`, with subcategories
-`electricity_network` (Elnät) and `electricity_supply` (Elhandel). Migration
-`0013_vendor_billing_schedules` extends waste cost subcategories with `waste_collection`
-and `tank_emptying`; unclassified costs remain empty. Waste usage uses `restavfall`,
-`matavfall` or an empty, unspecified subcategory. Other categories
-retain their existing service keys and have no subcategory.
+The application database exposes read-only reporting views using native SQLite
+functions, accessible through an ordinary SQLite connection without an export refresh.
+Cost and usage rows carry `category` and `subcategory`: electricity uses
+`electricity_network` (Elnät) and `electricity_supply` (Elhandel); waste costs use
+`waste_collection` and `tank_emptying`, with unclassified costs left empty; waste usage
+uses `restavfall`, `matavfall` or an empty, unspecified subcategory. Other categories
+retain their service keys without a subcategory.
 
 The Reports screen groups waste consumption by subcategory. Electricity consumption
 keeps one combined total using the existing source preference; its source breakdown
@@ -113,13 +107,11 @@ ID; unscheduled assignments remain visible. Native views include months through
 the current UTC month and use UTC status dates. The application can also inspect
 explicit future month ranges without changing configured records.
 
-Migrations `0019`–`0022` rebuild these projections for shared schedules and the
-classification catalogue. Legacy pending waste sections still derive labels only
-from explicit retained evidence. Existing values, including an explicit empty
-subcategory, take precedence. Immutable proposals and approval snapshots are
-interpreted in memory without rewriting their JSON. The
-[SQL examples](reporting-examples.sql) include combined-bill counts and service
-details for Grafana-style tables.
+Pending waste sections derive labels only from explicit retained evidence. Existing
+values, including an explicit empty subcategory, take precedence; immutable proposals
+and approval snapshots are interpreted in memory without rewriting their JSON. The
+[SQL examples](reporting-examples.sql) include combined-bill counts and service details
+for Grafana-style tables.
 
 Invoice IDs persist through correction. Allocation and usage IDs change when the
 review service replaces the current normalized rows. Query the current views afresh;
@@ -160,9 +152,9 @@ weights remain zero. Quantities retain their signed values and bases; different
 bases are displayed separately. Configured active fractions can show “Not reported”.
 
 When enabled fraction cost services split explicit Layout 01 charges, each fraction
-has its own net, VAT and gross cost. Shared collection fees remain in the general
-breakdown. VAT rounding is balanced to the original contract total, so every cost
-still contributes once and the overall waste total is preserved.
+has its own net, VAT and gross cost while shared fees stay general; see
+[parsing](parsing.md#configuration-and-versions). Every cost still contributes once, so
+the overall waste total is preserved.
 
 The Waste table's weights come from the same cost sections/invoices selected by
 **invoice date**, including their independent billed periods. The existing

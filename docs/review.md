@@ -65,9 +65,9 @@ submitted fields and approved values; closing or cancelling discards unsaved ent
 
 For waste, select Matavfall, Restavfall, Trädgårdsavfall, Plast, Kartong or Glas on
 an allocation only when its charge amount is reported. Keep shared/base charges in
-general waste. Enabled fraction cost services allow Layout 01 to split printed net
-charges and apportion the contract's printed VAT, balancing rounding to the exact
-VAT total. Check those allocations against their source rows and shared VAT evidence.
+general waste. Enabled fraction cost services let Layout 01 split printed charges with
+VAT balanced to the contract total; see [parsing](parsing.md#configuration-and-versions).
+Check those allocations against their source rows and shared VAT evidence.
 Do not divide a combined cost by weights. Each reported fraction weight can belong
 to a combined allocation; a fraction cost can have no weight. Enter only reported
 weights, including printed zeros, and preserve negative reversals. Missing weights

@@ -38,28 +38,10 @@ extraction service or runtime CDN dependencies.
 
 ## Vendors and formats
 
-Vendor names and issuer identifiers are configured by the operator. Automatic
-extraction supports these structures; adding a vendor also requires selecting
-a compatible invoice format.
-
-| Format | Supported structure |
-| --- | --- |
-| `layout_01/v1` | Contract-based network, water, waste and supply; section continuations, waste weights and dated water reversals. |
-| `layout_01/v2` | Historical product-number network, water and supply specifications. |
-| `layout_02/v1` | Electricity supply with installation details above each specification, including shared invoices. |
-| `layout_03/v1` | Quarterly waste or dated tank emptying with a VAT basis and payment summary; container sizes remain source detail. |
-| `layout_04/v1` | Electricity supply with cover totals and a separate single-installation specification. |
-| `layout_05/v1` | Electricity supply with a consumption table beside a historical chart. |
-| `layout_05/v2` | Electricity supply with printed billed consumption in a meter-reading table beside a chart. |
-| `layout_06/v1` | Monthly network and energy-tax totals with billed electricity quantities. |
-| `layout_06/v2` | Network and energy-tax totals with exclusive VAT prices or dated price changes. |
-| `layout_07/v1` | Electricity supply with area-labelled consumption and inclusive VAT totals. |
-| `layout_08/v1` | Compact electricity supply with printed consumption, VAT, total and rounding. |
-
-These families have representative source validation and synthetic regressions.
-`layout_02/v2` additionally demonstrates a replacement using synthetic examples.
+Vendor names and issuer identifiers are configured by the operator. Adding a vendor
+also requires selecting a compatible installed invoice format. The
+[parser guide](docs/parsing.md) lists every supported structure, version and revision.
 Support does not cover every vendor, historical version or future layout change.
-The [parser guide](docs/parsing.md) describes recognition, versions and failures.
 
 An unknown, unreadable or invalid invoice retains its original and opens for
 [manual review](docs/review.md). Configure its vendor, enter the header, service
@@ -81,10 +63,9 @@ invoices. See [initial setup](docs/setup.md) for the first approved bill and
 [development](docs/development.md) for tests and browser checks.
 
 Production uses a non-root, read-only image, host-local SQLite and private HTTPS
-through an existing reverse proxy. See [installation and upgrades](docs/deployment.md)
-and verify [backup and clean restoration](docs/backup-and-recovery.md) before normal
-real-data use. Release publishing is configured; the first published image and NAS
-verification are pending. A local production build is available for evaluation.
+through an existing reverse proxy. A local production build is available for evaluation.
+See [installation and upgrades](docs/deployment.md) and verify
+[backup and clean restoration](docs/backup-and-recovery.md) before normal real-data use.
 
 ## Limits and documentation
 
@@ -95,6 +76,10 @@ billed consumption periods, without calendar-month proration. Selected demand an
 fraction charges are separated; remaining fee details stay in the original PDF.
 Folder import, historical OCR, Grafana access transport
 and loading parser plugins from a mounted directory are not implemented.
+
+Release publishing is configured, but the first published image and NAS verification
+are pending; local production builds and the automated Grafana check support evaluation
+with synthetic data.
 
 - [HTTP API and automation](docs/api.md), [OpenAPI schema](docs/api/openapi.json)
 - [Configuration and data model](docs/data-model.md)
