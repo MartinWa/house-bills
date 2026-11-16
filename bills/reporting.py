@@ -162,11 +162,15 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         total_invoices = len(invoice_sources)
         manual_invoices = len(manual_rows)
         manual_document_ids = sorted({row["document_id"] for row in manual_rows})
+        catalogue = {
+            row["key"]: row["name"]
+            for row in reader.execute("SELECT key, name FROM bills_subcategory")
+        }
     for row in costs:
         row["service_label"] = Service(row["service"]).label
         row["category_label"] = CATEGORY_LABELS[row["service"]]
         row["subcategory_label"] = (
-            subcategory_label(row["service"], row["subcategory"])
+            subcategory_label(row["service"], row["subcategory"], catalogue=catalogue)
             if row["service"] != "waste" or row["subcategory"]
             else ""
         )
@@ -174,7 +178,7 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
         row["utility_label"] = Usage.Utility(row["utility"]).label
         row["unit_label"] = "m³" if row["unit"] == "m3" else row["unit"]
         row["subcategory_label"] = subcategory_label(
-            row.get("source_service", row["utility"]), row["subcategory"]
+            row.get("source_service", row["utility"]), row["subcategory"], catalogue=catalogue
         )
     for row in breakdown:
         row["source_label"] = Service(row["source_service"]).label

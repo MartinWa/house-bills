@@ -145,9 +145,10 @@ def calendar_value(row, name):
     return row.get(name)
 
 
-def consumption_groups(rows, mode, group_by, max_groups):
+def consumption_buckets(rows, mode, group_by, max_groups):
+    """Choose dimensions and bucket sources once for totals and optional quality."""
     dimensions = (
-        group_by if mode == "grouped" else ["property_id", "utility", "unit", "subcategory"]
+        list(group_by) if mode == "grouped" else ["property_id", "utility", "unit", "subcategory"]
     )
     if mode == "billed_period":
         dimensions += ["period_start", "period_end", "basis", "source_service", "source_selection"]
@@ -162,6 +163,11 @@ def consumption_groups(rows, mode, group_by, max_groups):
         grouped[key].append(row)
         if len(grouped) > max_groups:
             raise ReportTooBroad("10,000 aggregate groups")
+    return dimensions, grouped
+
+
+def consumption_groups(buckets):
+    dimensions, grouped = buckets
     result = []
     for key, sources in sorted(
         grouped.items(), key=lambda pair: tuple((value is not None, value) for value in pair[0])

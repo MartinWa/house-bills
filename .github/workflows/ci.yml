@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  UV_VERSION: "0.13.7"
+  UV_VERSION: "0.13.8"
   DOCKER_BUILD_RECORD_UPLOAD: "false"
 
 jobs:

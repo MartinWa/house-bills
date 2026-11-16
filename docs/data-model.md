@@ -269,6 +269,18 @@ retained; manual/changed values carry an explicit manual-review marker, the sele
 source page and an unlocated zero bounding box. Extraction attempts and earlier approved
 snapshots retain original evidence.
 
+The document association remains non-unique for compatibility with retained
+multi-invoice records and the publication rules in [ingestion](ingestion.md).
+One invoice per document is the current parser/review output, rather than an
+enforced schema invariant. The simplification review on 2026-11-16 deferred a
+uniqueness migration: it requires a permanent product decision, a read-only
+installation inventory of duplicate IDs/statuses/revisions/extraction relationships,
+and an explicit policy preserving approved history. Document-level review currently
+selects the invoice with the highest retained revision, then the lowest ID. Reviewing
+every invoice in a multi-invoice document would require an explicit invoice choice
+bound into its signed review context. Multi-property invoices and `shared` folders
+remain necessary regardless of the document/invoice cardinality decision.
+
 Approval checks each allocation's net plus VAT against its gross total, then allocation
 totals and rounding against the header. Explicit demand and waste fraction splits follow
 the [parser convention](parsing.md#configuration-and-versions). Usage must match the

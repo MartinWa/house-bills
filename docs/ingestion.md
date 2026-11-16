@@ -76,6 +76,9 @@ overwritten. Explicit approved corrections can move the same original to its new
 reviewed path. The authenticated download URL stays stable.
 The current parsers and review screens produce one invoice per document; re-parsing
 an approved invoice proposes changes to that invoice and preserves its approved identity.
+The storage contract also retains multi-invoice document compatibility. Parser output
+does not establish database uniqueness; see the [cardinality decision](data-model.md#persistence-services)
+before proposing a uniqueness migration.
 
 ## Recovery and backup coordination
 

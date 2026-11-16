@@ -181,7 +181,7 @@ pinned Trivy download before use.
 
 ## Dependency updates
 
-Use uv 0.13.7 for lockfile/export tooling. It can run on the editing host without running
+Use uv 0.13.8 for lockfile/export tooling. It can run on the editing host without running
 the Django application there. Edit the exact direct dependency pins in `pyproject.toml`,
 then regenerate the lock:
 

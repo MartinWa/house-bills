@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from .categories import CATEGORY_LABELS, SUBCATEGORY_LABELS
 from .configuration import month_number
 from .reporting import SELECTION_REASONS, reporting_reader
-from .reporting_data import ReportingSnapshot, consumption_groups
+from .reporting_data import ReportingSnapshot, consumption_buckets, consumption_groups
 from .waste_reporting import ReportTooBroad, attach_waste_weights, read_waste_report
 
 MAX_PROPERTIES = 100
@@ -30,24 +30,19 @@ COST_DIMENSIONS = {
 }
 COST_DIMENSIONS["invoice_month"] = "date(invoice_date, 'start of month')"
 COST_DIMENSIONS["invoice_year"] = "CAST(strftime('%Y', invoice_date) AS INTEGER)"
-CONSUMPTION_DIMENSIONS = {
-    name: name
-    for name in (
-        "property_id",
-        "vendor_id",
-        "utility",
-        "unit",
-        "subcategory",
-        "period_start",
-        "period_end",
-        "basis",
-        "source_service",
-        "source_selection",
-    )
-}
-CONSUMPTION_DIMENSIONS.update(
-    period_start_month="date(period_start, 'start of month')",
-    period_start_year="CAST(strftime('%Y', period_start) AS INTEGER)",
+CONSUMPTION_DIMENSIONS = (
+    "property_id",
+    "vendor_id",
+    "utility",
+    "unit",
+    "subcategory",
+    "period_start",
+    "period_end",
+    "basis",
+    "source_service",
+    "source_selection",
+    "period_start_month",
+    "period_start_year",
 )
 DIMENSIONS = {"costs": COST_DIMENSIONS, "consumption": CONSUMPTION_DIMENSIONS}
 MANDATORY_DIMENSIONS = {"costs": ("currency",), "consumption": ("utility", "unit")}
@@ -100,14 +95,14 @@ SORT_FIELDS = {
     },
     "power": USAGE_SORT,
 }
-SELECTED = """
-WITH selected_usage AS (
-    SELECT * FROM reporting_electricity_usage
-    UNION ALL
-    SELECT u.*, '' AS selection_reason, 'billed' AS source_selection
-    FROM reporting_usage u WHERE utility <> 'electricity'
-)
-"""
+
+
+def require_snapshot(reader, kind):
+    """Costs support a SQL reader; usage and combined reports require cached selection."""
+    if kind not in ("costs", "consumption", "issues", "power", "summary"):
+        raise ValueError(f"Unsupported report kind: {kind}")
+    if kind != "costs" and not isinstance(reader, ReportingSnapshot):
+        raise TypeError(f"{kind} reporting requires a ReportingSnapshot")
 
 
 def filters_sql(filters, *, usage=False, dates=True, strict_ids=False):
@@ -138,6 +133,7 @@ def filters_sql(filters, *, usage=False, dates=True, strict_ids=False):
 
 
 def resolved_filters(reader, filters, kind, *, strict_ids=False):
+    require_snapshot(reader, kind)
     result = dict(filters)
     if len(set(result.get("property_id") or [])) > MAX_PROPERTIES:
         raise ReportTooBroad("100 property IDs")
@@ -156,7 +152,7 @@ def resolved_filters(reader, filters, kind, *, strict_ids=False):
     )
     for projection in projections:
         usage = projection != "costs"
-        if usage and isinstance(reader, ReportingSnapshot):
+        if usage:
             sources = reader.selected(filters, projection)
             if sources:
                 bounds.append(
@@ -167,23 +163,9 @@ def resolved_filters(reader, filters, kind, *, strict_ids=False):
                     )
                 )
             continue
-        where, params = filters_sql(filters, usage=usage, strict_ids=strict_ids)
-        table = {
-            "costs": "reporting_costs",
-            "consumption": "selected_usage",
-            "issues": "reporting_electricity_selection",
-            "power": "reporting_electricity_demand",
-        }[projection]
-        if projection == "issues":
-            where += " AND source_selection = 'needs_review'"
-        endpoints = (
-            "min(period_start), max(date(period_end, '-1 day'))"
-            if usage
-            else "min(invoice_date), max(invoice_date)"
-        )
+        where, params = filters_sql(filters, strict_ids=strict_ids)
         row = reader.execute(
-            (SELECTED if table == "selected_usage" else "")
-            + f"SELECT {endpoints} FROM {table} WHERE {where}",
+            f"SELECT min(invoice_date), max(invoice_date) FROM reporting_costs WHERE {where}",
             params,
         ).fetchone()
         if row[0] is not None:
@@ -204,18 +186,17 @@ def validate_date_bounds(result):
             raise ReportTooBroad("600 calendar months")
 
 
-def aggregate(reader, filters, kind, mode, group_by=None):
-    usage = kind == "consumption"
-    if usage and isinstance(reader, ReportingSnapshot):
-        return timestamps(
-            consumption_groups(
-                reader.selected(filters, kind),
-                mode,
-                group_by,
-                MAX_GROUPS,
+def aggregate(reader, filters, kind, mode, group_by=None, *, buckets=None):
+    require_snapshot(reader, kind)
+    if kind == "consumption":
+        if buckets is None:
+            buckets = consumption_buckets(
+                reader.selected(filters, kind), mode, group_by, MAX_GROUPS
             )
-        )
-    where, params = filters_sql(filters, usage=usage)
+        return timestamps(consumption_groups(buckets))
+    if kind != "costs":
+        raise ValueError(f"Unsupported aggregate kind: {kind}")
+    where, params = filters_sql(filters)
     if mode == "grouped":
         dimensions = DIMENSIONS[kind]
         columns = [f"{dimensions[name]} AS {name}" for name in group_by]
@@ -224,43 +205,22 @@ def aggregate(reader, filters, kind, mode, group_by=None):
             if f"{name}_id" in group_by:
                 columns.append(f"{name}_name")
                 group.append(f"{name}_name")
-    elif usage:
-        # Electricity totals combine selected sources; classified water/waste remain separate.
-        subcategory = (
-            "CASE WHEN utility='electricity' THEN '' ELSE subcategory END AS subcategory"
-            if mode == "totals"
-            else "subcategory"
-        )
-        columns = ["property_id", "property_name", "utility", "unit", subcategory]
-        group = ["property_id", "property_name", "utility", "unit", "5"]
-        if mode == "billed_period":
-            columns += ["period_start", "period_end", "basis", "source_service", "source_selection"]
-            group += ["period_start", "period_end", "basis", "source_service", "source_selection"]
     else:
         columns = ["property_id", "property_name", "category", "subcategory", "currency"]
         group = list(columns)
         if mode == "invoice_month":
             columns += ["date(invoice_date, 'start of month') AS invoice_month"]
             group += ["date(invoice_date, 'start of month')"]
-    if usage:
-        summed = (
-            "sum(quantity_milli) AS quantity_milli, "
-            "count(DISTINCT allocation_id) AS allocation_count, count(*) AS usage_count"
+    summed = (
+        ", ".join(
+            f"CASE WHEN count({field})=count(*) THEN sum({field}) END AS {field}"
+            for field in ("net_minor", "vat_minor", "gross_minor")
         )
-        source, table = SELECTED + "SELECT ", "selected_usage"
-    else:
-        summed = (
-            ", ".join(
-                f"CASE WHEN count({field})=count(*) THEN sum({field}) END AS {field}"
-                for field in ("net_minor", "vat_minor", "gross_minor")
-            )
-            + ", count(*) AS allocation_count"
-        )
-        source, table = "SELECT ", "reporting_costs"
+        + ", count(*) AS allocation_count"
+    )
     summed += ", count(DISTINCT invoice_id) AS invoice_count"
     sql = (
-        source
-        + f"{', '.join(columns)}, {summed} FROM {table} WHERE {where} "
+        f"SELECT {', '.join(columns)}, {summed} FROM reporting_costs WHERE {where} "
         + f"GROUP BY {', '.join(group)} ORDER BY {', '.join(group)} LIMIT {MAX_GROUPS + 1}"
     )
     groups = [dict(row) for row in reader.execute(sql, params)]
@@ -403,7 +363,16 @@ def read_api_report(
                 else None,
             }
         if mode != "rows":
-            groups = aggregate(reader, filters, kind, mode, group_by)
+            buckets = (
+                consumption_buckets(reader.selected(filters, kind), mode, group_by, MAX_GROUPS)
+                if kind == "consumption"
+                else None
+            )
+            groups = (
+                aggregate(reader, filters, kind, mode, group_by, buckets=buckets)
+                if buckets is not None
+                else aggregate(reader, filters, kind, mode, group_by)
+            )
             totals = (
                 (groups if mode == "totals" else aggregate(reader, filters, kind, "totals"))
                 if include_totals
@@ -424,7 +393,7 @@ def read_api_report(
                 if include_quality and kind == "consumption":
                     from .analytics_reporting import group_quality
 
-                    group_quality(reader, filters, result["groups"], mode, group_by)
+                    group_quality(result["groups"], buckets)
             return result
         if kind in ("consumption", "issues"):
             all_rows = reader.selected(filters, kind)
@@ -462,16 +431,9 @@ def read_api_report(
         where, params = filters_sql(filters, usage=usage)
         table = {
             "costs": "reporting_costs",
-            "consumption": "selected_usage",
-            "issues": "reporting_electricity_selection",
             "power": "reporting_electricity_demand",
         }[kind]
-        cte = SELECTED if table == "selected_usage" else ""
-        if kind == "issues":
-            where += " AND source_selection='needs_review'"
-        count = reader.execute(
-            cte + f"SELECT count(*) FROM {table} WHERE {where}", params
-        ).fetchone()[0]
+        count = reader.execute(f"SELECT count(*) FROM {table} WHERE {where}", params).fetchone()[0]
         order = (
             "invoice_date, invoice_id, allocation_id"
             if kind == "costs"
@@ -486,8 +448,7 @@ def read_api_report(
         rows = [
             dict(row)
             for row in reader.execute(
-                cte
-                + f"SELECT r.*, d.source FROM {table} r "
+                f"SELECT r.*, d.source FROM {table} r "
                 + "JOIN bills_document d ON d.id=r.document_id "
                 + f"WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?",
                 [*params, limit, offset],

@@ -9,7 +9,6 @@ from .categories import usage_units
 from .classification_forms import catalogue_field
 from .configuration import validate_classification
 from .models import Category, Invoice, Property, Service, Usage, Vendor
-from .parsing.compatibility import cost_totals_candidate
 from .parsing.normalization import scaled_integer
 from .presentation import scaled_value
 from .review_edits import (
@@ -19,6 +18,7 @@ from .review_edits import (
     REVIEW_LIMITS,
     SECTION_MONEY,
     ReviewEdits,
+    ReviewSource,
     build_review,
     evidence_page,
     normalize_review_identifier,
@@ -305,12 +305,11 @@ class ReviewForms:
     """Invoice totals, dated allocations and consumption; no itemized fee formset."""
 
     def __init__(self, *, values, properties, vendor_id, kind, token, warnings, data=None):
-        values = cost_totals_candidate(values)
+        self.source = ReviewSource.from_values(values)
+        values = self.source.values
         self.values = values
-        self.originals = {"usages": [], "identifiers": []}
-        sections, usages, identifiers = [], [], []
-        for identifier in values.get("identifiers", []):
-            self._identifier(identifier, INVOICE_SCOPE, identifiers)
+        self.originals = {"usages": self.source.usages, "identifiers": self.source.identifiers}
+        sections = []
         for section in values.get("sections", []):
             key = section["section_id"]
             sections.append(
@@ -325,19 +324,18 @@ class ReviewForms:
                     "page": evidence_page(section.get("total_evidence")),
                 }
             )
-            for identifier in section.get("identifiers", []):
-                self._identifier(identifier, key, identifiers)
-            for group, destination in (("usages", usages),):
-                for row in section.get(group, []):
-                    self.originals[group].append({**row, "section": key})
-                    destination.append(
-                        {
-                            **row,
-                            "section": key,
-                            "end": last_billed_day(row.get("end")),
-                            "page": evidence_page(row.get("evidence")),
-                        }
-                    )
+        usages = [
+            {
+                **row,
+                "section": row["section_id"],
+                "end": last_billed_day(row.get("end")),
+                "page": evidence_page(row.get("evidence")),
+            }
+            for row in self.source.usages
+        ]
+        identifiers = [
+            {**row, "page": evidence_page(row.get("evidence"))} for row in self.source.identifiers
+        ]
         if not sections:
             sections = [{"section_id": "manual-1", "page": 1}]
 
@@ -367,10 +365,6 @@ class ReviewForms:
             ("usages", "Consumption", self.usages),
             ("identifiers", "Identifiers", self.identifiers),
         ]
-
-    def _identifier(self, row, scope, destination):
-        self.originals["identifiers"].append({**row, "scope": scope})
-        destination.append({**row, "scope": scope, "page": evidence_page(row.get("evidence"))})
 
     def is_valid(self):
         results = [self.header.is_valid(), *[group.is_valid() for _, _, group in self.groups]]
@@ -507,4 +501,4 @@ class ReviewForms:
         )
 
     def candidate(self):
-        return build_review(self.edits(), values=self.values)
+        return build_review(self.edits(), values=self.source)

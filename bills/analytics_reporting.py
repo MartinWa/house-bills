@@ -325,28 +325,8 @@ def report_quality(reader, filters, kind):
     }
 
 
-def group_quality(reader, filters, groups, mode, group_by):
-    dimensions = (
-        group_by if mode == "grouped" else ["property_id", "utility", "unit", "subcategory"]
-    )
-    if mode == "billed_period":
-        dimensions = [
-            *dimensions,
-            "period_start",
-            "period_end",
-            "basis",
-            "source_service",
-            "source_selection",
-        ]
-    sources = defaultdict(list)
-    for row in reader.selected(filters, "consumption"):
-        key = tuple(
-            ""
-            if name == "subcategory" and mode == "totals" and row["utility"] == "electricity"
-            else calendar_value(row, name)
-            for name in dimensions
-        )
-        sources[key].append(row)
+def group_quality(groups, buckets):
+    dimensions, sources = buckets
     for group in groups:
         coverage = interval_coverage(sources[tuple(group[name] for name in dimensions)], None, None)
         group["coverage"] = coverage

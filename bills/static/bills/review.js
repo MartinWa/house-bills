@@ -43,6 +43,7 @@
       row.querySelector("[data-row-number]").textContent = index + 1;
       if (name === "sections") row.querySelector('[name$="-section_id"]').value = `manual-added-${index}`;
       group.querySelector("[data-formset-rows]").append(holder.content);
+      row.dispatchEvent(new CustomEvent("review:row-added", {bubbles: true}));
       total.value = index + 1;
       updateChoices();
       const assignment = row.querySelector('[name$="-section"]');

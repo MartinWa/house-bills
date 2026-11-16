@@ -361,7 +361,11 @@ def test_original_download_uses_current_path_after_concurrent_publication(
     assert b"".join(response.streaming_content) == pdf
 
 
-def test_upload_review_evidence_equivalence_reordering_and_reparse(api_client, tmp_path):
+def test_upload_review_evidence_equivalence_reordering_and_reparse(
+    api_client, tmp_path, monkeypatch
+):
+    import bills.review_edits as review_edits
+
     client, owner, _, _ = api_client
     house, vendor = setup(client)
     other = created(client, "/properties", {"name": "Other house", "slug": "other-house"})
@@ -390,6 +394,15 @@ def test_upload_review_evidence_equivalence_reordering_and_reparse(api_client, t
     origin = context.source()
     client.force_login(owner)
     html = client.get(f"/documents/{document['id']}/review/")
+    adaptations = []
+    adapt = review_edits.cost_totals_candidate
+
+    def counted_adaptation(values):
+        adaptations.append(values)
+        return adapt(values)
+
+    monkeypatch.setattr(review_edits, "cost_totals_candidate", counted_adaptation)
+    stored_values = copy.deepcopy(origin["values"])
     forms = ReviewForms(
         **{key: origin[key] for key in ("values", "properties", "vendor_id", "kind", "warnings")},
         token=context.token(),
@@ -397,11 +410,26 @@ def test_upload_review_evidence_equivalence_reordering_and_reparse(api_client, t
     )
     assert forms.is_valid(), forms.header.errors
     html_candidate, html_properties = forms.candidate()
+    assert len(adaptations) == 1
+    assert [row["scope"] for row in forms.source.identifiers] == [
+        row["scope"] for row in edits["identifiers"]
+    ]
+    assert [row["section_id"] for row in forms.source.usages] == [
+        row["section_id"] for row in edits["usages"]
+    ]
+    adaptations.clear()
     candidate, properties = build_review(
         ReviewEdits(**ReviewEditsIn.model_validate(edits).model_dump()),
         values=origin["values"],
         warnings=origin["warnings"],
     )
+    assert len(adaptations) == 1
+    adaptations.clear()
+    from bills.api.workflow import editable_values
+
+    assert editable_values(origin) == source["edits"]
+    assert len(adaptations) == 1
+    assert origin["values"] == stored_values
     assert candidate.to_dict() == html_candidate.to_dict()
     assert properties == html_properties
     edits["usages"].reverse()

@@ -45,7 +45,83 @@ def water(ledger, year, month, quantity, *, basis="measured", net=10000):  # noq
     )
 
 
-def test_calendar_keys_whole_intervals_signs_and_context(api_client, ledger):  # noqa: F811
+@pytest.mark.parametrize("mode", ["totals", "billed_period", "grouped&group_by=subcategory"])
+@pytest.mark.parametrize("include_quality", [False, True])
+def test_consumption_groups_and_quality_describe_the_same_sources(
+    api_client, ledger, monkeypatch, mode, include_quality
+):
+    import bills.analytics_reporting as analytics
+
+    house = ledger["houses"][0]
+    for service, month, quantity, basis in (
+        ("electricity_supply", 1, 2000, "estimated"),
+        ("electricity_network", 2, 3000, "measured"),
+    ):
+        start, end = date(2024, month, 1), date(2024, month + 1, 1)
+        ledger["make"](
+            [
+                allocation(
+                    house,
+                    service=service,
+                    start=start,
+                    end=end,
+                    usages=[usage(quantity, start=start, end=end, basis=basis)],
+                )
+            ]
+        )
+    if not include_quality:
+
+        def unexpected_quality(*args):
+            pytest.fail("A request without quality performed quality calculations")
+
+        monkeypatch.setattr(analytics, "report_quality", unexpected_quality)
+        monkeypatch.setattr(analytics, "group_quality", unexpected_quality)
+    result = get(
+        api_client[0],
+        f"consumption?mode={mode}&{COMPACT}&include_quality={str(include_quality).lower()}",
+    )
+    groups = result["groups"]
+    assert len(groups) == (1 if mode == "totals" else 2)
+    assert sum(group["quantity_milli"] for group in groups) == 5000
+    for group in groups:
+        combined = mode == "totals"
+        january = group["subcategory"] == "electricity_supply"
+        assert group["quantity_milli"] == (5000 if combined else 2000 if january else 3000)
+        assert group["usage_count"] == group["invoice_count"] == (2 if combined else 1)
+        assert "sources" not in group and "buckets" not in group
+        if not include_quality:
+            assert "coverage" not in group and "quality" not in result
+            continue
+        coverage = group["coverage"]
+        expected_basis = (
+            {"estimated": 1, "measured": 1}
+            if combined
+            else {"estimated" if january else "measured": 1}
+        )
+        assert coverage["usage_count"] == group["usage_count"]
+        assert coverage["basis_counts"] == expected_basis
+        assert coverage["period_start"] == ("2024-01-01" if combined or january else "2024-02-01")
+        assert coverage["last_billed_day"] == ("2024-01-31" if january else "2024-02-29")
+        assert group["period_label"] == (
+            f"{coverage['period_start']} – {coverage['last_billed_day']}"
+        )
+        assert group["basis_summary"] == ", ".join(
+            f"{name}: {count}" for name, count in expected_basis.items()
+        )
+
+
+def test_calendar_keys_whole_intervals_signs_and_context(api_client, ledger, monkeypatch):  # noqa: F811
+    import bills.api_reporting as reporting
+
+    buckets = []
+    build_buckets = reporting.consumption_buckets
+
+    def counted_buckets(*args):
+        result = build_buckets(*args)
+        buckets.append(result)
+        return result
+
+    monkeypatch.setattr(reporting, "consumption_buckets", counted_buckets)
     client = api_client[0]
     start, end = date(2024, 12, 15), date(2025, 3, 1)
     for quantity, basis, net in (
@@ -74,6 +150,7 @@ def test_calendar_keys_whole_intervals_signs_and_context(api_client, ledger):  #
         + "&include_quality=true&date_from=2025-01-01&date_to=2025-01-31",
     )
     group = response["groups"][0]
+    assert len(buckets) == 1
     assert group["quantity_milli"] == 7000 and group["usage_count"] == 3
     assert group["period_start_month"] == "2024-12-01"
     assert group["period_start_year"] == 2024 and group["period_start_year_time"] == 1704067200

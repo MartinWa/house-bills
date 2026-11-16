@@ -29,6 +29,14 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
     await page.getByRole("link", { name: "Open document", exact: true }).click();
     await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   };
+  const assertClassification = async (name, category) => {
+    const valid = await page.locator(`[name="${name}"]`).evaluate((select, category) =>
+      Array.from(select.options).every(option => {
+        const unavailable = Boolean(option.value && option.dataset.category !== category);
+        return option.disabled === unavailable && option.hidden === unavailable;
+      }), category);
+    assert(valid, `Classification options do not match ${category || "an empty category"} for ${name}`);
+  };
 
   let releaseStatus = { update_available: false };
   let releaseStatusCode = 200;
@@ -374,8 +382,30 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   }
   await fill("sections-0-start", "2024-02-29");
   await fill("sections-0-end", "2024-02-29");
+  const unrelatedScans = await page.evaluate(async () => {
+    const query = Document.prototype.querySelectorAll;
+    let scans = 0;
+    Document.prototype.querySelectorAll = function(selector) {
+      if (selector === 'select[name$="subcategory"]') scans++;
+      return query.call(this, selector);
+    };
+    try {
+      const unrelated = document.createElement("span");
+      document.body.append(unrelated);
+      document.querySelector('[name="reference"]').dispatchEvent(new Event("change", {bubbles: true}));
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      unrelated.remove();
+      return scans;
+    } finally {
+      Document.prototype.querySelectorAll = query;
+    }
+  });
+  assert(unrelatedScans === 0, "Unrelated DOM or field changes rescanned classification selectors");
   await page.getByRole("button", { name: "Add consumption", exact: true }).click();
+  await assertClassification("usages-0-subcategory", await page.locator('[name="usages-0-utility"]').inputValue());
+  assert(await page.locator('[name="usages-0-section"]').evaluate(control => document.activeElement === control), "Added consumption lost keyboard focus");
   await select("usages-0-utility", "water");
+  await assertClassification("usages-0-subcategory", "water");
   await select("usages-0-unit", "m3");
   await fill("usages-0-quantity_milli", "-1,250");
   await fill("usages-0-start", "2024-02-29");
@@ -388,12 +418,15 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
 
   // Added allocations update the related selectors. Removing a row is explicit.
   await page.getByRole("button", { name: "Add allocation", exact: true }).click();
+  await assertClassification("sections-1-subcategory", await page.locator('[name="sections-1-category"]').inputValue());
   await select("sections-1-property", houseOne);
   await select("sections-1-category", "waste");
+  await assertClassification("sections-1-subcategory", "waste");
   for (const suffix of ["net_minor", "vat_minor", "gross_minor"]) await fill(`sections-1-${suffix}`, "0,00");
   await fill("sections-1-start", "2024-02-29");
   await fill("sections-1-end", "2024-02-29");
   await page.locator('[name="sections-1-DELETE"]').check();
+  await assertClassification("sections-1-subcategory", "waste");
   await submit("Approve invoice", 400);
   await text("This field is required.");
   await page.getByLabel("I checked the source and resolved").check();
