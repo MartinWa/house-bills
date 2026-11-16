@@ -57,7 +57,7 @@ def reviewed_evidence(original, *, page, unchanged, label):
 
 
 def source_rows(values):
-    values = cost_totals_candidate(values)
+    """Flatten already-normalized values in immutable source-index order."""
     usages, identifiers = [], []
     identifiers.extend({**row, "scope": INVOICE_SCOPE} for row in values.get("identifiers", []))
     for section in values.get("sections", []):
@@ -67,9 +67,23 @@ def source_rows(values):
     return usages, identifiers
 
 
+@dataclass(frozen=True)
+class ReviewSource:
+    values: dict
+    usages: list[dict]
+    identifiers: list[dict]
+
+    @classmethod
+    def from_values(cls, values):
+        values = cost_totals_candidate(values)
+        usages, identifiers = source_rows(values)
+        return cls(values, usages, identifiers)
+
+
 def build_review(edits, *, values, warnings=()):
     """Build from the token-bound source; submitted row order never identifies evidence."""
-    values = cost_totals_candidate(values)
+    source = values if isinstance(values, ReviewSource) else ReviewSource.from_values(values)
+    values = source.values
     if warnings and not edits.warnings_confirmed:
         raise ValidationError(
             {"warnings_confirmed": "Confirm that extraction warnings were resolved."}
@@ -77,7 +91,7 @@ def build_review(edits, *, values, warnings=()):
     for name, limit in REVIEW_LIMITS.items():
         if len(getattr(edits, name)) > limit:
             raise ValidationError({name: f"At most {limit} rows are accepted."})
-    raw_usages, raw_identifiers = source_rows(values)
+    raw_usages, raw_identifiers = source.usages, source.identifiers
     for name, raw in (("usages", raw_usages), ("identifiers", raw_identifiers)):
         indexes = [
             row["source_index"] for row in getattr(edits, name) if row["source_index"] is not None

@@ -20,16 +20,15 @@ from bills.models import (
     Subcategory,
     Vendor,
 )
-from bills.parsing.compatibility import cost_totals_candidate
 from bills.presentation import proposal_differences
 from bills.processing import parse_document
 from bills.review_edits import (
     HEADER_MONEY,
     SECTION_MONEY,
     ReviewEdits,
+    ReviewSource,
     build_review,
     evidence_page,
-    source_rows,
 )
 from bills.reviewing import ReviewContext, current_review_context
 from bills.services import approve_document_review, discard_manual_entry, invoice_for_review
@@ -192,8 +191,9 @@ def cancel(request, key: int):
 
 
 def editable_values(origin):
-    values = cost_totals_candidate(origin["values"])
-    raw_usages, raw_identifiers = source_rows(values)
+    source = ReviewSource.from_values(origin["values"])
+    values = source.values
+    raw_usages, raw_identifiers = source.usages, source.identifiers
     header = {
         field: values.get(field)
         for field in ("reference", "invoice_date", "due_date", "currency", *HEADER_MONEY)
