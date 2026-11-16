@@ -27,7 +27,8 @@ reads, corrections and deletion require staff and the corresponding permissions.
 
 Reporting tokens can GET `/me`, `/reports/selectors`, `/reports/summary`,
 `/reports/costs`, `/reports/consumption`, `/reports/billed-power`, `/reports/consumption-issues`,
-`/reports/missing-invoices`, `/reports/review-queue`, `/reports/attention` and `/reports/invoice-costs`.
+`/reports/missing-invoices`, `/reports/review-queue`, `/reports/attention`,
+`/reports/invoice-costs`, `/reports/availability`, `/reports/comparisons` and `/reports/unit-costs`.
 The new projections expose declared coverage facts and content-review metadata.
 They cannot access configuration, proposal bodies, originals, legacy `/reports/invoice-coverage` or writes,
 even when owned by a superuser. HTML workflow access remains available to signed-in
@@ -259,8 +260,9 @@ overlapping billed intervals without proration. Omitted bounds resolve from appl
 approved rows, with effective bounds returned; empty data infers no dates.
 
 Aggregates return `mode`, `filters`, `effective_date_bounds`, `group_count`, `totals`
-and complete `groups`, with no pagination links. Aggregation runs in SQL over every
-matching source row in one read-only snapshot. Limits are 100 distinct selected IDs,
+and complete `groups`, with no pagination links. Aggregation uses every matching
+approved source row in one read-only snapshot, reusing canonical electricity
+selection. Limits are 100 distinct selected IDs,
 600 calendar months and 10,000 groups. Excessive filters fail with 422
 `filter_too_broad`; they never return a partial total. Raw modes retain record pagination.
 Currencies and units remain separate, and signed reversals remain signed.
@@ -303,8 +305,8 @@ empty or unsupported dimensions and `group_by` with explicit legacy/row modes.
 
 | Projection | Allowed dimensions | Automatically retained |
 | --- | --- | --- |
-| Costs | `property_id`, `vendor_id`, `category`, `subcategory`, `currency`, `invoice_month`, `period_start`, `period_end` | `currency` |
-| Consumption | `property_id`, `vendor_id`, `utility`, `unit`, `subcategory`, `period_start`, `period_end`, `basis`, `source_service`, `source_selection` | `utility`, `unit` |
+| Costs | `property_id`, `vendor_id`, `category`, `subcategory`, `currency`, `invoice_month`, `invoice_year`, `period_start`, `period_end` | `currency` |
+| Consumption | `property_id`, `vendor_id`, `utility`, `unit`, `subcategory`, `period_start`, `period_end`, `period_start_month`, `period_start_year`, `basis`, `source_service`, `source_selection` | `utility`, `unit` |
 
 Custom responses return the effective `group_by` list with mandatory dimensions
 appended. `groups` follow that list; `totals` keep legacy totals grouping, with both
@@ -398,8 +400,25 @@ the Linux development image with `python -m tools.generate_reporting_examples`
 or `python -m tools.generate_reporting_examples --check`. The integration driver
 checks these examples and the live routes without a companion dashboard.
 
-To validate the companion repository's generated overview through the same disposable
-Infinity backend, run `python -m tools.check_api_grafana --overview
-../olympus-stacks/stacks/grafana/provisioning/dashboards/house-bills/overview.json`.
+The [analytical contract](api/analytics-contract.md) documents calendar groups,
+complete billed-power statistics, availability/coverage, equivalent-period
+comparisons and conservative period-aligned effective unit costs. New analytical
+responses add `analytics_version: 1`. Cost/consumption aggregates can select
+`representation=compact`, omit legacy totals, and request quality metadata;
+costs/summary can omit waste supplements. Defaults retain existing response shapes.
+Explicit `year=2024&years=3` windows work independently of the current date.
+
+To validate the documented synthetic dashboard through the disposable Infinity
+backend and Chromium, run:
+
+```sh
+python -m tools.check_api_grafana
+```
+
+The optional `--overview <dashboard.json>` validates an externally supplied
+overview. Consumer-specific dashboard generators, configuration and tests belong
+with the consumer. External check drivers can pass an `extra_check` callback to
+`tools.check_api_grafana.main` to validate their dashboards within the disposable
+project.
 The optional `HOUSE_BILLS_CHECK_API_PORT` and `HOUSE_BILLS_CHECK_GRAFANA_PORT`
 environment variables override the check's default local ports 8002 and 3002.

@@ -5,6 +5,11 @@ credentials can read them. They use the existing datasource and token, require n
 consumer dependency upgrade or data migration, and retain contract version 1.
 Grafana adoption and deployment belong to the independent consumer project.
 
+For calendar aggregates, availability/coverage, complete power statistics,
+equivalent-period comparisons and aligned effective unit costs, see the
+[approved analytics contract](analytics-contract.md). These are independent of
+the invoice/review projections described here.
+
 | Need | Request |
 | --- | --- |
 | Missing count and oldest scheduled month | `/reports/missing-invoices?mode=summary&property_id=1&date_from=2026-01-01&date_to=2026-03-01` |

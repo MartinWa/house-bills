@@ -17,6 +17,26 @@ def query_parameters(names, *, repeated=(), sortable=(), groupable=(), mandatory
                 schema["default"] = 0
         elif name in ("enabled", "dry_run", "is_waste_fraction"):
             schema = {"type": "boolean"}
+        elif name in ("include_totals", "include_waste", "include_quality", "history"):
+            schema = {
+                "type": "boolean",
+                "default": name in ("include_totals", "include_waste"),
+                "description": "Use the literal true or false.",
+            }
+        elif name in ("year", "years", "comparison_year"):
+            schema = {
+                "type": "integer",
+                "minimum": 3 if name == "year" else 1,
+                "maximum": 3 if name == "years" else 9998,
+            }
+            if name == "years":
+                schema.update(
+                    default=3, description="Calendar years ending at year; requires year."
+                )
+            elif name == "year":
+                schema["description"] = "Focus year; cannot be combined with explicit dates."
+            else:
+                schema["description"] = "Baseline year, defaulting to the focus year's predecessor."
         elif name in ("active_month", "as_of") or name.endswith(("_from", "_to")):
             schema["format"] = "date-time" if name.startswith("created_") else "date"
         elif name == "sort":

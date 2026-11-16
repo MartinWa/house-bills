@@ -12807,6 +12807,30 @@
             },
             "style": "form",
             "explode": true
+          },
+          {
+            "name": "include_waste",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "include_quality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
           }
         ],
         "responses": {
@@ -12815,7 +12839,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SummaryOut"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SummaryOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AnalyticalSummaryOut"
+                    }
+                  ],
+                  "title": "Response"
                 }
               }
             }
@@ -13024,7 +13056,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "Distinct comma-separated dimensions: property_id, vendor_id, category, subcategory, currency, period_start, period_end, invoice_month. Automatically retained: currency. Requires grouped mode, selected implicitly if mode is omitted."
+              "description": "Distinct comma-separated dimensions: property_id, vendor_id, category, subcategory, currency, period_start, period_end, invoice_month, invoice_year. Automatically retained: currency. Requires grouped mode, selected implicitly if mode is omitted."
             },
             "style": "form",
             "explode": true
@@ -13077,6 +13109,83 @@
             },
             "style": "form",
             "explode": true
+          },
+          {
+            "name": "representation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "compact"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "include_totals",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "include_waste",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "include_quality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 9998,
+              "description": "Focus year; cannot be combined with explicit dates."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "years",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "default": 3,
+              "description": "Calendar years ending at year; requires year."
+            },
+            "style": "form",
+            "explode": true
           }
         ],
         "responses": {
@@ -13091,6 +13200,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/CostReportPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AnalyticalAggregateOut"
                     }
                   ],
                   "title": "Response"
@@ -13302,7 +13414,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "description": "Distinct comma-separated dimensions: property_id, vendor_id, utility, unit, subcategory, period_start, period_end, basis, source_service, source_selection. Automatically retained: utility, unit. Requires grouped mode, selected implicitly if mode is omitted."
+              "description": "Distinct comma-separated dimensions: property_id, vendor_id, utility, unit, subcategory, period_start, period_end, basis, source_service, source_selection, period_start_month, period_start_year. Automatically retained: utility, unit. Requires grouped mode, selected implicitly if mode is omitted."
             },
             "style": "form",
             "explode": true
@@ -13357,6 +13469,71 @@
             },
             "style": "form",
             "explode": true
+          },
+          {
+            "name": "representation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "full",
+                "compact"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "include_totals",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "include_quality",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 9998,
+              "description": "Focus year; cannot be combined with explicit dates."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "years",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "default": 3,
+              "description": "Calendar years ending at year; requires year."
+            },
+            "style": "form",
+            "explode": true
           }
         ],
         "responses": {
@@ -13371,6 +13548,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/ConsumptionReportPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AnalyticalAggregateOut"
                     }
                   ],
                   "title": "Response"
@@ -13571,7 +13751,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "rows",
+                "totals",
+                "billed_period",
+                "period_start_month",
+                "period_start_year"
+              ]
             },
             "style": "form",
             "explode": true
@@ -13611,6 +13798,46 @@
             },
             "style": "form",
             "explode": true
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "kW"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 9998,
+              "description": "Focus year; cannot be combined with explicit dates."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "years",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "default": 3,
+              "description": "Calendar years ending at year; requires year."
+            },
+            "style": "form",
+            "explode": true
           }
         ],
         "responses": {
@@ -13619,7 +13846,645 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReportPage"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ReportPage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PowerAggregateOut"
+                    }
+                  ],
+                  "title": "Response"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Read-only reporting"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/availability": {
+      "get": {
+        "operationId": "bills_api_reports_availability",
+        "summary": "Availability",
+        "parameters": [
+          {
+            "name": "property_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvailabilityOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Read-only reporting"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/comparisons": {
+      "get": {
+        "operationId": "bills_api_reports_comparisons",
+        "summary": "Comparisons",
+        "parameters": [
+          {
+            "name": "property_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "costs",
+                "consumption"
+              ]
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 9998,
+              "description": "Focus year; cannot be combined with explicit dates."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "comparison_year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9998,
+              "description": "Baseline year, defaulting to the focus year's predecessor."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "history",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "description": "Use the literal true or false."
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonsOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Structured API error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Read-only reporting"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/reports/unit-costs": {
+      "get": {
+        "operationId": "bills_api_reports_unit_costs",
+        "summary": "Unit Costs",
+        "parameters": [
+          {
+            "name": "property_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "vendor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "description": "At most 100 distinct IDs; repeat the parameter to select several."
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "subcategory",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitCostsOut"
                 }
               }
             }
@@ -19609,6 +20474,160 @@
         "title": "AggregateGroup",
         "type": "object"
       },
+      "AnalyticalSummaryOut": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "analytics_version": {
+            "const": 1,
+            "title": "Analytics Version",
+            "type": "integer"
+          },
+          "waste_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waste_totals_by_property": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WastePropertyTotal"
+            },
+            "title": "Waste Totals By Property",
+            "type": "array"
+          },
+          "waste_fractions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Fractions",
+            "type": "array"
+          },
+          "waste_general": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste General",
+            "type": "array"
+          },
+          "waste_other_services": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WasteEntry"
+            },
+            "title": "Waste Other Services",
+            "type": "array"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReportFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "costs": {
+            "items": {
+              "$ref": "#/components/schemas/AggregateGroup"
+            },
+            "title": "Costs",
+            "type": "array"
+          },
+          "consumption": {
+            "items": {
+              "$ref": "#/components/schemas/AggregateGroup"
+            },
+            "title": "Consumption",
+            "type": "array"
+          },
+          "total_invoices": {
+            "title": "Total Invoices",
+            "type": "integer"
+          },
+          "pdf_invoices": {
+            "title": "Pdf Invoices",
+            "type": "integer"
+          },
+          "manual_invoices": {
+            "title": "Manual Invoices",
+            "type": "integer"
+          },
+          "exclusion_count": {
+            "title": "Exclusion Count",
+            "type": "integer"
+          },
+          "latest_approval": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Approval"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportingQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "analytics_version",
+          "filters",
+          "effective_date_bounds",
+          "costs",
+          "consumption",
+          "total_invoices",
+          "pdf_invoices",
+          "manual_invoices",
+          "exclusion_count",
+          "latest_approval"
+        ],
+        "title": "AnalyticalSummaryOut",
+        "type": "object"
+      },
+      "CoverageGap": {
+        "properties": {
+          "date_from": {
+            "format": "date",
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "format": "date",
+            "title": "Date To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date_from",
+          "date_to"
+        ],
+        "title": "CoverageGap",
+        "type": "object"
+      },
       "DateBounds": {
         "properties": {
           "date_from": {
@@ -19641,6 +20660,247 @@
           "date_to"
         ],
         "title": "DateBounds",
+        "type": "object"
+      },
+      "InvoiceCoverageAggregate": {
+        "description": "Current receipt facts and expectations, evaluated at as_of.",
+        "properties": {
+          "status": {
+            "enum": [
+              "complete",
+              "partial",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "expectation_count": {
+            "title": "Expectation Count",
+            "type": "integer"
+          },
+          "counts_by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts By Status",
+            "type": "object"
+          },
+          "missing_invoice_count": {
+            "title": "Missing Invoice Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "as_of",
+          "expectation_count",
+          "counts_by_status",
+          "missing_invoice_count"
+        ],
+        "title": "InvoiceCoverageAggregate",
+        "type": "object"
+      },
+      "QuantityPeriodCoverage": {
+        "description": "Whole billed intervals; physical coverage cancels exact signed reversals.",
+        "properties": {
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "last_billed_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Billed Day"
+          },
+          "interval_count": {
+            "title": "Interval Count",
+            "type": "integer"
+          },
+          "usage_count": {
+            "title": "Usage Count",
+            "type": "integer"
+          },
+          "duration_days_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Days Min"
+          },
+          "duration_days_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Days Max"
+          },
+          "basis_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Basis Counts",
+            "type": "object"
+          },
+          "estimated_count": {
+            "title": "Estimated Count",
+            "type": "integer"
+          },
+          "reversal_count": {
+            "title": "Reversal Count",
+            "type": "integer"
+          },
+          "unmatched_credit_count": {
+            "title": "Unmatched Credit Count",
+            "type": "integer"
+          },
+          "source_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Source Counts",
+            "type": "object"
+          },
+          "covered_days": {
+            "title": "Covered Days",
+            "type": "integer"
+          },
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageGap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "empty",
+              "partial",
+              "complete",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "surviving_basis": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Surviving Basis",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "last_billed_day",
+          "interval_count",
+          "usage_count",
+          "duration_days_min",
+          "duration_days_max",
+          "basis_counts",
+          "estimated_count",
+          "reversal_count",
+          "unmatched_credit_count",
+          "source_counts",
+          "covered_days",
+          "gaps",
+          "status",
+          "surviving_basis"
+        ],
+        "title": "QuantityPeriodCoverage",
+        "type": "object"
+      },
+      "QuantityQuality": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "utility": {
+            "title": "Utility",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "availability": {
+            "enum": [
+              "recorded",
+              "excluded",
+              "not_recorded"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "selected_status": {
+            "enum": [
+              "recorded",
+              "excluded",
+              "empty_range",
+              "not_recorded"
+            ],
+            "title": "Selected Status",
+            "type": "string"
+          },
+          "exclusion_count": {
+            "title": "Exclusion Count",
+            "type": "integer"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/QuantityPeriodCoverage"
+          }
+        },
+        "required": [
+          "property_id",
+          "utility",
+          "unit",
+          "availability",
+          "selected_status",
+          "exclusion_count",
+          "coverage"
+        ],
+        "title": "QuantityQuality",
         "type": "object"
       },
       "ReportFilters": {
@@ -19709,6 +20969,64 @@
           }
         },
         "title": "ReportFilters",
+        "type": "object"
+      },
+      "ReportingQuality": {
+        "properties": {
+          "cost_invoice_date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Invoice Date From"
+          },
+          "cost_invoice_date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Invoice Date To"
+          },
+          "unknown_cost_count": {
+            "title": "Unknown Cost Count",
+            "type": "integer"
+          },
+          "invoice_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvoiceCoverageAggregate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quantities": {
+            "items": {
+              "$ref": "#/components/schemas/QuantityQuality"
+            },
+            "title": "Quantities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cost_invoice_date_from",
+          "cost_invoice_date_to",
+          "unknown_cost_count",
+          "invoice_coverage",
+          "quantities"
+        ],
+        "title": "ReportingQuality",
         "type": "object"
       },
       "SummaryOut": {
@@ -20037,6 +21355,800 @@
           "basis_label"
         ],
         "title": "WasteWeight",
+        "type": "object"
+      },
+      "AnalyticalAggregateOut": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "analytics_version": {
+            "const": 1,
+            "title": "Analytics Version",
+            "type": "integer"
+          },
+          "representation": {
+            "enum": [
+              "full",
+              "compact"
+            ],
+            "title": "Representation",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/AnalyticalFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          },
+          "group_by": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group By"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticalGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "totals": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AnalyticalGroup"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportingQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waste_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WasteMoney"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waste_totals_by_property": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WastePropertyTotal"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waste Totals By Property"
+          },
+          "waste_fractions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WasteEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waste Fractions"
+          },
+          "waste_general": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WasteEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waste General"
+          },
+          "waste_other_services": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/WasteEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waste Other Services"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "analytics_version",
+          "representation",
+          "mode",
+          "filters",
+          "effective_date_bounds",
+          "group_count",
+          "groups"
+        ],
+        "title": "AnalyticalAggregateOut",
+        "type": "object"
+      },
+      "AnalyticalFilters": {
+        "properties": {
+          "property_id": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Property Id",
+            "type": "array"
+          },
+          "vendor_id": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Vendor Id",
+            "type": "array"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          }
+        },
+        "title": "AnalyticalFilters",
+        "type": "object"
+      },
+      "AnalyticalGroup": {
+        "description": "Only requested dimensions/labels and explicitly selected metrics are emitted.",
+        "properties": {
+          "property_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Id"
+          },
+          "property_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Property Name"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Time"
+          },
+          "invoice_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month"
+          },
+          "invoice_month_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Month Time"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Name"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "net_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Minor"
+          },
+          "vat_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vat Minor"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "quantity_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Milli"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Time"
+          },
+          "period_end_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End Time"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "source_service": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Service"
+          },
+          "source_selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Selection"
+          },
+          "selection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Reason"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "allocation_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allocation Id"
+          },
+          "usage_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Id"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "section_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Key"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "invoice_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Year"
+          },
+          "invoice_year_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Year Time"
+          },
+          "period_start_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Month"
+          },
+          "period_start_month_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Month Time"
+          },
+          "period_start_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Year"
+          },
+          "period_start_year_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Year Time"
+          },
+          "invoice_count": {
+            "title": "Invoice Count",
+            "type": "integer"
+          },
+          "allocation_count": {
+            "title": "Allocation Count",
+            "type": "integer"
+          },
+          "usage_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage Count"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuantityPeriodCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "basis_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis Summary"
+          },
+          "period_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Label"
+          }
+        },
+        "required": [
+          "invoice_count",
+          "allocation_count"
+        ],
+        "title": "AnalyticalGroup",
         "type": "object"
       },
       "CostAggregateOut": {
@@ -21507,6 +23619,301 @@
         "title": "ReportRow",
         "type": "object"
       },
+      "PowerAggregateOut": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "analytics_version": {
+            "const": 1,
+            "title": "Analytics Version",
+            "type": "integer"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ConsumptionFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "group_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Group By",
+            "type": "array"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/PowerGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "analytics_version",
+          "filters",
+          "effective_date_bounds",
+          "mode",
+          "group_by",
+          "groups",
+          "group_count"
+        ],
+        "title": "PowerAggregateOut",
+        "type": "object"
+      },
+      "PowerGroup": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "unit": {
+            "const": "kW",
+            "title": "Unit",
+            "type": "string"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Time"
+          },
+          "period_end_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End Time"
+          },
+          "period_start_month": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Month"
+          },
+          "period_start_month_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Month Time"
+          },
+          "period_start_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Year"
+          },
+          "period_start_year_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start Year Time"
+          },
+          "highest_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Milli"
+          },
+          "lowest_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lowest Milli"
+          },
+          "average_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Milli"
+          },
+          "value_count": {
+            "title": "Value Count",
+            "type": "integer"
+          },
+          "usage_count": {
+            "title": "Usage Count",
+            "type": "integer"
+          },
+          "invoice_count": {
+            "title": "Invoice Count",
+            "type": "integer"
+          },
+          "allocation_count": {
+            "title": "Allocation Count",
+            "type": "integer"
+          },
+          "cancelled_positive_count": {
+            "title": "Cancelled Positive Count",
+            "type": "integer"
+          },
+          "unmatched_credit_count": {
+            "title": "Unmatched Credit Count",
+            "type": "integer"
+          },
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "highest_period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Period Start"
+          },
+          "highest_last_billed_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highest Last Billed Day"
+          },
+          "lowest_period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lowest Period Start"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "unit",
+          "highest_milli",
+          "lowest_milli",
+          "average_milli",
+          "value_count",
+          "usage_count",
+          "invoice_count",
+          "allocation_count",
+          "cancelled_positive_count",
+          "unmatched_credit_count",
+          "excluded_count",
+          "highest_period_start",
+          "highest_last_billed_day",
+          "lowest_period_start"
+        ],
+        "title": "PowerGroup",
+        "type": "object"
+      },
       "ReportPage": {
         "properties": {
           "generated_at": {
@@ -21579,6 +23986,1133 @@
           "has_more"
         ],
         "title": "ReportPage",
+        "type": "object"
+      },
+      "AvailabilityOut": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "analytics_version": {
+            "const": 1,
+            "title": "Analytics Version",
+            "type": "integer"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReportFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "available_cost_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Available Cost Years",
+            "type": "array"
+          },
+          "available_quantity_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Available Quantity Years",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricAvailability"
+            },
+            "title": "Metrics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "analytics_version",
+          "filters",
+          "effective_date_bounds",
+          "available_cost_years",
+          "available_quantity_years",
+          "metrics"
+        ],
+        "title": "AvailabilityOut",
+        "type": "object"
+      },
+      "MetricAvailability": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "utility": {
+            "title": "Utility",
+            "type": "string"
+          },
+          "utility_name": {
+            "title": "Utility Name",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "has_costs": {
+            "title": "Has Costs",
+            "type": "boolean"
+          },
+          "has_quantities": {
+            "title": "Has Quantities",
+            "type": "boolean"
+          },
+          "quantity_status": {
+            "enum": [
+              "recorded",
+              "excluded",
+              "not_recorded"
+            ],
+            "title": "Quantity Status",
+            "type": "string"
+          },
+          "cost_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Cost Years",
+            "type": "array"
+          },
+          "quantity_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Quantity Years",
+            "type": "array"
+          },
+          "cost_date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Date From"
+          },
+          "cost_date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Date To"
+          },
+          "quantity_period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Period Start"
+          },
+          "quantity_period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Period End"
+          },
+          "allocation_count": {
+            "title": "Allocation Count",
+            "type": "integer"
+          },
+          "usage_count": {
+            "title": "Usage Count",
+            "type": "integer"
+          },
+          "exclusion_count": {
+            "title": "Exclusion Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "utility",
+          "utility_name",
+          "unit",
+          "unit_label",
+          "configured",
+          "has_costs",
+          "has_quantities",
+          "quantity_status",
+          "cost_years",
+          "quantity_years",
+          "cost_date_from",
+          "cost_date_to",
+          "quantity_period_start",
+          "quantity_period_end",
+          "allocation_count",
+          "usage_count",
+          "exclusion_count"
+        ],
+        "title": "MetricAvailability",
+        "type": "object"
+      },
+      "AnnualMetric": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "invoice_count": {
+            "title": "Invoice Count",
+            "type": "integer"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvoiceCoverageAggregate"
+              },
+              {
+                "$ref": "#/components/schemas/QuantityPeriodCoverage"
+              }
+            ],
+            "title": "Coverage"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "contributing_date_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributing Date From"
+          },
+          "contributing_date_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contributing Date To"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "year",
+          "value",
+          "invoice_count",
+          "coverage",
+          "status",
+          "contributing_date_from",
+          "contributing_date_to"
+        ],
+        "title": "AnnualMetric",
+        "type": "object"
+      },
+      "ComparisonsOut": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "analytics_version": {
+            "const": 1,
+            "title": "Analytics Version",
+            "type": "integer"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReportFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "metric": {
+            "enum": [
+              "costs",
+              "consumption"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "focus_year": {
+            "title": "Focus Year",
+            "type": "integer"
+          },
+          "comparison_year": {
+            "title": "Comparison Year",
+            "type": "integer"
+          },
+          "available_years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Available Years",
+            "type": "array"
+          },
+          "comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/MetricComparison"
+            },
+            "title": "Comparisons",
+            "type": "array"
+          },
+          "annuals": {
+            "items": {
+              "$ref": "#/components/schemas/AnnualMetric"
+            },
+            "title": "Annuals",
+            "type": "array"
+          },
+          "monthly": {
+            "items": {
+              "$ref": "#/components/schemas/MonthlyMetric"
+            },
+            "title": "Monthly",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "analytics_version",
+          "filters",
+          "effective_date_bounds",
+          "metric",
+          "focus_year",
+          "comparison_year",
+          "available_years",
+          "comparisons",
+          "annuals",
+          "monthly"
+        ],
+        "title": "ComparisonsOut",
+        "type": "object"
+      },
+      "MetricComparison": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          },
+          "focus_year": {
+            "title": "Focus Year",
+            "type": "integer"
+          },
+          "comparison_year": {
+            "title": "Comparison Year",
+            "type": "integer"
+          },
+          "current_date_from": {
+            "format": "date",
+            "title": "Current Date From",
+            "type": "string"
+          },
+          "cutoff": {
+            "format": "date",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "comparison_date_from": {
+            "format": "date",
+            "title": "Comparison Date From",
+            "type": "string"
+          },
+          "comparison_cutoff": {
+            "format": "date",
+            "title": "Comparison Cutoff",
+            "type": "string"
+          },
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Value"
+          },
+          "comparison_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Value"
+          },
+          "current_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvoiceCoverageAggregate"
+              },
+              {
+                "$ref": "#/components/schemas/QuantityPeriodCoverage"
+              }
+            ],
+            "title": "Current Coverage"
+          },
+          "comparison_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvoiceCoverageAggregate"
+              },
+              {
+                "$ref": "#/components/schemas/QuantityPeriodCoverage"
+              }
+            ],
+            "title": "Comparison Coverage"
+          },
+          "comparable": {
+            "title": "Comparable",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "absolute_change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absolute Change"
+          },
+          "percentage_change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentage Change"
+          },
+          "percentage_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Percentage Reasons",
+            "type": "array"
+          },
+          "reason_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Labels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "focus_year",
+          "comparison_year",
+          "current_date_from",
+          "cutoff",
+          "comparison_date_from",
+          "comparison_cutoff",
+          "current_value",
+          "comparison_value",
+          "current_coverage",
+          "comparison_coverage",
+          "comparable",
+          "status",
+          "reasons",
+          "absolute_change",
+          "percentage_change",
+          "percentage_reasons",
+          "reason_labels"
+        ],
+        "title": "MetricComparison",
+        "type": "object"
+      },
+      "MonthlyMetric": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "month_name": {
+            "title": "Month Name",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "state": {
+            "enum": [
+              "absent",
+              "unknown",
+              "recorded"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "cumulative_gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cumulative Gross Minor"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "year",
+          "month",
+          "month_name",
+          "value",
+          "state"
+        ],
+        "title": "MonthlyMetric",
+        "type": "object"
+      },
+      "AlignedUnitCost": {
+        "properties": {
+          "property_id": {
+            "title": "Property Id",
+            "type": "integer"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "utility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility"
+          },
+          "utility_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utility Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          },
+          "subcategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory"
+          },
+          "subcategory_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subcategory Name"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "last_billed_day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Billed Day"
+          },
+          "gross_minor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gross Minor"
+          },
+          "quantity_milli": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity Milli"
+          },
+          "rate_minor_per_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Minor Per Unit"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "comparable": {
+            "title": "Comparable",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "reason_labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reason Labels",
+            "type": "array"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/QuantityPeriodCoverage"
+          },
+          "included_services": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Included Services",
+            "type": "array"
+          },
+          "allocation_count": {
+            "title": "Allocation Count",
+            "type": "integer"
+          },
+          "usage_count": {
+            "title": "Usage Count",
+            "type": "integer"
+          },
+          "invoice_count": {
+            "title": "Invoice Count",
+            "type": "integer"
+          },
+          "numerator": {
+            "title": "Numerator",
+            "type": "string"
+          },
+          "denominator": {
+            "title": "Denominator",
+            "type": "string"
+          }
+        },
+        "required": [
+          "property_id",
+          "property_name",
+          "period_start",
+          "period_end",
+          "last_billed_day",
+          "gross_minor",
+          "quantity_milli",
+          "rate_minor_per_unit",
+          "status",
+          "comparable",
+          "reasons",
+          "reason_labels",
+          "coverage",
+          "included_services",
+          "allocation_count",
+          "usage_count",
+          "invoice_count",
+          "numerator",
+          "denominator"
+        ],
+        "title": "AlignedUnitCost",
+        "type": "object"
+      },
+      "UnitCostsOut": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "analytics_version": {
+            "const": 1,
+            "title": "Analytics Version",
+            "type": "integer"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ReportFilters"
+          },
+          "effective_date_bounds": {
+            "$ref": "#/components/schemas/DateBounds"
+          },
+          "alignment_policy": {
+            "const": "whole_periods_no_proration_v1",
+            "title": "Alignment Policy",
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AlignedUnitCost"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "group_count": {
+            "title": "Group Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "contract_version",
+          "analytics_version",
+          "filters",
+          "effective_date_bounds",
+          "alignment_policy",
+          "groups",
+          "group_count"
+        ],
+        "title": "UnitCostsOut",
         "type": "object"
       },
       "CoverageOut": {

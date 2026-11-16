@@ -11,6 +11,8 @@ def generate():
     from bills.api import schemas as s
     from bills.attention_reporting import REASONS, attention_rows, coverage_stats, review_stats
 
+    from .generate_analytics_examples import generate as analytics_examples
+
     at = date(2026, 3, 1)
     metadata = {"contract_version": 1, "generated_at": datetime(2026, 3, 1, tzinfo=UTC)}
     bounds = {"date_from": date(2026, 2, 1), "date_to": date(2026, 2, 1)}
@@ -276,7 +278,13 @@ def generate():
         )
     return (
         json.dumps(
-            {"contract_version": 1, "examples": examples, "infinity_queries": targets},
+            {
+                "contract_version": 1,
+                "analytics_version": 1,
+                "examples": examples,
+                "infinity_queries": targets,
+                "analytics_examples": analytics_examples(),
+            },
             indent=2,
             ensure_ascii=False,
         )

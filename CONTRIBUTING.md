@@ -13,6 +13,11 @@ commit originals, extracted text, screenshots of real records, databases,
 environment files or backups. Keep corpus evidence in ignored private directories.
 Public issues and PRs must use synthetic examples.
 
+Keep deployment hostnames, private repository references and consumer configuration
+out of public source, documentation, PR descriptions, comments and CI artifacts.
+Use generic examples here. Consumer-specific generators and validation scenarios
+belong with the consumer.
+
 Tests generate PDFs using `tests/synthetic.py` and `tests/current_formats.py`;
 no real invoices are needed.
 

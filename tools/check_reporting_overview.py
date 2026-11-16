@@ -1,6 +1,7 @@
 """Exercise a generated household overview through the actual Infinity backend."""
 
 import json
+from urllib.parse import urlsplit
 
 from .check_api_grafana import request
 
@@ -13,9 +14,10 @@ def run(dashboard):
             target.pop("url", None)
             target.pop("url_options", None)
         else:
+            source = urlsplit(target["url"])
             target["url"] = (
-                target["url"]
-                .replace("https://bills.olympen.eu", "http://app:8000")
+                source._replace(scheme="http", netloc="app:8000")
+                .geturl()
                 .replace("$__combineValues(property_id=,,&,${property:csv})", "property_id=1")
                 .replace("${__timeFrom:date:YYYY-MM-DD}", "2026-01-01")
                 .replace("${__timeTo:date:YYYY-MM-DD}", "2026-03-01")

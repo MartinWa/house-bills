@@ -1,9 +1,16 @@
 """Approved reports support complete aggregates and paginated source detail."""
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
+from django.http import JsonResponse
 from ninja import Router
 
+from bills.analytics_reporting import (
+    read_availability,
+    read_comparisons,
+    read_power_aggregates,
+    read_unit_costs,
+)
 from bills.api_reporting import (
     DIMENSIONS,
     INVOICE_COST_SORT,
@@ -20,14 +27,14 @@ from bills.models import Category
 
 from . import schemas as s
 from .attention import QUERY_FIELDS, parse_filters, pinned_page
-from .collections import integer, iso_date, page_response, pagination, query_values
+from .collections import boolean, integer, iso_date, page_response, pagination, query_values
 from .contract import documented_query
 from .errors import ApiError, invalid_parameter
 
 router = Router(tags=["Read-only reporting"])
 
 
-def report_filters(request, modes=(), *, raw=False, kind=None):
+def report_filters(request, modes=(), *, raw=False, kind=None, values=None):
     allowed = ["property_id", "vendor_id", "category", "subcategory", "date_from", "date_to"]
     if modes:
         allowed.append("mode")
@@ -35,7 +42,15 @@ def report_filters(request, modes=(), *, raw=False, kind=None):
         allowed += ["limit", "offset", "sort"]
     if kind in DIMENSIONS:
         allowed += ["group_by", "currency" if kind == "costs" else "unit"]
-    values = query_values(request, allowed, repeated=["property_id", "vendor_id"])
+        allowed += ["representation", "include_totals", "include_quality", "year", "years"]
+    if kind in ("costs", "summary"):
+        allowed += ["include_waste"]
+    if kind == "summary":
+        allowed += ["include_quality"]
+    if kind == "power":
+        allowed += ["unit", "year", "years"]
+    if values is None:
+        values = query_values(request, allowed, repeated=["property_id", "vendor_id"])
     filters = {}
     for name in ("property_id", "vendor_id"):
         ids = [integer(value, name) for value in values.get(name, [])]
@@ -55,6 +70,14 @@ def report_filters(request, modes=(), *, raw=False, kind=None):
     if filters["category"] is not None and filters["category"] not in Category.values:
         invalid_parameter("category")
     filters["subcategory"] = values.get("subcategory")
+    if "years" in values and "year" not in values:
+        invalid_parameter("years", "Supply a focus year.")
+    if "year" in values:
+        year = integer(values["year"], "year", minimum=3, maximum=9998)
+        years = integer(values.get("years", "3"), "years", maximum=3)
+        if "date_from" in values or "date_to" in values:
+            invalid_parameter("year", "Choose a year window or explicit dates.")
+        filters.update(date_from=date(year - years + 1, 1, 1), date_to=date(year, 12, 31))
     if kind in DIMENSIONS:
         name, supported = (
             ("currency", ("SEK",)) if kind == "costs" else ("unit", ("kWh", "m3", "kg"))
@@ -62,6 +85,10 @@ def report_filters(request, modes=(), *, raw=False, kind=None):
         filters[name] = values.get(name)
         if filters[name] is not None and filters[name] not in supported:
             invalid_parameter(name)
+    if kind == "power" and values.get("unit", "kW") != "kW":
+        invalid_parameter("unit")
+    if kind == "power" and "unit" in values:
+        filters["unit"] = values["unit"]
     mode = values.get("mode", "grouped" if "group_by" in values else "rows")
     if modes and mode not in modes:
         invalid_parameter("mode", "Unknown aggregate mode.")
@@ -75,6 +102,14 @@ def report_filters(request, modes=(), *, raw=False, kind=None):
         group_by += [name for name in MANDATORY_DIMENSIONS[kind] if name not in group_by]
     elif "group_by" in values:
         invalid_parameter("group_by", "Use mode=grouped or omit mode when grouping.")
+    if "representation" in values:
+        if values["representation"] not in ("full", "compact") or mode == "rows":
+            invalid_parameter("representation", "Use full or compact for aggregate reports.")
+    for name in ("include_totals", "include_waste", "include_quality"):
+        if name in values:
+            boolean(values[name], name)
+            if name != "include_waste" and mode == "rows" and kind != "summary":
+                invalid_parameter(name, "This option requires an aggregate report.")
     sort = None
     if "sort" in values:
         if mode != "rows":
@@ -104,7 +139,7 @@ def selectors(request):
     return result
 
 
-@router.get("/summary", response=s.SummaryOut)
+@router.get("/summary", response=s.SummaryOut | s.AnalyticalSummaryOut)
 @documented_query(
     "property_id",
     "vendor_id",
@@ -112,17 +147,27 @@ def selectors(request):
     "subcategory",
     "date_from",
     "date_to",
+    "include_waste",
+    "include_quality",
     repeated=["property_id", "vendor_id"],
 )
 def summary(request):
-    filters, _, _, _, _ = report_filters(request)
-    return read_api_report(filters=filters, kind="summary")
+    filters, _, _, _, _ = report_filters(request, kind="summary")
+    result = read_api_report(filters=filters, kind="summary", **report_options(request))
+    if any(name in request.GET for name in ("include_waste", "include_quality")):
+        result["analytics_version"] = 1
+        return analytical_response(s.AnalyticalSummaryOut, result)
+    return result
 
 
 def report_response(request, kind, modes):
     filters, mode, (limit, offset), sort, group_by = report_filters(
         request, modes, raw=True, kind=kind
     )
+    if kind == "power" and mode != "rows":
+        return analytical_response(
+            s.PowerAggregateOut, read_power_aggregates(filters=filters, mode=mode)
+        )
     result = read_api_report(
         filters=filters,
         kind=kind,
@@ -131,14 +176,45 @@ def report_response(request, kind, modes):
         offset=offset,
         sort=sort,
         group_by=group_by,
+        **report_options(request),
     )
     if mode == "rows":
         result.update(page_response(request, result["items"], result["count"], limit, offset))
         result["has_more"] = result["next"] is not None
+    if mode != "rows" and (
+        any(
+            name in request.GET
+            for name in ("representation", "include_totals", "include_waste", "include_quality")
+        )
+        or any(
+            name in (group_by or [])
+            for name in ("invoice_year", "period_start_month", "period_start_year")
+        )
+    ):
+        result.setdefault("representation", "full")
+        result.setdefault("analytics_version", 1)
+        return analytical_response(s.AnalyticalAggregateOut, result)
+    if "include_waste" in request.GET:
+        return analytical_response(s.CostReportPage, result)
     return result
 
 
-@router.get("/costs", response=s.CostAggregateOut | s.CostReportPage)
+def report_options(request):
+    result = {}
+    for name in ("include_totals", "include_waste", "include_quality"):
+        if name in request.GET:
+            result[name] = boolean(request.GET[name], name)
+    if "representation" in request.GET:
+        result["representation"] = request.GET["representation"]
+    return result
+
+
+def analytical_response(schema, result):
+    # Exclude unrequested fields while retaining explicitly selected null metrics.
+    return JsonResponse(schema.model_validate(result).model_dump(mode="json", exclude_unset=True))
+
+
+@router.get("/costs", response=s.CostAggregateOut | s.CostReportPage | s.AnalyticalAggregateOut)
 @documented_query(
     "property_id",
     "vendor_id",
@@ -152,16 +228,27 @@ def report_response(request, kind, modes):
     "sort",
     "limit",
     "offset",
+    "representation",
+    "include_totals",
+    "include_waste",
+    "include_quality",
+    "year",
+    "years",
     repeated=["property_id", "vendor_id"],
     sortable=SORT_FIELDS["costs"],
     groupable=DIMENSIONS["costs"],
     mandatory=MANDATORY_DIMENSIONS["costs"],
+    choices={
+        "representation": ("full", "compact"),
+    },
 )
 def costs(request):
     return report_response(request, "costs", ("rows", "totals", "invoice_month", "grouped"))
 
 
-@router.get("/consumption", response=s.AggregateOut | s.ConsumptionReportPage)
+@router.get(
+    "/consumption", response=s.AggregateOut | s.ConsumptionReportPage | s.AnalyticalAggregateOut
+)
 @documented_query(
     "property_id",
     "vendor_id",
@@ -175,16 +262,24 @@ def costs(request):
     "sort",
     "limit",
     "offset",
+    "representation",
+    "include_totals",
+    "include_quality",
+    "year",
+    "years",
     repeated=["property_id", "vendor_id"],
     sortable=SORT_FIELDS["consumption"],
     groupable=DIMENSIONS["consumption"],
     mandatory=MANDATORY_DIMENSIONS["consumption"],
+    choices={
+        "representation": ("full", "compact"),
+    },
 )
 def consumption(request):
     return report_response(request, "consumption", ("rows", "totals", "billed_period", "grouped"))
 
 
-@router.get("/billed-power", response=s.ReportPage)
+@router.get("/billed-power", response=s.ReportPage | s.PowerAggregateOut)
 @documented_query(
     "property_id",
     "vendor_id",
@@ -196,11 +291,110 @@ def consumption(request):
     "sort",
     "limit",
     "offset",
+    "unit",
+    "year",
+    "years",
     repeated=["property_id", "vendor_id"],
     sortable=SORT_FIELDS["power"],
+    choices={
+        "mode": ("rows", "totals", "billed_period", "period_start_month", "period_start_year"),
+        "unit": ("kW",),
+    },
 )
 def billed_power(request):
-    return report_response(request, "power", ("rows",))
+    return report_response(
+        request,
+        "power",
+        ("rows", "totals", "billed_period", "period_start_month", "period_start_year"),
+    )
+
+
+@router.get("/availability", response=s.AvailabilityOut)
+@documented_query(
+    "property_id", "vendor_id", "category", "subcategory", repeated=("property_id", "vendor_id")
+)
+def availability(request):
+    query_values(
+        request,
+        ["property_id", "vendor_id", "category", "subcategory"],
+        repeated=("property_id", "vendor_id"),
+    )
+    filters, _, _, _, _ = report_filters(request)
+    return analytical_response(s.AvailabilityOut, read_availability(filters=filters))
+
+
+@router.get("/comparisons", response=s.ComparisonsOut)
+@documented_query(
+    "property_id",
+    "vendor_id",
+    "category",
+    "subcategory",
+    "date_from",
+    "date_to",
+    "metric",
+    "year",
+    "comparison_year",
+    "history",
+    repeated=("property_id", "vendor_id"),
+    choices={"metric": ("costs", "consumption")},
+)
+def comparisons(request):
+    values = query_values(
+        request,
+        [
+            "property_id",
+            "vendor_id",
+            "category",
+            "subcategory",
+            "date_from",
+            "date_to",
+            "metric",
+            "year",
+            "comparison_year",
+            "history",
+        ],
+        repeated=("property_id", "vendor_id"),
+    )
+    metric = values.get("metric", "costs")
+    if metric not in ("costs", "consumption"):
+        invalid_parameter("metric")
+    year = integer(values["year"], "year", minimum=3, maximum=9998) if "year" in values else None
+    previous = (
+        integer(values["comparison_year"], "comparison_year", minimum=1, maximum=9998)
+        if "comparison_year" in values
+        else None
+    )
+    if year and ("date_from" in values or "date_to" in values):
+        invalid_parameter("year", "Choose a focus year or explicit dates.")
+    if previous == year and year:
+        invalid_parameter("comparison_year", "Choose a different comparison year.")
+    filter_names = ("property_id", "vendor_id", "category", "subcategory", "date_from", "date_to")
+    filters, _, _, _, _ = report_filters(
+        request, values={key: value for key, value in values.items() if key in filter_names}
+    )
+    result = read_comparisons(
+        filters=filters,
+        metric=metric,
+        focus_year=year,
+        comparison_year=previous,
+        history=boolean(values.get("history", "false"), "history"),
+    )
+    return analytical_response(s.ComparisonsOut, result)
+
+
+@router.get("/unit-costs", response=s.UnitCostsOut)
+@documented_query(
+    "property_id",
+    "vendor_id",
+    "category",
+    "subcategory",
+    "date_from",
+    "date_to",
+    repeated=("property_id", "vendor_id"),
+)
+def unit_costs(request):
+    filters, _, _, _, _ = report_filters(request)
+    return analytical_response(s.UnitCostsOut, read_unit_costs(filters=filters))
 
 
 @router.get("/consumption-issues", response=s.ReportPage)

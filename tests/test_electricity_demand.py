@@ -409,7 +409,11 @@ def test_billed_power_endpoint_is_separate_from_consumption_and_does_not_sum_kw(
     )
     assert client.get(BASE + "/reports/consumption").json()["count"] == 0
     assert client.get(BASE + "/reports/consumption-issues").json()["count"] == 0
-    assert client.get(BASE + "/reports/billed-power?mode=totals").status_code == 422
+    aggregate = client.get(BASE + "/reports/billed-power?mode=totals")
+    assert aggregate.status_code == 200, aggregate.content
+    group = aggregate.json()["groups"][0]
+    assert group["highest_milli"] == group["lowest_milli"] == group["average_milli"] == 3138
+    assert group["value_count"] == 1 and "quantity_milli" not in group
     assert "kW" in client.get(BASE + "/metadata").json()["units"]
     _, secret = ApiToken.issue(name="power reporting", owner=token.owner, profile="reporting")
     client.defaults["HTTP_AUTHORIZATION"] = f"Bearer {secret}"

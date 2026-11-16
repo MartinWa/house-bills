@@ -269,7 +269,9 @@ during writes.
 The Chromium suite checks the authenticated report workflow and mobile layout;
 the production probe verifies the same reports through Waitress.
 
-Grafana access transport is not implemented. The actual plugin, timestamp interpretation,
-container mounts and process permissions remain to be tested before choosing direct access or
-the separate reporting SQLite fallback. No Grafana connection is configured by this
-application stage.
+Grafana reads the [reporting HTTP API](api.md) with a Reporting-only bearer token.
+Dashboard configuration and provisioning are managed by the API consumer.
+The [analytical contract](api/analytics-contract.md) describes their calendar
+groups, whole billed intervals, complete power statistics, coverage, qualified
+comparisons and period-aligned effective unit costs. Application checks exercise
+the pinned Grafana/Infinity transport with synthetic data and UTC date boundaries.

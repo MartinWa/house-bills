@@ -497,6 +497,10 @@ class ConsumptionFilters(ReportFilters):
     unit: str | None = None
 
 
+class AnalyticalFilters(CostFilters, ConsumptionFilters):
+    pass
+
+
 class DateBounds(Schema):
     date_from: date | None
     date_to: date | None
@@ -674,6 +678,260 @@ class SelectorsOut(ReportingMetadata):
     categories: list[dict]
     subcategories: list[dict]
     units: list[dict]
+
+
+class CoverageGap(Schema):
+    date_from: date
+    date_to: date
+
+
+class QuantityPeriodCoverage(Schema):
+    """Whole billed intervals; physical coverage cancels exact signed reversals."""
+
+    period_start: date | None
+    period_end: date | None
+    last_billed_day: date | None
+    interval_count: int
+    usage_count: int
+    duration_days_min: int | None
+    duration_days_max: int | None
+    basis_counts: dict[str, int]
+    estimated_count: int
+    reversal_count: int
+    unmatched_credit_count: int
+    source_counts: dict[str, int]
+    covered_days: int
+    gaps: list[CoverageGap]
+    status: Literal["empty", "partial", "complete", "unknown"]
+    surviving_basis: list[str]
+
+
+class InvoiceCoverageAggregate(Schema):
+    """Current receipt facts and expectations, evaluated at as_of."""
+
+    status: Literal["complete", "partial", "unknown"]
+    as_of: date
+    expectation_count: int
+    counts_by_status: dict[str, int]
+    missing_invoice_count: int
+
+
+class QuantityQuality(Schema):
+    property_id: int
+    utility: str
+    unit: str
+    availability: Literal["recorded", "excluded", "not_recorded"]
+    selected_status: Literal["recorded", "excluded", "empty_range", "not_recorded"]
+    exclusion_count: int
+    coverage: QuantityPeriodCoverage
+
+
+class ReportingQuality(Schema):
+    cost_invoice_date_from: date | None
+    cost_invoice_date_to: date | None
+    unknown_cost_count: int
+    invoice_coverage: InvoiceCoverageAggregate | None
+    quantities: list[QuantityQuality]
+
+
+class AnalyticalGroup(ReportFields):
+    """Only requested dimensions/labels and explicitly selected metrics are emitted."""
+
+    invoice_year: int | None = None
+    invoice_year_time: int | None = None
+    period_start_month: date | None = None
+    period_start_month_time: int | None = None
+    period_start_year: int | None = None
+    period_start_year_time: int | None = None
+    invoice_count: int
+    allocation_count: int
+    usage_count: int | None = None
+    coverage: QuantityPeriodCoverage | None = None
+    basis_summary: str | None = None
+    period_label: str | None = None
+
+
+class AnalyticsMetadata(ReportingMetadata):
+    analytics_version: Literal[1]
+
+
+class AnalyticalSummaryOut(SummaryOut, AnalyticsMetadata):
+    quality: ReportingQuality | None = None
+
+
+class AnalyticalAggregateOut(AnalyticsMetadata):
+    representation: Literal["full", "compact"]
+    mode: str
+    filters: AnalyticalFilters
+    effective_date_bounds: DateBounds
+    group_count: int
+    group_by: list[str] | None = None
+    groups: list[AnalyticalGroup]
+    totals: list[AnalyticalGroup] | None = None
+    quality: ReportingQuality | None = None
+    waste_total: WasteMoney | None = None
+    waste_totals_by_property: list[WastePropertyTotal] | None = None
+    waste_fractions: list[WasteEntry] | None = None
+    waste_general: list[WasteEntry] | None = None
+    waste_other_services: list[WasteEntry] | None = None
+
+
+class MetricAvailability(Schema):
+    property_id: int
+    property_name: str
+    utility: str
+    utility_name: str
+    unit: str | None
+    unit_label: str | None
+    configured: bool
+    has_costs: bool
+    has_quantities: bool
+    quantity_status: Literal["recorded", "excluded", "not_recorded"]
+    cost_years: list[int]
+    quantity_years: list[int]
+    cost_date_from: date | None
+    cost_date_to: date | None
+    quantity_period_start: date | None
+    quantity_period_end: date | None
+    allocation_count: int
+    usage_count: int
+    exclusion_count: int
+
+
+class AvailabilityOut(AnalyticsMetadata):
+    filters: ReportFilters
+    effective_date_bounds: DateBounds
+    available_cost_years: list[int]
+    available_quantity_years: list[int]
+    metrics: list[MetricAvailability]
+
+
+class PowerGroup(Schema):
+    property_id: int
+    property_name: str
+    unit: Literal["kW"]
+    unit_label: str | None = None
+    period_start: date | None = None
+    period_end: date | None = None
+    period_start_time: int | None = None
+    period_end_time: int | None = None
+    period_start_month: date | None = None
+    period_start_month_time: int | None = None
+    period_start_year: int | None = None
+    period_start_year_time: int | None = None
+    highest_milli: int | None
+    lowest_milli: int | None
+    average_milli: int | None
+    value_count: int
+    usage_count: int
+    invoice_count: int
+    allocation_count: int
+    cancelled_positive_count: int
+    unmatched_credit_count: int
+    excluded_count: int
+    highest_period_start: date | None
+    highest_last_billed_day: date | None
+    lowest_period_start: date | None
+
+
+class PowerAggregateOut(AnalyticsMetadata):
+    filters: ConsumptionFilters
+    effective_date_bounds: DateBounds
+    mode: str
+    group_by: list[str]
+    groups: list[PowerGroup]
+    group_count: int
+
+
+class ComparisonIdentity(Schema):
+    property_id: int
+    property_name: str
+    currency: str | None = None
+    utility: str | None = None
+    utility_name: str | None = None
+    unit: str | None = None
+    unit_label: str | None = None
+    subcategory: str | None = None
+    subcategory_name: str | None = None
+
+
+class MetricComparison(ComparisonIdentity):
+    focus_year: int
+    comparison_year: int
+    current_date_from: date
+    cutoff: date
+    comparison_date_from: date
+    comparison_cutoff: date
+    current_value: int | None
+    comparison_value: int | None
+    current_coverage: InvoiceCoverageAggregate | QuantityPeriodCoverage
+    comparison_coverage: InvoiceCoverageAggregate | QuantityPeriodCoverage
+    comparable: bool
+    status: str
+    reasons: list[str]
+    absolute_change: int | None
+    percentage_change: str | None
+    percentage_reasons: list[str]
+    reason_labels: list[str]
+
+
+class AnnualMetric(ComparisonIdentity):
+    year: int
+    value: int | None
+    invoice_count: int
+    coverage: InvoiceCoverageAggregate | QuantityPeriodCoverage
+    status: str
+    contributing_date_from: date | None
+    contributing_date_to: date | None
+
+
+class MonthlyMetric(ComparisonIdentity):
+    year: int
+    month: int
+    month_name: str
+    value: int | None
+    state: Literal["absent", "unknown", "recorded"]
+    cumulative_gross_minor: int | None = None
+
+
+class ComparisonsOut(AnalyticsMetadata):
+    filters: ReportFilters
+    effective_date_bounds: DateBounds
+    metric: Literal["costs", "consumption"]
+    focus_year: int
+    comparison_year: int
+    available_years: list[int]
+    comparisons: list[MetricComparison]
+    annuals: list[AnnualMetric]
+    monthly: list[MonthlyMetric]
+
+
+class AlignedUnitCost(ComparisonIdentity):
+    period_start: date | None
+    period_end: date | None
+    last_billed_day: date | None
+    gross_minor: int | None
+    quantity_milli: int | None
+    rate_minor_per_unit: str | None
+    status: str
+    comparable: bool
+    reasons: list[str]
+    reason_labels: list[str]
+    coverage: QuantityPeriodCoverage
+    included_services: list[dict[str, str]]
+    allocation_count: int
+    usage_count: int
+    invoice_count: int
+    numerator: str
+    denominator: str
+
+
+class UnitCostsOut(AnalyticsMetadata):
+    filters: ReportFilters
+    effective_date_bounds: DateBounds
+    alignment_policy: Literal["whole_periods_no_proration_v1"]
+    groups: list[AlignedUnitCost]
+    group_count: int
 
 
 class CoverageOut(Schema):

@@ -1,5 +1,6 @@
 {
   "contract_version": 1,
+  "analytics_version": 1,
   "examples": [
     {
       "name": "empty",
@@ -699,6 +700,1828 @@
             "type": "string"
           }
         ]
+      }
+    }
+  ],
+  "analytics_examples": [
+    {
+      "name": "calendar-costs-credit-unknown-zero",
+      "endpoint": "costs",
+      "query": "property_id=1&group_by=invoice_year,category&year=2024&years=3&representation=compact&include_totals=false&include_waste=false",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "representation": "compact",
+        "mode": "grouped",
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": null,
+          "subcategory": null,
+          "date_from": "2022-01-01",
+          "date_to": "2024-12-31",
+          "currency": "SEK"
+        },
+        "effective_date_bounds": {
+          "date_from": "2022-01-01",
+          "date_to": "2024-12-31"
+        },
+        "group_count": 3,
+        "group_by": [
+          "invoice_year",
+          "category",
+          "currency"
+        ],
+        "groups": [
+          {
+            "category": "electricity",
+            "category_name": "Electricity",
+            "currency": "SEK",
+            "net_minor": -2000,
+            "vat_minor": 0,
+            "gross_minor": -2000,
+            "invoice_year": 2023,
+            "invoice_year_time": 1672531200,
+            "invoice_count": 1,
+            "allocation_count": 1
+          },
+          {
+            "category": "electricity",
+            "category_name": "Electricity",
+            "currency": "SEK",
+            "net_minor": null,
+            "vat_minor": null,
+            "gross_minor": null,
+            "invoice_year": 2024,
+            "invoice_year_time": 1704067200,
+            "invoice_count": 1,
+            "allocation_count": 1
+          },
+          {
+            "category": "water",
+            "category_name": "Water",
+            "currency": "SEK",
+            "net_minor": 0,
+            "vat_minor": 0,
+            "gross_minor": 0,
+            "invoice_year": 2024,
+            "invoice_year_time": 1704067200,
+            "invoice_count": 1,
+            "allocation_count": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-quantity-window",
+      "endpoint": "consumption",
+      "query": "property_id=1&group_by=period_start_month&year=2025&years=1&representation=compact&include_totals=false",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "representation": "compact",
+        "mode": "grouped",
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": null,
+          "subcategory": null,
+          "date_from": "2025-01-01",
+          "date_to": "2025-12-31"
+        },
+        "effective_date_bounds": {
+          "date_from": "2025-01-01",
+          "date_to": "2025-12-31"
+        },
+        "group_count": 0,
+        "group_by": [
+          "period_start_month",
+          "utility",
+          "unit"
+        ],
+        "groups": []
+      }
+    },
+    {
+      "name": "whole-water-interval-with-reversal",
+      "endpoint": "consumption",
+      "query": "property_id=1&category=water&group_by=period_start_month&representation=compact&include_totals=false&include_quality=true&date_from=2025-01-01&date_to=2025-01-31",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "representation": "compact",
+        "mode": "grouped",
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": "water",
+          "subcategory": null,
+          "date_from": "2025-01-01",
+          "date_to": "2025-01-31"
+        },
+        "effective_date_bounds": {
+          "date_from": "2025-01-01",
+          "date_to": "2025-01-31"
+        },
+        "group_count": 1,
+        "group_by": [
+          "period_start_month",
+          "utility",
+          "unit"
+        ],
+        "groups": [
+          {
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "quantity_milli": 7000,
+            "period_start_month": "2024-12-01",
+            "period_start_month_time": 1733011200,
+            "invoice_count": 3,
+            "allocation_count": 3,
+            "usage_count": 3,
+            "coverage": {
+              "period_start": "2024-12-15",
+              "period_end": "2025-03-01",
+              "last_billed_day": "2025-02-28",
+              "interval_count": 1,
+              "usage_count": 3,
+              "duration_days_min": 76,
+              "duration_days_max": 76,
+              "basis_counts": {
+                "estimated": 1,
+                "measured": 1,
+                "reversal": 1
+              },
+              "estimated_count": 1,
+              "reversal_count": 1,
+              "unmatched_credit_count": 0,
+              "source_counts": {
+                "billed": 3
+              },
+              "covered_days": 0,
+              "gaps": [],
+              "status": "unknown",
+              "surviving_basis": [
+                "measured"
+              ]
+            },
+            "basis_summary": "estimated: 1, measured: 1, reversal: 1",
+            "period_label": "2024-12-15 – 2025-02-28"
+          }
+        ],
+        "quality": {
+          "cost_invoice_date_from": null,
+          "cost_invoice_date_to": null,
+          "unknown_cost_count": 0,
+          "invoice_coverage": null,
+          "quantities": [
+            {
+              "property_id": 1,
+              "utility": "water",
+              "unit": "m3",
+              "availability": "recorded",
+              "selected_status": "recorded",
+              "exclusion_count": 0,
+              "coverage": {
+                "period_start": "2024-12-15",
+                "period_end": "2025-03-01",
+                "last_billed_day": "2025-02-28",
+                "interval_count": 1,
+                "usage_count": 3,
+                "duration_days_min": 76,
+                "duration_days_max": 76,
+                "basis_counts": {
+                  "estimated": 1,
+                  "measured": 1,
+                  "reversal": 1
+                },
+                "estimated_count": 1,
+                "reversal_count": 1,
+                "unmatched_credit_count": 0,
+                "source_counts": {
+                  "billed": 3
+                },
+                "covered_days": 31,
+                "gaps": [],
+                "status": "complete",
+                "surviving_basis": [
+                  "measured"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "power-cancellation-replacement-zero-and-unmatched-credit",
+      "endpoint": "billed-power",
+      "query": "property_id=1&mode=period_start_month&year=2024&years=1",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": null,
+          "subcategory": null,
+          "date_from": "2024-01-01",
+          "date_to": "2024-12-31"
+        },
+        "effective_date_bounds": {
+          "date_from": "2024-01-01",
+          "date_to": "2024-12-31"
+        },
+        "mode": "period_start_month",
+        "group_by": [
+          "property_id",
+          "unit",
+          "period_start_month"
+        ],
+        "groups": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "unit": "kW",
+            "unit_label": "kW",
+            "period_start_month": "2024-01-01",
+            "period_start_month_time": 1704067200,
+            "highest_milli": 3000,
+            "lowest_milli": 0,
+            "average_milli": 1500,
+            "value_count": 2,
+            "usage_count": 5,
+            "invoice_count": 5,
+            "allocation_count": 5,
+            "cancelled_positive_count": 1,
+            "unmatched_credit_count": 1,
+            "excluded_count": 3,
+            "highest_period_start": "2024-01-01",
+            "highest_last_billed_day": "2024-01-31",
+            "lowest_period_start": "2024-01-01"
+          }
+        ],
+        "group_count": 1
+      }
+    },
+    {
+      "name": "cost-only-utility",
+      "endpoint": "availability",
+      "query": "property_id=1&category=waste",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": "waste",
+          "subcategory": null,
+          "date_from": null,
+          "date_to": null
+        },
+        "effective_date_bounds": {
+          "date_from": null,
+          "date_to": null
+        },
+        "available_cost_years": [
+          2021,
+          2024
+        ],
+        "available_quantity_years": [],
+        "metrics": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "waste",
+            "utility_name": "Waste",
+            "unit": "kg",
+            "unit_label": "kg",
+            "configured": true,
+            "has_costs": true,
+            "has_quantities": false,
+            "quantity_status": "not_recorded",
+            "cost_years": [
+              2021,
+              2024
+            ],
+            "quantity_years": [],
+            "cost_date_from": "2021-03-05",
+            "cost_date_to": "2024-01-28",
+            "quantity_period_start": null,
+            "quantity_period_end": null,
+            "allocation_count": 2,
+            "usage_count": 0,
+            "exclusion_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-cumulative-cost-with-signed-adjustment",
+      "endpoint": "comparisons",
+      "query": "property_id=1&metric=costs&year=2024",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": null,
+          "subcategory": null,
+          "date_from": "2024-01-01",
+          "date_to": "2024-12-31"
+        },
+        "effective_date_bounds": {
+          "date_from": "2024-01-01",
+          "date_to": "2024-12-31"
+        },
+        "metric": "costs",
+        "focus_year": 2024,
+        "comparison_year": 2023,
+        "available_years": [
+          2023,
+          2024
+        ],
+        "comparisons": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "focus_year": 2024,
+            "comparison_year": 2023,
+            "current_date_from": "2024-01-01",
+            "cutoff": "2024-03-31",
+            "comparison_date_from": "2023-01-01",
+            "comparison_cutoff": "2023-03-31",
+            "current_value": null,
+            "comparison_value": 8000,
+            "current_coverage": {
+              "status": "complete",
+              "as_of": "2026-03-01",
+              "expectation_count": 3,
+              "counts_by_status": {
+                "received": 3
+              },
+              "missing_invoice_count": 0
+            },
+            "comparison_coverage": {
+              "status": "complete",
+              "as_of": "2026-03-01",
+              "expectation_count": 3,
+              "counts_by_status": {
+                "received": 3
+              },
+              "missing_invoice_count": 0
+            },
+            "comparable": false,
+            "status": "unavailable",
+            "reasons": [
+              "unknown_amount"
+            ],
+            "absolute_change": null,
+            "percentage_change": null,
+            "percentage_reasons": [
+              "unknown_amount"
+            ],
+            "reason_labels": [
+              "A contributing amount is unknown"
+            ]
+          }
+        ],
+        "annuals": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "value": null,
+            "invoice_count": 0,
+            "coverage": {
+              "status": "unknown",
+              "as_of": "2026-03-01",
+              "expectation_count": 0,
+              "counts_by_status": {},
+              "missing_invoice_count": 0
+            },
+            "status": "no_data",
+            "contributing_date_from": null,
+            "contributing_date_to": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "value": 8000,
+            "invoice_count": 3,
+            "coverage": {
+              "status": "partial",
+              "as_of": "2026-03-01",
+              "expectation_count": 12,
+              "counts_by_status": {
+                "received": 3,
+                "missing": 9
+              },
+              "missing_invoice_count": 9
+            },
+            "status": "partial",
+            "contributing_date_from": "2023-01-28",
+            "contributing_date_to": "2023-03-31"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "value": null,
+            "invoice_count": 3,
+            "coverage": {
+              "status": "partial",
+              "as_of": "2026-03-01",
+              "expectation_count": 12,
+              "counts_by_status": {
+                "received": 3,
+                "missing": 9
+              },
+              "missing_invoice_count": 9
+            },
+            "status": "unknown_amount",
+            "contributing_date_from": "2024-01-28",
+            "contributing_date_to": "2024-03-31"
+          }
+        ],
+        "monthly": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 1,
+            "month_name": "Jan",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 2,
+            "month_name": "Feb",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 3,
+            "month_name": "Mar",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 4,
+            "month_name": "Apr",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 5,
+            "month_name": "May",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 6,
+            "month_name": "Jun",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 7,
+            "month_name": "Jul",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 8,
+            "month_name": "Aug",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 9,
+            "month_name": "Sep",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 10,
+            "month_name": "Oct",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 11,
+            "month_name": "Nov",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2022,
+            "month": 12,
+            "month_name": "Dec",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 1,
+            "month_name": "Jan",
+            "value": 8000,
+            "state": "recorded",
+            "cumulative_gross_minor": 8000
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 2,
+            "month_name": "Feb",
+            "value": 0,
+            "state": "recorded",
+            "cumulative_gross_minor": 8000
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 3,
+            "month_name": "Mar",
+            "value": 0,
+            "state": "recorded",
+            "cumulative_gross_minor": 8000
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 4,
+            "month_name": "Apr",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 5,
+            "month_name": "May",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 6,
+            "month_name": "Jun",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 7,
+            "month_name": "Jul",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 8,
+            "month_name": "Aug",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 9,
+            "month_name": "Sep",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 10,
+            "month_name": "Oct",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 11,
+            "month_name": "Nov",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2023,
+            "month": 12,
+            "month_name": "Dec",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 1,
+            "month_name": "Jan",
+            "value": 10000,
+            "state": "recorded",
+            "cumulative_gross_minor": 10000
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 2,
+            "month_name": "Feb",
+            "value": -2000,
+            "state": "recorded",
+            "cumulative_gross_minor": 8000
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 3,
+            "month_name": "Mar",
+            "value": null,
+            "state": "unknown",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 4,
+            "month_name": "Apr",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 5,
+            "month_name": "May",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 6,
+            "month_name": "Jun",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 7,
+            "month_name": "Jul",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 8,
+            "month_name": "Aug",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 9,
+            "month_name": "Sep",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 10,
+            "month_name": "Oct",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 11,
+            "month_name": "Nov",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "year": 2024,
+            "month": 12,
+            "month_name": "Dec",
+            "value": null,
+            "state": "absent",
+            "cumulative_gross_minor": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "equivalent-leap-year-cutoff",
+      "endpoint": "comparisons",
+      "query": "property_id=1&category=water&metric=consumption&date_from=2024-01-01&date_to=2024-02-29",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": "water",
+          "subcategory": null,
+          "date_from": "2024-01-01",
+          "date_to": "2024-02-29"
+        },
+        "effective_date_bounds": {
+          "date_from": "2024-01-01",
+          "date_to": "2024-02-29"
+        },
+        "metric": "consumption",
+        "focus_year": 2024,
+        "comparison_year": 2023,
+        "available_years": [
+          2023,
+          2024
+        ],
+        "comparisons": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "focus_year": 2024,
+            "comparison_year": 2023,
+            "current_date_from": "2024-01-01",
+            "cutoff": "2024-02-29",
+            "comparison_date_from": "2023-01-01",
+            "comparison_cutoff": "2023-02-28",
+            "current_value": 10000,
+            "comparison_value": 8000,
+            "current_coverage": {
+              "period_start": "2024-01-01",
+              "period_end": "2024-03-01",
+              "last_billed_day": "2024-02-29",
+              "interval_count": 1,
+              "usage_count": 1,
+              "duration_days_min": 60,
+              "duration_days_max": 60,
+              "basis_counts": {
+                "measured": 1
+              },
+              "estimated_count": 0,
+              "reversal_count": 0,
+              "unmatched_credit_count": 0,
+              "source_counts": {
+                "billed": 1
+              },
+              "covered_days": 60,
+              "gaps": [],
+              "status": "complete",
+              "surviving_basis": [
+                "measured"
+              ]
+            },
+            "comparison_coverage": {
+              "period_start": "2023-01-01",
+              "period_end": "2023-03-01",
+              "last_billed_day": "2023-02-28",
+              "interval_count": 1,
+              "usage_count": 1,
+              "duration_days_min": 59,
+              "duration_days_max": 59,
+              "basis_counts": {
+                "measured": 1
+              },
+              "estimated_count": 0,
+              "reversal_count": 0,
+              "unmatched_credit_count": 0,
+              "source_counts": {
+                "billed": 1
+              },
+              "covered_days": 59,
+              "gaps": [],
+              "status": "complete",
+              "surviving_basis": [
+                "measured"
+              ]
+            },
+            "comparable": true,
+            "status": "comparable",
+            "reasons": [],
+            "absolute_change": 2000,
+            "percentage_change": "25",
+            "percentage_reasons": [],
+            "reason_labels": []
+          }
+        ],
+        "annuals": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "value": null,
+            "invoice_count": 0,
+            "coverage": {
+              "period_start": null,
+              "period_end": null,
+              "last_billed_day": null,
+              "interval_count": 0,
+              "usage_count": 0,
+              "duration_days_min": null,
+              "duration_days_max": null,
+              "basis_counts": {},
+              "estimated_count": 0,
+              "reversal_count": 0,
+              "unmatched_credit_count": 0,
+              "source_counts": {},
+              "covered_days": 0,
+              "gaps": [
+                {
+                  "date_from": "2022-01-01",
+                  "date_to": "2022-12-31"
+                }
+              ],
+              "status": "empty",
+              "surviving_basis": []
+            },
+            "status": "no_data",
+            "contributing_date_from": null,
+            "contributing_date_to": null
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "value": 8000,
+            "invoice_count": 1,
+            "coverage": {
+              "period_start": "2023-01-01",
+              "period_end": "2023-03-01",
+              "last_billed_day": "2023-02-28",
+              "interval_count": 1,
+              "usage_count": 1,
+              "duration_days_min": 59,
+              "duration_days_max": 59,
+              "basis_counts": {
+                "measured": 1
+              },
+              "estimated_count": 0,
+              "reversal_count": 0,
+              "unmatched_credit_count": 0,
+              "source_counts": {
+                "billed": 1
+              },
+              "covered_days": 59,
+              "gaps": [
+                {
+                  "date_from": "2023-03-01",
+                  "date_to": "2023-12-31"
+                }
+              ],
+              "status": "partial",
+              "surviving_basis": [
+                "measured"
+              ]
+            },
+            "status": "partial",
+            "contributing_date_from": "2023-01-01",
+            "contributing_date_to": "2023-03-01"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "value": 10000,
+            "invoice_count": 1,
+            "coverage": {
+              "period_start": "2024-01-01",
+              "period_end": "2024-03-01",
+              "last_billed_day": "2024-02-29",
+              "interval_count": 1,
+              "usage_count": 1,
+              "duration_days_min": 60,
+              "duration_days_max": 60,
+              "basis_counts": {
+                "measured": 1
+              },
+              "estimated_count": 0,
+              "reversal_count": 0,
+              "unmatched_credit_count": 0,
+              "source_counts": {
+                "billed": 1
+              },
+              "covered_days": 60,
+              "gaps": [
+                {
+                  "date_from": "2024-03-01",
+                  "date_to": "2024-12-31"
+                }
+              ],
+              "status": "partial",
+              "surviving_basis": [
+                "measured"
+              ]
+            },
+            "status": "partial",
+            "contributing_date_from": "2024-01-01",
+            "contributing_date_to": "2024-03-01"
+          }
+        ],
+        "monthly": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 1,
+            "month_name": "Jan",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 2,
+            "month_name": "Feb",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 3,
+            "month_name": "Mar",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 4,
+            "month_name": "Apr",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 5,
+            "month_name": "May",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 6,
+            "month_name": "Jun",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 7,
+            "month_name": "Jul",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 8,
+            "month_name": "Aug",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 9,
+            "month_name": "Sep",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 10,
+            "month_name": "Oct",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 11,
+            "month_name": "Nov",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2022,
+            "month": 12,
+            "month_name": "Dec",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 1,
+            "month_name": "Jan",
+            "value": 8000,
+            "state": "recorded"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 2,
+            "month_name": "Feb",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 3,
+            "month_name": "Mar",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 4,
+            "month_name": "Apr",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 5,
+            "month_name": "May",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 6,
+            "month_name": "Jun",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 7,
+            "month_name": "Jul",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 8,
+            "month_name": "Aug",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 9,
+            "month_name": "Sep",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 10,
+            "month_name": "Oct",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 11,
+            "month_name": "Nov",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2023,
+            "month": 12,
+            "month_name": "Dec",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 1,
+            "month_name": "Jan",
+            "value": 10000,
+            "state": "recorded"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 2,
+            "month_name": "Feb",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 3,
+            "month_name": "Mar",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 4,
+            "month_name": "Apr",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 5,
+            "month_name": "May",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 6,
+            "month_name": "Jun",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 7,
+            "month_name": "Jul",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 8,
+            "month_name": "Aug",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 9,
+            "month_name": "Sep",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 10,
+            "month_name": "Oct",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 11,
+            "month_name": "Nov",
+            "value": null,
+            "state": "absent"
+          },
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "year": 2024,
+            "month": 12,
+            "month_name": "Dec",
+            "value": null,
+            "state": "absent"
+          }
+        ]
+      }
+    },
+    {
+      "name": "independent-aligned-water-cost-and-readings",
+      "endpoint": "unit-costs",
+      "query": "property_id=1&category=water&date_from=2024-01-01&date_to=2024-01-31",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": "water",
+          "subcategory": null,
+          "date_from": "2024-01-01",
+          "date_to": "2024-01-31"
+        },
+        "effective_date_bounds": {
+          "date_from": "2024-01-01",
+          "date_to": "2024-01-31"
+        },
+        "alignment_policy": "whole_periods_no_proration_v1",
+        "groups": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "utility": "water",
+            "utility_name": "Water",
+            "unit": "m3",
+            "unit_label": "m³",
+            "subcategory": "",
+            "subcategory_name": "",
+            "period_start": "2024-01-01",
+            "period_end": "2024-02-01",
+            "last_billed_day": "2024-01-31",
+            "gross_minor": 12500,
+            "quantity_milli": 7000,
+            "rate_minor_per_unit": "1785.714285714285714285714286",
+            "status": "comparable",
+            "comparable": true,
+            "reasons": [],
+            "reason_labels": [],
+            "coverage": {
+              "period_start": "2024-01-01",
+              "period_end": "2024-02-01",
+              "last_billed_day": "2024-01-31",
+              "interval_count": 1,
+              "usage_count": 2,
+              "duration_days_min": 31,
+              "duration_days_max": 31,
+              "basis_counts": {
+                "measured": 2
+              },
+              "estimated_count": 0,
+              "reversal_count": 0,
+              "unmatched_credit_count": 0,
+              "source_counts": {
+                "billed": 2
+              },
+              "covered_days": 31,
+              "gaps": [],
+              "status": "complete",
+              "surviving_basis": [
+                "measured"
+              ]
+            },
+            "included_services": [
+              {
+                "key": "",
+                "name": "Water"
+              }
+            ],
+            "allocation_count": 1,
+            "usage_count": 2,
+            "invoice_count": 1,
+            "numerator": "Approved gross costs, including fixed and demand charges",
+            "denominator": "Selected signed billed m3 over the same whole periods"
+          }
+        ],
+        "group_count": 1
+      }
+    },
+    {
+      "name": "combined-waste-cost-never-apportioned",
+      "endpoint": "unit-costs",
+      "query": "property_id=1&category=waste&date_from=2024-01-01&date_to=2024-01-31",
+      "response": {
+        "generated_at": "2026-03-01T00:00:00Z",
+        "contract_version": 1,
+        "analytics_version": 1,
+        "filters": {
+          "property_id": [
+            1
+          ],
+          "vendor_id": [],
+          "category": "waste",
+          "subcategory": null,
+          "date_from": "2024-01-01",
+          "date_to": "2024-01-31"
+        },
+        "effective_date_bounds": {
+          "date_from": "2024-01-01",
+          "date_to": "2024-01-31"
+        },
+        "alignment_policy": "whole_periods_no_proration_v1",
+        "groups": [
+          {
+            "property_id": 1,
+            "property_name": "Synthetic house 1",
+            "currency": "SEK",
+            "utility": "waste",
+            "utility_name": "Waste",
+            "unit": "kg",
+            "unit_label": "kg",
+            "subcategory": "waste_collection",
+            "subcategory_name": "Collection",
+            "period_start": "2024-01-01",
+            "period_end": "2024-02-01",
+            "last_billed_day": "2024-01-31",
+            "gross_minor": 12500,
+            "quantity_milli": null,
+            "rate_minor_per_unit": null,
+            "status": "unavailable",
+            "comparable": false,
+            "reasons": [
+              "combined_or_unrelated_waste_cost",
+              "no_quantities",
+              "quantity_period_gap"
+            ],
+            "reason_labels": [
+              "Combined waste costs cannot be apportioned to weights",
+              "No matching billed quantities are recorded",
+              "Quantities do not cover the complete cost period"
+            ],
+            "coverage": {
+              "period_start": null,
+              "period_end": null,
+              "last_billed_day": null,
+              "interval_count": 0,
+              "usage_count": 0,
+              "duration_days_min": null,
+              "duration_days_max": null,
+              "basis_counts": {},
+              "estimated_count": 0,
+              "reversal_count": 0,
+              "unmatched_credit_count": 0,
+              "source_counts": {},
+              "covered_days": 0,
+              "gaps": [
+                {
+                  "date_from": "2024-01-01",
+                  "date_to": "2024-01-31"
+                }
+              ],
+              "status": "empty",
+              "surviving_basis": []
+            },
+            "included_services": [
+              {
+                "key": "waste_collection",
+                "name": "Collection"
+              }
+            ],
+            "allocation_count": 1,
+            "usage_count": 0,
+            "invoice_count": 1,
+            "numerator": "Approved gross costs, including fixed and demand charges",
+            "denominator": "Selected signed billed kg over the same whole periods"
+          }
+        ],
+        "group_count": 1
       }
     }
   ]
