@@ -1,6 +1,6 @@
 import copy
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date
 from threading import Barrier
 from urllib.parse import urlencode
@@ -100,6 +100,55 @@ def approved(client, document):
     response = client.post(path, data)
     assert response.status_code == 302, response.content.decode()
     return document.invoices.get()
+
+
+@pytest.mark.parametrize(
+    ("utility", "subcategory", "unit", "valid"),
+    [
+        ("electricity", "", "kWh", True),
+        ("electricity", "electricity_demand", "kW", True),
+        ("water", "", "m3", False),
+        ("water", "", "kWh", False),
+        ("electricity", "", "kW", False),
+        ("electricity", "electricity_demand", "kWh", False),
+    ],
+)
+def test_demand_costs_use_independent_usage_classification(
+    client, configured, tmp_path, utility, subcategory, unit, valid
+):
+    from bills.parsing.common import reconcile
+    from bills.waste_costs import reviewed_candidate
+
+    document, _ = upload(client, tmp_path)
+    original = copy.deepcopy(document.extractions.get().candidate)
+    candidate = reviewed_candidate(original)
+    for section in candidate.sections:
+        section.service, section.subcategory = "electricity", "electricity_demand"
+        section.usages = [
+            replace(row, utility=utility, subcategory=subcategory, unit=unit)
+            for row in section.usages
+        ]
+    assert bool(reconcile(candidate).issues) is not valid
+    response = client.get(f"/documents/{document.pk}/review/")
+    data = posted_fields(response)
+    for index in range(len(candidate.sections)):
+        data[f"sections-{index}-category"] = "electricity"
+        data[f"sections-{index}-subcategory"] = "electricity_demand"
+    for index in range(sum(len(section.usages) for section in candidate.sections)):
+        data[f"usages-{index}-utility"] = utility
+        data[f"usages-{index}-subcategory"] = subcategory
+        data[f"usages-{index}-unit"] = unit
+    saved = client.post(f"/documents/{document.pk}/review/", data)
+    assert saved.status_code == (302 if valid else 400)
+    if valid:
+        # approve_review's validate_allocations/model checks are authoritative at promotion.
+        invoice = document.invoices.get()
+        retained = reviewed_candidate(invoice.reviews.get().snapshot["values"])
+        assert reconcile(retained).issues == []
+        assert {row.utility for section in retained.sections for row in section.usages} == {utility}
+    else:
+        assert not document.invoices.filter(status=Invoice.Status.APPROVED).exists()
+    assert document.extractions.get().candidate == original
 
 
 def test_product_numbers_map_independently_and_survive_approval(client, configured, tmp_path):
