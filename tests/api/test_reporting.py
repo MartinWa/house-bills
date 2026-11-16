@@ -22,6 +22,18 @@ from .helpers import BASE, setup
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+@pytest.mark.parametrize("kind", ["consumption", "issues", "power", "summary"])
+def test_usage_bounds_require_a_reporting_snapshot(kind):
+    from bills.api_reporting import aggregate, resolved_filters
+
+    filters = {"date_from": date(2024, 1, 1), "date_to": date(2024, 1, 31)}
+    with pytest.raises(TypeError, match="requires a ReportingSnapshot"):
+        resolved_filters(object(), filters, kind)
+    if kind == "consumption":
+        with pytest.raises(TypeError, match="requires a ReportingSnapshot"):
+            aggregate(object(), filters, kind, "totals")
+
+
 def test_complete_aggregates_are_independent_of_record_pages(api_client):
     client, owner, _, _ = api_client
     house, vendor = setup(client)
