@@ -1,12 +1,14 @@
 """Bounded approved projections and complete SQL aggregates in one read snapshot."""
 
-from datetime import UTC, date, datetime
+import json
+from datetime import UTC, date, datetime, timedelta
 
 from django.core.exceptions import ValidationError
 
 from .categories import CATEGORY_LABELS, SUBCATEGORY_LABELS
 from .configuration import month_number
 from .reporting import SELECTION_REASONS, reporting_reader
+from .reporting_data import ReportingSnapshot, consumption_groups
 from .waste_reporting import ReportTooBroad, attach_waste_weights, read_waste_report
 
 MAX_PROPERTIES = 100
@@ -27,6 +29,7 @@ COST_DIMENSIONS = {
     )
 }
 COST_DIMENSIONS["invoice_month"] = "date(invoice_date, 'start of month')"
+COST_DIMENSIONS["invoice_year"] = "CAST(strftime('%Y', invoice_date) AS INTEGER)"
 CONSUMPTION_DIMENSIONS = {
     name: name
     for name in (
@@ -42,6 +45,10 @@ CONSUMPTION_DIMENSIONS = {
         "source_selection",
     )
 }
+CONSUMPTION_DIMENSIONS.update(
+    period_start_month="date(period_start, 'start of month')",
+    period_start_year="CAST(strftime('%Y', period_start) AS INTEGER)",
+)
 DIMENSIONS = {"costs": COST_DIMENSIONS, "consumption": CONSUMPTION_DIMENSIONS}
 MANDATORY_DIMENSIONS = {"costs": ("currency",), "consumption": ("utility", "unit")}
 COST_SORT = {
@@ -134,6 +141,9 @@ def resolved_filters(reader, filters, kind, *, strict_ids=False):
     result = dict(filters)
     if len(set(result.get("property_id") or [])) > MAX_PROPERTIES:
         raise ReportTooBroad("100 property IDs")
+    if result.get("date_from") and result.get("date_to"):
+        validate_date_bounds(result)
+        return result
     bounds = []
     projections = (
         ["power"]
@@ -146,6 +156,17 @@ def resolved_filters(reader, filters, kind, *, strict_ids=False):
     )
     for projection in projections:
         usage = projection != "costs"
+        if usage and isinstance(reader, ReportingSnapshot):
+            sources = reader.selected(filters, projection)
+            if sources:
+                bounds.append(
+                    (
+                        min(date.fromisoformat(row["period_start"]) for row in sources),
+                        max(date.fromisoformat(row["period_end"]) for row in sources)
+                        - timedelta(days=1),
+                    )
+                )
+            continue
         where, params = filters_sql(filters, usage=usage, strict_ids=strict_ids)
         table = {
             "costs": "reporting_costs",
@@ -171,16 +192,29 @@ def resolved_filters(reader, filters, kind, *, strict_ids=False):
         min(row[0] for row in bounds) if bounds else None
     )
     result["date_to"] = result.get("date_to") or (max(row[1] for row in bounds) if bounds else None)
-    if result["date_from"] and result["date_to"]:
+    validate_date_bounds(result)
+    return result
+
+
+def validate_date_bounds(result):
+    if result.get("date_from") and result.get("date_to"):
         if result["date_from"] > result["date_to"]:
             raise ValidationError({"date_to": "End date must be on or after start date."})
         if month_number(result["date_to"]) - month_number(result["date_from"]) + 1 > MAX_MONTHS:
             raise ReportTooBroad("600 calendar months")
-    return result
 
 
 def aggregate(reader, filters, kind, mode, group_by=None):
     usage = kind == "consumption"
+    if usage and isinstance(reader, ReportingSnapshot):
+        return timestamps(
+            consumption_groups(
+                reader.selected(filters, kind),
+                mode,
+                group_by,
+                MAX_GROUPS,
+            )
+        )
     where, params = filters_sql(filters, usage=usage)
     if mode == "grouped":
         dimensions = DIMENSIONS[kind]
@@ -237,9 +271,23 @@ def aggregate(reader, filters, kind, mode, group_by=None):
 
 def timestamps(rows):
     for row in rows:
-        for name in ("invoice_date", "invoice_month", "period_start", "period_end"):
+        for name in (
+            "invoice_date",
+            "invoice_month",
+            "period_start",
+            "period_end",
+            "period_start_month",
+            "invoice_year",
+            "period_start_year",
+        ):
             if row.get(name) is not None:
-                value = date.fromisoformat(row[name]) if isinstance(row[name], str) else row[name]
+                value = (
+                    date(row[name], 1, 1)
+                    if name.endswith("_year")
+                    else date.fromisoformat(row[name])
+                    if isinstance(row[name], str)
+                    else row[name]
+                )
                 time_name = "invoice_time" if name == "invoice_date" else f"{name}_time"
                 row[time_name] = (value - date(1970, 1, 1)).days * 86400
     return rows
@@ -276,8 +324,24 @@ def metadata():
     return {"generated_at": datetime.now(UTC), "contract_version": CONTRACT_VERSION}
 
 
-def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0, sort=None, group_by=None):
-    with reporting_reader() as reader:
+def read_api_report(
+    *,
+    filters,
+    kind,
+    mode="rows",
+    limit=50,
+    offset=0,
+    sort=None,
+    group_by=None,
+    representation="full",
+    include_totals=True,
+    include_waste=True,
+    include_quality=False,
+):
+    with reporting_reader() as database:
+        reader = ReportingSnapshot(
+            database, filters, full_history=include_quality and kind != "costs"
+        )
         catalogue = report_labels(reader)
         generated = metadata()
         if filters.get("subcategory") is not None and filters["subcategory"] not in catalogue:
@@ -290,7 +354,13 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0, sort=None
             "filters": filters,
             "effective_date_bounds": {name: filters.get(name) for name in ("date_from", "date_to")},
         }
-        if kind in ("summary", "costs"):
+        if representation == "compact":
+            base["analytics_version"] = 1
+        if include_quality:
+            from .analytics_reporting import report_quality
+
+            base["quality"] = report_quality(reader, filters, kind)
+        if kind in ("summary", "costs") and include_waste:
             cost_where, cost_params = filters_sql(filters)
             base.update(read_waste_report(reader, cost_where, cost_params, filters=filters))
         if kind == "summary":
@@ -299,28 +369,27 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0, sort=None
             if len(costs) + len(consumption) > MAX_GROUPS:
                 raise ReportTooBroad("10,000 aggregate groups")
             cost_where, cost_params = filters_sql(filters)
-            usage_where, usage_params = filters_sql(filters, usage=True)
+            selected_ids = {
+                row[0]
+                for row in reader.execute(
+                    f"SELECT DISTINCT invoice_id FROM reporting_costs WHERE {cost_where}",
+                    cost_params,
+                )
+            }
+            selected_usage = reader.selected(filters, "consumption")
+            issues = reader.selected(filters, "issues")
+            selected_ids.update(row["invoice_id"] for row in [*selected_usage, *issues])
             sources = reader.execute(
-                SELECTED
-                + f"""
+                """
                 SELECT count(*) AS total_invoices,
                        coalesce(sum(d.source='manual'), 0) AS manual_invoices,
                        max(i.approved_at) AS latest_approval
                 FROM bills_invoice i JOIN bills_document d ON d.id=i.document_id
-                WHERE i.id IN (
-                    SELECT invoice_id FROM reporting_costs WHERE {cost_where}
-                    UNION SELECT invoice_id FROM selected_usage WHERE {usage_where}
-                    UNION SELECT invoice_id FROM reporting_electricity_selection
-                    WHERE source_selection='needs_review' AND {usage_where}
-                )
+                WHERE i.id IN (SELECT value FROM json_each(?))
                 """,
-                [*cost_params, *usage_params, *usage_params],
+                [json.dumps(sorted(selected_ids))],
             ).fetchone()
-            exclusions = reader.execute(
-                "SELECT count(*) FROM reporting_electricity_selection "
-                f"WHERE source_selection='needs_review' AND {usage_where}",
-                usage_params,
-            ).fetchone()[0]
+            exclusions = len(issues)
             return {
                 **base,
                 "costs": labels(costs, catalogue),
@@ -335,14 +404,59 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0, sort=None
             }
         if mode != "rows":
             groups = aggregate(reader, filters, kind, mode, group_by)
-            totals = groups if mode == "totals" else aggregate(reader, filters, kind, "totals")
-            return {
+            totals = (
+                (groups if mode == "totals" else aggregate(reader, filters, kind, "totals"))
+                if include_totals
+                else []
+            )
+            result = {
                 **base,
                 "mode": mode,
                 "groups": labels(groups, catalogue, category=filters.get("category")),
                 "totals": labels(totals, catalogue),
                 "group_count": len(groups),
                 **({"group_by": group_by} if mode == "grouped" else {}),
+            }
+            if not include_totals:
+                result.pop("totals")
+            if representation == "compact":
+                result["representation"] = "compact"
+                if include_quality and kind == "consumption":
+                    from .analytics_reporting import group_quality
+
+                    group_quality(reader, filters, result["groups"], mode, group_by)
+            return result
+        if kind in ("consumption", "issues"):
+            all_rows = reader.selected(filters, kind)
+            order = sort or ["period_start", "period_end", "invoice_id", "usage_id"]
+            for key in reversed(order):
+                field = key.removeprefix("-")
+                all_rows.sort(
+                    key=lambda row: (row.get(field) is not None, row.get(field)),
+                    reverse=key.startswith("-"),
+                )
+            rows = all_rows[offset : offset + limit]
+            documents = {row["document_id"] for row in rows}
+            sources = (
+                {
+                    row[0]: row[1]
+                    for row in reader.execute(
+                        "SELECT id, source FROM bills_document WHERE id IN ("
+                        + ",".join("?" for _ in documents)
+                        + ")",
+                        list(documents),
+                    )
+                }
+                if documents
+                else {}
+            )
+            for row in rows:
+                row["source"] = sources[row["document_id"]]
+            return {
+                **base,
+                "mode": "rows",
+                "items": labels(timestamps(rows), catalogue),
+                "count": len(all_rows),
             }
         usage = kind != "costs"
         where, params = filters_sql(filters, usage=usage)
@@ -379,7 +493,7 @@ def read_api_report(*, filters, kind, mode="rows", limit=50, offset=0, sort=None
                 [*params, limit, offset],
             )
         ]
-        if kind == "costs":
+        if kind == "costs" and include_waste:
             attach_waste_weights(reader, rows)
         return {
             **base,

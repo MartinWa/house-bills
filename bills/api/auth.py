@@ -24,6 +24,9 @@ REPORTING_PATHS = frozenset(
         "/reports/review-queue",
         "/reports/attention",
         "/reports/invoice-costs",
+        "/reports/availability",
+        "/reports/comparisons",
+        "/reports/unit-costs",
     }
 )
 

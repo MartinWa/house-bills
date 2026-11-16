@@ -282,7 +282,7 @@ print('Documented sequential setup, upload, approval, correction and reports pas
     )
 
 
-def check(credentials, environment, overview=None):
+def check(credentials, environment, overview=None, *, extra_check=None):
     deadline = time.monotonic() + 55
     while True:
         try:
@@ -357,6 +357,8 @@ def check(credentials, environment, overview=None):
         from .check_reporting_overview import run
 
         run(json.loads(overview.read_text(encoding="utf-8")))
+    if extra_check is not None:
+        extra_check(credentials)
     status, _ = request("/api/dashboards/db", {"dashboard": dashboard, "overwrite": True})
     assert status == 200, "Dashboard creation failed."
     assert dashboard["timezone"] == "utc" and len(dashboard["panels"]) == 2
@@ -384,9 +386,10 @@ def check(credentials, environment, overview=None):
     )
 
 
-def main(argv=None):
+def main(argv=None, *, extra_check=None):
+    """Run disposable checks, optionally extending them with external consumer tests."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--overview", type=Path, help="Companion generated household overview JSON")
+    parser.add_argument("--overview", type=Path, help="Generated household overview JSON")
     args = parser.parse_args(argv)
     credentials = {profile: secrets.token_urlsafe(32) for profile in ("reporting", "automation")}
     # Docker metadata may persist environment values: send only digests to Compose.
@@ -398,7 +401,9 @@ def main(argv=None):
     }
     try:
         subprocess.run([*COMPOSE, "up", "-d"], env=environment, check=True)
-        if args.overview is None:
+        if extra_check is not None:
+            check(credentials, environment, args.overview, extra_check=extra_check)
+        elif args.overview is None:
             check(credentials, environment)
         else:
             check(credentials, environment, args.overview)
