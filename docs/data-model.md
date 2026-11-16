@@ -168,12 +168,10 @@ their subcategory or category. A group organizes services without changing invoi
 matching. Create fraction cost services only for separately billed costs; weights
 on a combined charge do not require fraction cost services.
 
-An enabled fraction cost service also enables itemized extraction for its property
-in Layout 01 invoices. Explicit Matavfall, Restavfall and Trädgårdsavfall charge
-amounts become separate cost allocations, even inside a shared collection contract.
-Shared and remaining fees stay under `waste_collection`. VAT is apportioned by
-net cost with rounding balanced to the printed contract VAT. Missing or ambiguous
-charge amounts retain the combined cost for review; weights never supply a cost.
+An enabled fraction cost service also enables itemized extraction for its property in
+Layout 01 invoices, splitting explicit charge amounts into separate allocations while
+retaining shared fees; see [parsing](parsing.md#configuration-and-versions). Missing or
+ambiguous amounts retain the combined cost for review; weights never supply a cost.
 
 ## Records and precision
 
@@ -199,24 +197,13 @@ A shared invoice has one document and several independently assigned billing sec
 Usage inherits invoice and property through its section, and must use its category. Individual fees have
 no normalized rows; their source text remains in the original PDF and extraction evidence.
 
-Migrations `0019`–`0022` introduce the shared classification catalogue, rename
-invoice property rules and move schedule ownership to vendors. Their preflight
-rejects conflicting frequencies, phases, grace policies, enabled overlaps and
-invalid exception scopes before restructuring. Run
-`python manage.py audit_model_restructure` in the Linux container for a read-only
-configuration report before upgrading. Reconcile reported conflicts explicitly.
-
-Invoice/document/assignment identities, money, signed quantities, units, periods,
-approval metadata, original storage and immutable extraction/review JSON remain
-intact. Compatibility adapters read older classification keys in memory. Earlier
-migrations remain unchanged. Migrated service billing settings are archived
-privately for recovery. An unchanged-data downgrade restores their values.
-A downgrade stops if service modes, vendor schedules or the subcategory catalogue
-changed, or the old schema cannot represent new classifications, independent
-electricity consumption sources or reviewed/vendor-wide annotations. Catalogue
-guards include edited names, enabled flags, categories and added or deleted entries,
-even when those entries have no allocations. Restore the verified pre-upgrade backup
-with the previous image in that case.
+Migrations preserve invoice/document/assignment identities, money, signed quantities,
+units, periods, approval metadata, original storage and immutable history. They read
+older classification keys in memory and archive migrated service billing settings
+privately for recovery. Only some migrations guard against data loss on reversal.
+Reversing waste-fraction support removes saved cost patterns and service-group/fraction-kind
+metadata without a guard. For rollback, restore the verified pre-upgrade backup with the
+previous image; see [manual upgrades](deployment.md#manual-upgrades).
 
 Money uses signed integer minor units: `100` is one SEK. Quantities use signed integer
 thousandths: `1000` is one kWh, kW, m³ or kg. Floats, booleans and strings are rejected by the
@@ -283,16 +270,16 @@ source page and an unlocated zero bounding box. Extraction attempts and earlier 
 snapshots retain original evidence.
 
 Approval checks each allocation's net plus VAT against its gross total, then allocation
-totals and rounding against the header. Splitting explicit demand or waste fraction costs
-apportions VAT by net cost and balances it to the unchanged printed contract VAT.
-Usage must match the allocation category. Electricity consumption uses kWh;
+totals and rounding against the header. Explicit demand and waste fraction splits follow
+the [parser convention](parsing.md#configuration-and-versions). Usage must match the
+allocation category. Electricity consumption uses kWh;
 the Effektavgift subcategory (`electricity_demand`) uses billed kW. Water uses m³ and Waste
 uses kg; Other can retain kWh, m³ or kg. Billed power remains separate from additive consumption.
 Repeated usage for the same section/period/basis is prohibited; overlapping electricity
-consumption periods with the same property, source service and basis require review. Network and
-supply usage remain distinct. Usage reversals and replacements retain their separate
-bases; [approved reporting](reporting.md) selects canonical electricity separately
-and exposes ambiguous overlaps without changing approved values.
+consumption periods with the same property, source service and basis require review.
+Usage reversals and replacements retain their separate bases;
+[approved reporting](reporting.md#consumption-and-electricity-selection) selects canonical
+electricity without changing approved values.
 
 Model saves perform validation and reject direct edits to approved allocations and
 audit history. Row constraints protect low-level writes, but cross-row reconciliation
@@ -307,15 +294,6 @@ Explicit whole-document deletion removes its invoices, allocations, usage, revie
 revisions and extraction attempts together. The delete form binds the observed invoice
 and extraction revisions, and file cleanup resumes from a private deletion receipt.
 The removed document's checksum no longer prevents a fresh upload of the same PDF.
-
-Migration `0007_cost_totals` archives existing fee rows in the document's private,
-non-editable `legacy_charge_details` field before dropping the old table. It retains every
-fee field and derives the allocation's covering period from those rows, falling back to
-usage periods. Approved invoice identities, totals, usage, extraction attempts and review
-snapshots remain unchanged. Older snapshots are adapted in memory when displayed or
-reviewed; their JSON is never rewritten. New approvals record service totals and usage.
-Reversing the migration restores archived rows and represents newer allocations with
-one service-total row for compatibility with the old schema.
 
 Public tests use invented data. Candidate text, identifiers, source paths and approval
 snapshots are private database content. Authenticated screens expose reviewed values

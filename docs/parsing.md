@@ -44,15 +44,13 @@ remain review proposals. Dates and filenames never select the newest parser.
 | `layout_07/v1` | Electricity supply; area-labelled consumption and inclusive VAT totals. | `1` |
 | `layout_08/v1` | Compact electricity supply summary with printed consumption, total, VAT and rounding. | `3` |
 
-The v1 families have representative source validation and wholly synthetic regressions.
-The historical v2 structures and `layout_08` also have private corpus validation;
-`layout_02/v2` demonstrates coexistence using synthetic examples. This does not
-cover every historical invoice or future layout change. Spacing, case, title punctuation
-and period dash changes preserve a version when its structural rules still match.
-Normalization retains the original extracted text and coordinates as evidence.
+Support does not cover every historical invoice or future layout change. Spacing, case,
+title punctuation and period dash changes preserve a version when its structural rules
+still match. Normalization retains the original extracted text and coordinates as
+evidence.
 
-The historical v2 structures are selected by their product-number, meter-table or
-price-table signatures; they coexist with v1 and do not route by invoice date. Legacy
+The v2 structures are selected by their product-number, meter-table or price-table
+signatures; they coexist with v1 and do not route by invoice date. Legacy
 network readings retain column order and exact grouped quantities. Network price rows
 are checked against readings within their own printed periods. When a contract has no
 overall period label, dated fee rows supply its cost period; billed waste weights keep
@@ -174,6 +172,6 @@ section, identifier, usage and evidence types; see [the result contract](parser-
 Register built-in versions in `bills/parsing/registry.py`, rebuild the image and explicitly
 re-parse selected documents. Follow [contributing](../CONTRIBUTING.md) for fixtures/checks.
 
-Loading modules from a mounted directory is not implemented. Such modules would execute
-with application privileges; independently authored plugins may retain their own licenses,
-as described in [NOTICE](../NOTICE) and [security expectations](../SECURITY.md).
+Loading modules from a mounted directory is not implemented; see
+[security expectations](../SECURITY.md) for the trust boundary and [NOTICE](../NOTICE)
+for plugin licensing.

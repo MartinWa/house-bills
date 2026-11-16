@@ -14,8 +14,8 @@ and open **User → Administration**.
 4. Add **Invoice property rules** for installation or contract keys. Each section of a
    shared invoice maps independently. Shared customer accounts and recipient
    postal addresses do not identify a property.
-5. A vendor's optional **Default property** supplies a fallback. Specific rules
-   and delivery-address mappings take precedence; conflicts require review.
+5. A vendor's optional **Default property** supplies a fallback after specific rules
+   and delivery-address mappings; see [configuration](data-model.md#configure-houses-and-vendors).
 6. Add **Property services** and dated **Service vendors**, then configure each
    vendor's shared **Billing schedule**. For waste costs appearing on only some
    bills, add **Service cost patterns** on the service vendor. Keep a general waste
@@ -43,10 +43,3 @@ explicit acceptance.
 Configuration is stored in SQLite and survives image replacement. Installation
 paths and secrets belong in private environment configuration. Verify
 [backup and clean restoration](backup-and-recovery.md) before normal real-data use.
-
-Migration `0025_waste_fractions` preserves approved amounts, weights and review JSON,
-groups garden with waste collection, and leaves cost patterns unset. Establish real
-cost frequencies and billing seasons from the vendor arrangement. Reversing it
-removes group/fraction-kind/pattern metadata, while retaining catalogue entries.
-Reversing further to a pre-catalogue schema can be blocked by those extra entries;
-use a pre-upgrade backup when restoring that older installation.

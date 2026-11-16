@@ -36,11 +36,10 @@ the values. For approved invoices, review starts from the saved values. A newer
 extraction with pending differences offers **Load latest extraction** inside review.
 See [review and correction](review.md).
 
-Invoices without a obtainable original start under **Invoices → Add manual invoice**
-instead of intake. They have no bytes, hash, staging receipt or publication path and
-store storage state `none`; approval and reporting are unchanged. Source view/download,
-re-parsing, storage retry and recovery are disabled for them. See
-[manual invoices](review.md#manual-invoices-without-an-original).
+Invoices without an obtainable original start under **Invoices → Add manual invoice**
+instead of intake; see [manual invoices](review.md#manual-invoices-without-an-original).
+They have no source file or storage state, so source view/download, re-parsing, storage
+retry and recovery do not apply. Approval and reporting are unchanged.
 
 After storing the original, intake runs versioned deterministic parsing and retains
 private review proposals. Recognized identities can create review records; intake

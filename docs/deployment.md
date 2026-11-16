@@ -4,9 +4,8 @@ The application provides one Waitress process with two threads, Django authentic
 staff billing configuration, private PDF uploads, deterministic parsing, manual review
 and correction, approved invoice screens and authenticated reports in host-local
 SQLite. Coordinated backups and clean restoration are implemented and checked on
-disposable local instances. Verify them on the intended host before normal real-data use.
-Grafana access transport and NAS operation remain unverified. The first published image
-is pending; local production builds support evaluation with synthetic invoices.
+disposable local instances; verify them on the intended host before normal real-data use.
+See [status and limits](../README.md#limits-and-documentation) for unverified areas.
 
 ## Runtime and storage
 
@@ -133,11 +132,6 @@ Originals live in `/data/invoices`, with authenticated downloads and resumable s
 and publication. See [uploads and private originals](ingestion.md) for recovery and
 the shared-lock contract used by operational backups.
 
-Migration `0007_cost_totals` replaces individual fee records with dated service totals.
-Existing fee rows are archived privately before removing their table. Invoice identities,
-approved totals, usage and immutable extraction/review history are preserved. Older
-proposals can still be reviewed without re-parsing; see [the data model](data-model.md).
-
 ## Manual upgrades
 
 Create and verify a coordinated backup including the private environment and
@@ -161,11 +155,10 @@ authenticated original downloads. Run the clean-restoration procedure independen
 image updates do not replace installation state or accepted corrections. If an upgrade
 fails, retain the failed instance for inspection and restore the verified pre-upgrade
 backup into a separate directory using its previous image. Do not assume that an older
-image can read a migrated database.
+image can read a migrated database. Reversing migrations can silently discard configuration;
+use backup restoration for rollback.
 
-Releases never deploy or update an installation automatically. NAS verification remains
-a documented follow-up, including proxy routing, permissions, upload timing, review and
-clean restoration. Grafana's read-only integration must be verified separately.
+Releases never deploy or update an installation automatically.
 
 ## Disposable production probe
 

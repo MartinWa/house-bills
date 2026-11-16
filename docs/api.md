@@ -51,10 +51,10 @@ file for uploads. Bodyless operations require no content type. JSON is bounded t
 settings. Every API response has `Cache-Control: no-store`; originals additionally
 retain `private`. Every 401 includes `WWW-Authenticate: Bearer`.
 
-Money uses signed integer minor units (100 per SEK), consumption signed integer
-thousandths (1,000 per unit). Numeric strings, floats and booleans cannot supply
-these values or observed revisions. JSON date inputs are ISO `YYYY-MM-DD` strings.
-Unknown values remain null rather than becoming zero.
+Money and quantities use the [storage convention](data-model.md#records-and-precision):
+signed integer minor units (100 per SEK) and thousandths (1,000 per unit). Numeric
+strings, floats and booleans cannot supply these values or observed revisions. JSON date
+inputs are ISO `YYYY-MM-DD` strings; unknown values remain null rather than becoming zero.
 
 Record collections return `items`, the complete filtered `count`, and `next`/`previous`
 continuation paths. Follow these links until `next` is null. `limit` defaults to 50
@@ -125,8 +125,7 @@ service keys. Referenced fraction kind remains stable. Service reads/writes incl
 `service_group`, automatically derived when omitted. Garden and other collection
 services default to `waste_collection`; tank emptying retains its own group.
 Enabled fraction services also enable separate extraction of explicitly priced
-Layout 01 waste charges for their property, retaining shared collection fees and
-reconciling apportioned VAT to the printed contract total.
+Layout 01 waste charges; see [parsing](parsing.md#configuration-and-versions).
 
 Waste assignments own cost schedules with effective months, `frequency_months`,
 nullable `first_expected_month`, optional `season_start_month`/`season_end_month`
@@ -225,8 +224,9 @@ or incomplete values.
 private identification or matching rules. `/reports/summary` returns complete cost
 and selected-consumption totals plus source/exclusion counts. Costs and consumption
 use independent projections; electricity costs include every approved allocation,
-while consumption selects network/supply before vendor/subcategory/date filtering.
-Hiding network rows never promotes excluded supply to fallback.
+while [consumption selects a canonical source](reporting.md#consumption-and-electricity-selection)
+before vendor/subcategory/date filtering. Hiding network rows never promotes excluded
+supply to fallback.
 
 Summary and cost responses add `waste_total`, `waste_totals_by_property`,
 `waste_fractions`, `waste_general` and `waste_other_services`. A fraction entry has
@@ -375,6 +375,8 @@ SQLite database, mount persistent storage at `/var/lib/grafana`; see
 Save the reporting token in the datasource once. It remains usable after either
 container is replaced when both applications retain their state.
 
+### Grafana verification
+
 Build the development and browser images, then run the disposable integration:
 
 ```sh
@@ -382,18 +384,21 @@ python -m tools.check_api_grafana
 ```
 
 The driver keeps disposable API tokens in memory and passes only their SHA-256 digests
-to the API container. The sequential client receives its token through standard input;
-Grafana stores its reporting token in encrypted `secureJsonData`.
-
+to the API container; Grafana stores its reporting token in encrypted `secureJsonData`.
 It starts [isolated Compose services](../compose.api-check.yaml), seeds 1,101 invented
-approved invoices, checks Infinity backend totals for single/multiple/all-property
-selections, UTC month/period endpoints, live approvals/corrections, the sequential
-client example and visible bounds failures, then removes only
-that check project's containers and volume. It uses Grafana 13.2.4 and Infinity 4.1.6.
-Installation Grafana provisioning is separate deployment work.
+approved invoices and checks Infinity backend totals, UTC endpoints, live
+approvals/corrections, the sequential client example, synthetic responses and visible
+bounds failures. It uses Grafana 13.2.4 and Infinity 4.1.6, then removes only that check
+project's containers and volume.
+
+`--overview <dashboard.json>` validates an external dashboard; an external driver can
+pass an `extra_check` callback to `tools.check_api_grafana.main`.
+`HOUSE_BILLS_CHECK_API_PORT` and `HOUSE_BILLS_CHECK_GRAFANA_PORT` override the default
+local ports 8002 and 3002. Installation Grafana provisioning and consumer-specific
+dashboards are separate work.
 
 The [coverage, review and invoice-list contract](api/reporting-contract.md) describes
-the four new projections and consumer handoff. The
+those projections and consumer handoff. The
 [synthetic responses and Infinity queries](api/reporting-examples.json) include
 empty, unknown, shared, missing and paginated cases. Regenerate or verify them in
 the Linux development image with `python -m tools.generate_reporting_examples`
@@ -402,23 +407,10 @@ checks these examples and the live routes without a companion dashboard.
 
 The [analytical contract](api/analytics-contract.md) documents calendar groups,
 complete billed-power statistics, availability/coverage, equivalent-period
-comparisons and conservative period-aligned effective unit costs. New analytical
+comparisons and conservative period-aligned effective unit costs. Analytical
 responses add `analytics_version: 1`. Cost/consumption aggregates can select
 `representation=compact`, omit legacy totals, and request quality metadata;
 costs/summary can omit waste supplements. Defaults retain existing response shapes.
 Explicit `year=2024&years=3` windows work independently of the current date.
-
-To validate the documented synthetic dashboard through the disposable Infinity
-backend and Chromium, run:
-
-```sh
-python -m tools.check_api_grafana
-```
-
-The optional `--overview <dashboard.json>` validates an externally supplied
-overview. Consumer-specific dashboard generators, configuration and tests belong
-with the consumer. External check drivers can pass an `extra_check` callback to
-`tools.check_api_grafana.main` to validate their dashboards within the disposable
-project.
-The optional `HOUSE_BILLS_CHECK_API_PORT` and `HOUSE_BILLS_CHECK_GRAFANA_PORT`
-environment variables override the check's default local ports 8002 and 3002.
+Validate the documented dashboard with the [Grafana verification](#grafana-verification)
+above.

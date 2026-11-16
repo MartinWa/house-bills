@@ -1,11 +1,9 @@
 # Parser candidate contract
 
 The framework-independent types in `bills/parsing/types.py` describe extraction
-candidates. These prototypes were validated locally against a multi-service invoice,
-a shared electricity invoice and a water correction. That establishes the representative
-results; private corpus replay additionally checks current and historical formats
-against retained originals and approved reference values. Production routing and
-proposal persistence are described in [deterministic parsing](parsing.md).
+candidates. Installed layouts, versions and revisions are listed in
+[deterministic parsing](parsing.md); that guide also covers routing and proposal
+persistence.
 
 `reader.read_pdf()` returns text lines with one-based page numbers and PDF-point
 bounding boxes `(x0, top, x1, bottom)`. A four-point vertical tolerance keeps totals
@@ -20,18 +18,10 @@ candidate = layout_01.parse(read_pdf("private/example.pdf"))
 private_result = candidate.to_dict()
 ```
 
-`layout_01/v1` extracts contract-based water, waste, network and supply specifications, including
-sections continuing onto another page and dated water reversals. It accepts the two
-validated header arrangements. `layout_02/v1` extracts electricity supply specifications
-with a separate installation on each billing page. Neither module contains vendor names
-or private identifiers. Layout 01 v1 records implementation revision `10`; layout 02 v1
-records revision `3`.
-`layout_02/v2`, revision `2`, retains a separate replacement signature with synthetic
-coverage. The registry selects by structure and keeps v1 available for older invoices.
-`layout_01/v2`, revision `5`, additionally handles historical product-number sections. The
-[parser guide](parsing.md) lists the other installed structures and revisions.
-Historical `Avfall prodnr ... Kärl ...` headings identify their named waste fraction
-using each section's printed net and VAT totals.
+Neither module contains vendor names or private identifiers. The registry selects by
+structure and keeps earlier versions available for older invoices. Historical
+`Avfall prodnr ... Kärl ...` headings identify their named waste fraction from each
+section's printed net and VAT totals.
 
 ## Structure and precision
 
@@ -44,10 +34,10 @@ using each section's printed net and VAT totals.
 | Evidence | Original extracted text, page and bounding box. Treat the complete serialized result as private. |
 | Review | `requires_review=True` for every result, including financially reconciled results. `issues` contains consistency failures. |
 
-Money uses signed integer minor units: 100 units equal one SEK. Quantities use signed
-integers at scale 1,000 for kWh, kW, m3 and kg. Parsing uses Decimal, rejects overprecision
-and never silently rounds a money/usage input. Rate and meter-reading text can retain
-additional precision in evidence. Missing information is unknown, rather than zero.
+Money and quantities follow the shared [storage convention](data-model.md#records-and-precision).
+Parsing uses Decimal, rejects overprecision and never silently rounds an input. Rate and
+meter-reading text can retain additional precision in evidence. Missing information stays
+unknown, not zero.
 
 Periods are start-inclusive/end-exclusive. Layout 01 uses reading boundaries directly;
 layout 02's printed inclusive final day becomes the following date. Invoice dates,
@@ -67,8 +57,8 @@ Missing, invalid or ambiguous reading periods produce consumption warnings even 
 the costs reconcile. Supply price rows must agree for each period; their repeated
 quantities produce one usage record. Annual
 estimates, historical charts and cumulative readings are excluded. Network and supply
-remain separate sources; [approved reporting](reporting.md) selects network readings
-first and uses supply as an explicit fallback.
+remain separate sources; [approved reporting](reporting.md#consumption-and-electricity-selection)
+selects canonical consumption.
 
 Each billed waste usage row retains `subcategory`: `restavfall` or `matavfall`,
 inferred from that row's explicit label. Container headers and individual weight
@@ -86,21 +76,14 @@ and approval JSON remains immutable and is adapted in memory from explicit evide
 ## Financial reconciliation
 
 Printed service net and VAT are authoritative. Normally no per-fee VAT or gross is
-calculated, and fee descriptions and amounts are optional. For a mapped property with
-enabled fraction cost services, Layout 01 separates explicitly printed fraction net
-charges and retains the remaining collection fees. The printed contract VAT is
-apportioned by net cost, with signed rounding balanced to its exact total. Each part
-retains the original tax evidence; costs are never derived from weights or unit prices.
-Missing/invalid fraction charges leave the combined allocation available for review.
-Layout 01 also separates explicitly billed Effektavgift net charges under
-`electricity_demand`, retaining other Elnät charges under `electricity_network`.
-Each demand row keeps its printed period and optional billed kW with basis `billed`.
-Power is never inferred from a unit price or converted into kWh. Contract VAT is
-apportioned by net cost and balanced to the unchanged printed VAT total. Invalid
-charges retain the combined network cost; invalid power keeps the fee cost and
-requires review of its quantity.
-Other price rows supply billed consumption/periods or corroborate network readings.
-The original PDF and immutable extracted page evidence retain the source detail.
+calculated, and fee descriptions and amounts are optional. Layout 01 separates
+explicitly priced waste fractions and Effektavgift from their combined charges,
+apportioning VAT to the unchanged printed contract total; see
+[parsing](parsing.md#configuration-and-versions). Costs are never derived from weights
+or unit prices, and power is never converted into kWh. Missing or invalid charges leave
+the combined allocation for review. Other price rows supply billed consumption/periods
+or corroborate network readings; the original PDF and immutable page evidence retain the
+source detail.
 
 Net plus VAT must equal each service's cost including VAT. Service net and VAT must sum
 to the header values; service costs plus explicit invoice rounding must equal the invoice

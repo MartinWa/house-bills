@@ -191,22 +191,9 @@ results in the Utility analysis dashboard.
 [Synthetic reporting examples](reporting-examples.json) have an
 `analytics_examples` section alongside the existing paginated projections. Regenerate
 with `python -m tools.generate_reporting_examples` in the Linux development image;
-verify with `--check`.
-
-Validate the documented synthetic dashboard using the application's disposable
-project, after building its development and browser images:
-
-```sh
-python -m tools.check_api_grafana
-```
-
-It uses Grafana 13.2.4, Infinity 4.1.6 and synthetic records, exercising live and
-inline queries, unsupported contracts, exact signed results, UTC dates, approval
-updates and Chromium rendering. It removes only that disposable project's state.
-Grafana requires HTTP access and a Reporting-only bearer token. External consumer
-check drivers can pass an `extra_check` callback to `tools.check_api_grafana.main`
-to validate additional dashboards within the same disposable project. Keep
-consumer-specific configuration, generators and test scenarios with the consumer.
+verify with `--check`. Validate the documented dashboard with the
+[Grafana verification](../api.md#grafana-verification) procedure. Keep consumer-specific
+configuration, generators and test scenarios with the consumer.
 
 Within a snapshot the API reuses canonical electricity selection. House constraints
 can enter its source CTE because all reversal and overlap partitions are

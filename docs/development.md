@@ -42,8 +42,8 @@ schedules and their required property services. Configure services from
 allocations remain inspectable, including an after-review confirmation for a
 service that was not billed. Maintain the shared catalogue under **Subcategories**.
 See [configuration](data-model.md#property-services-and-vendor-history).
-For a vendor that always bills one house, its optional **Default property** applies
-after specific invoice property rules.
+For a vendor that always bills one house, set its optional **Default property**; see
+[configuration](data-model.md#configure-houses-and-vendors).
 
 The source checkout is mounted at `/app`. The `development-state` volume holds the
 Linux virtualenv, `/state/development/db.sqlite3`, the development secret, temporary

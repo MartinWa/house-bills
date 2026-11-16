@@ -205,7 +205,7 @@ Credits remain signed; contributing nulls propagate independently through each
 amount. Sort keys: invoice_date, invoice_id, vendor_name, currency, invoice_kind,
 review_revision, net_minor, vat_minor, gross_minor. Default: `-invoice_date,invoice_id`.
 
-## Consumer handoff and verification
+## Consumer handoff
 
 [Synthetic examples and Infinity backend queries](reporting-examples.json) use
 schema-validated invented records. Queries visibly reject unsupported contract
@@ -214,9 +214,8 @@ and whether another page is available. The empty display says No matching record
 Invoice amounts are scaled for display only. Coverage shows expected month separately
 from actual billed intervals; review links remain conditional on returned paths.
 
-Regenerate with `python -m tools.generate_reporting_examples`, verify with `--check`,
-and run `python -m tools.check_api_grafana` after building the repository's development
-and browser images. Generation and application checks use the supported Linux image;
-the HTTP-only integration driver can run on the editing host. No companion dashboard
-is required. Existing reporting modes and the Automation-only invoice-coverage
-adapter keep their contracts. Consumer edits, provisioning and deployment are separate.
+Regenerate with `python -m tools.generate_reporting_examples` and verify with `--check`
+in the Linux development image. See [Grafana verification](../api.md#grafana-verification)
+for the disposable integration. Existing reporting modes and the Automation-only
+invoice-coverage adapter keep their contracts. Consumer edits, provisioning and
+deployment are separate.
