@@ -401,7 +401,12 @@ def main(argv=None, *, extra_check=None):
     }
     try:
         subprocess.run([*COMPOSE, "up", "-d"], env=environment, check=True)
-        check(credentials, environment, args.overview, extra_check=extra_check)
+        if extra_check is not None:
+            check(credentials, environment, args.overview, extra_check=extra_check)
+        elif args.overview is None:
+            check(credentials, environment)
+        else:
+            check(credentials, environment, args.overview)
     finally:
         # Only the explicitly named check project's containers and volume are removed.
         subprocess.run([*COMPOSE, "down", "--volumes"], env=environment, check=True)
