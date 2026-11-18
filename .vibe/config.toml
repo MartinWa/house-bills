@@ -1,0 +1,12 @@
+# Project configuration for Mistral Vibe (loaded once this folder is trusted).
+
+[tools.git_bash]
+# Commands from the documented developer workflow, auto-approved to reduce
+# prompts. Everything else still goes through the normal approval flow.
+allowlist = [
+  "git",
+  "docker",
+  "docker-compose",
+  "ruff",
+  "pytest",
+]

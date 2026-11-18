@@ -1,0 +1,9 @@
+# Project hooks for Mistral Vibe (loaded once this folder is trusted).
+# Hook commands run in Git Bash in the repository root.
+
+[[hooks]]
+name = "ruff-changed"
+type = "post_agent"
+command = "bash .vibe/hooks/lint-changed.sh"
+timeout = 120.0
+description = "Run the containerized ruff check/format check on Python files changed in the working tree and report findings back to the agent"
