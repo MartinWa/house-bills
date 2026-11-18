@@ -128,10 +128,8 @@ def invoice_identity_conflicts(invoice):
 
 
 def invoice_for_review(document_id):
-    """Current parsers yield one invoice; prefer its retained approved revision."""
-    return (
-        Invoice.objects.filter(document_id=document_id).order_by("-review_revision", "pk").first()
-    )
+    """One document retains at most one invoice; retrieve it without ranking."""
+    return Invoice.objects.filter(document_id=document_id).first()
 
 
 @coordinated_write
@@ -396,12 +394,7 @@ def approve_review(
         # values intact, with durable storage state for the retry service.
         def publish_when_approved():
             try:
-                if (
-                    not Invoice.objects.filter(document_id=invoice.document_id)
-                    .exclude(status="approved")
-                    .exists()
-                ):
-                    publish_original(invoice.document_id)
+                publish_original(invoice.document_id)
             except OSError, ValidationError, Timeout, DatabaseError:
                 # The approval has already committed. Recovery will publish any
                 # fully approved inbox original once storage/database access returns.

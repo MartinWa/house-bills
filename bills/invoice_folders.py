@@ -27,36 +27,26 @@ def _ordered_folders(folders):
 def invoice_folders(invoices):
     properties = dict(Property.objects.values_list("slug", "name"))
     vendors = dict(Vendor.objects.values_list("slug", "name"))
-    documents = {}
-    for invoice in invoices:
-        entry = documents.setdefault(
-            invoice.document_id,
-            {
-                "document": invoice.document,
-                "invoices": [],
-                "filename": PurePosixPath(invoice.document.original_path).name,
-            },
-        )
-        entry["invoices"].append(invoice)
-
     folders, manual_folders, attention_folders = {}, {}, {}
     pdf_count = manual_count = 0
-    for entry in documents.values():
-        document = entry["document"]
-        first = min(entry["invoices"], key=lambda invoice: (invoice.invoice_date, invoice.pk))
+    for invoice in invoices:
+        document = invoice.document
+        entry = {
+            "document": document,
+            "invoices": [invoice],
+            "filename": PurePosixPath(document.original_path).name,
+        }
         if document.source == Document.Source.MANUAL:
             manual_count += 1
             houses = {
-                section.property.slug: section.property.name
-                for invoice in entry["invoices"]
-                for section in invoice.sections.all()
+                section.property.slug: section.property.name for section in invoice.sections.all()
             }
             house = next(iter(houses.items())) if len(houses) == 1 else ("shared", "Shared")
             parts = [
                 ("manual", "Manual entries"),
                 house,
-                (first.vendor.slug, first.vendor.name),
-                (str(first.invoice_date.year), str(first.invoice_date.year)),
+                (invoice.vendor.slug, invoice.vendor.name),
+                (str(invoice.invoice_date.year), str(invoice.invoice_date.year)),
             ]
             _add_document(manual_folders, parts, entry, manual=True)
             continue

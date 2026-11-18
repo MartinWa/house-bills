@@ -216,7 +216,7 @@ def review_rows(reader, filters, as_of):
     }
     lookups["subcategories"] = report_labels(reader)
     rows = []
-    # Match invoice_for_review: highest retained review revision, then lowest invoice ID.
+    # One document retains at most one invoice; report that row directly.
     records = reader.execute(
         "SELECT d.id AS document_id, d.source, d.state, d.created_at, "
         "e.id AS extraction_id, e.candidate, e.state AS extraction_state, "
@@ -226,8 +226,7 @@ def review_rows(reader, filters, as_of):
         "WHERE b.invoice_id=i.id AND i.status='approved') AS approved_properties "
         "FROM bills_document d LEFT JOIN bills_extractionattempt e "
         "ON e.document_id=d.id AND e.revision=d.extraction_revision "
-        "LEFT JOIN bills_invoice i ON i.id=(SELECT current.id FROM bills_invoice current "
-        "WHERE current.document_id=d.id ORDER BY current.review_revision DESC, current.id LIMIT 1) "
+        "LEFT JOIN bills_invoice i ON i.document_id=d.id "
         "LEFT JOIN bills_reviewrevision r ON r.invoice_id=i.id AND r.revision=i.review_revision "
         f"WHERE d.state IN ({','.join('?' for _ in CONTENT_REVIEW_STATES)}) ORDER BY d.id",
         CONTENT_REVIEW_STATES,

@@ -369,7 +369,9 @@ def test_approved_rows_and_audit_attempts_reject_direct_model_edits(setup):
         attempt.save()
     with pytest.raises(ValidationError, match="immutable"):
         approved.reviews.get().save()
-    draft = Invoice.objects.create(document=setup["document"])
+    draft = Invoice.objects.create(
+        document=Document.objects.create(source="manual", state="review")
+    )
     section = BillingSection.objects.create(
         invoice=draft, section_id="draft", service="electricity_supply"
     )
