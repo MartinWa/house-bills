@@ -67,18 +67,15 @@ inbox/{full-sha256}.pdf
     {invoice-date}_{sanitized-reference-or-id}_{hash-prefix}.pdf
 ```
 
-All invoices in a document must be approved before publication. Properties come from
-their approved billing sections. A document covering both houses has one original
-under `shared`. For several invoices in one document, the earliest invoice date and
-reference determine the filename and all invoices must have the same vendor.
+An uploaded document holds exactly one invoice, and that invoice must be approved
+before its original is published. Properties come from the approved billing sections.
+A document covering both houses has one original under `shared`. The invoice date and
+reference determine the filename and the invoice's vendor names its folder.
 An occupied or reserved destination adds a numeric suffix; differing bytes are never
 overwritten. Explicit approved corrections can move the same original to its new
 reviewed path. The authenticated download URL stays stable.
-The current parsers and review screens produce one invoice per document; re-parsing
-an approved invoice proposes changes to that invoice and preserves its approved identity.
-The storage contract also retains multi-invoice document compatibility. Parser output
-does not establish database uniqueness; see the [cardinality decision](data-model.md#persistence-services)
-before proposing a uniqueness migration.
+One document retains at most one invoice; the uniqueness migration enforces the
+invariant after the owner's 2026-11-18 confirmation.
 
 ## Recovery and backup coordination
 

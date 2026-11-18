@@ -272,21 +272,16 @@ def ingest_pdf(source, *, filename):
 
 
 def _approved_path(document):
-    invoices = list(document.invoices.select_related("vendor").order_by("invoice_date", "pk"))
-    if not invoices or any(invoice.status != Invoice.Status.APPROVED for invoice in invoices):
-        raise ValidationError(
-            "Approve every invoice in this document before publishing its original."
-        )
-    properties = set()
-    for invoice in invoices:
-        properties.update(invoice.sections.values_list("property__slug", flat=True))
-    if not properties or None in properties or len({i.vendor_id for i in invoices}) != 1:
+    invoice = document.invoices.select_related("vendor").first()
+    if invoice is None or invoice.status != Invoice.Status.APPROVED:
+        raise ValidationError("Approve this document's invoice before publishing its original.")
+    properties = set(invoice.sections.values_list("property__slug", flat=True))
+    if not properties or None in properties or invoice.vendor_id is None:
         raise ValidationError("Publication needs reviewed properties and one vendor.")
-    first = invoices[0]
     house = next(iter(properties)) if len(properties) == 1 else "shared"
-    reference = slugify(first.reference)[:64] or f"invoice-{first.pk}"
-    directory = f"{house}/{first.vendor.slug}/{first.invoice_date.year}"
-    stem = f"{first.invoice_date}_{reference}_{document.sha256[:12]}"
+    reference = slugify(invoice.reference)[:64] or f"invoice-{invoice.pk}"
+    directory = f"{house}/{invoice.vendor.slug}/{invoice.invoice_date.year}"
+    stem = f"{invoice.invoice_date}_{reference}_{document.sha256[:12]}"
     for counter in range(1000):
         suffix = f"-{counter}" if counter else ""
         relative = f"{directory}/{stem}{suffix}.pdf"
@@ -345,10 +340,8 @@ def retry_document(document_id):
             return document
         document = _resume(document)
         if document.storage_state != Document.StorageState.FAILED:
-            if (
-                document.invoices.exists()
-                and not document.invoices.exclude(status="approved").exists()
-            ):
+            invoice = document.invoices.first()
+            if invoice is not None and invoice.status == "approved":
                 document = publish_original(document_id)
     from .processing import parse_document
 

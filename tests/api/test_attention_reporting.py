@@ -192,7 +192,7 @@ def test_manual_failed_worker_and_storage_membership(api_client, coverage):  # n
 
 
 @pytest.mark.parametrize("approved", [False, True])
-def test_review_reports_select_one_current_invoice_per_document(api_client, coverage, approved):  # noqa: F811
+def test_review_reports_select_the_document_invoice(api_client, coverage, approved):  # noqa: F811
     client, _, _, _ = api_client
     coverage["schedule"]()
     proposed, properties = coverage["candidate"](
@@ -201,8 +201,7 @@ def test_review_reports_select_one_current_invoice_per_document(api_client, cove
     doc = coverage["document"](proposed.reference)
     current = Invoice.objects.create(document=doc)
     if approved:
-        # An approved record outranks an earlier draft as well as a later draft.
-        current = Invoice.objects.create(document=doc)
+        # Re-parsing proposes changes for the same invoice; no other bill appears.
         current = approve_review(
             current.pk,
             expected_revision=0,
@@ -212,7 +211,6 @@ def test_review_reports_select_one_current_invoice_per_document(api_client, cove
             actor=coverage["actor"],
         )
         properties = {proposed.sections[0].section_id: coverage["houses"][1]}
-    Invoice.objects.create(document=doc)
     record_extraction(
         doc.pk,
         candidate=proposed,

@@ -117,13 +117,13 @@ def test_delete_removes_approved_history_usage_and_reports_but_keeps_other_docum
         assert cursor.fetchall() == []
 
 
-def test_approved_manual_document_deletes_all_its_invoices(configured, client):
+def test_approved_manual_document_deletes_its_invoice(configured, client):
     _, vendor, houses = configured
     response = client.post("/invoices/manual/")
     document = Document.objects.get(pk=int(response.url.split("/")[2]))
     path, data = review_data(client, document)
     assert client.post(path, manual_fields(data, vendor, houses[0])).status_code == 302
-    Invoice.objects.create(document=document, vendor=vendor, reference="SYNTHETIC-UNAPPROVED-002")
+    assert Invoice.objects.filter(document=document).count() == 1
     assert read_report()["manual_invoices"] == 1
     path, data = delete_form(client, document)
     assert client.post(path, data).status_code == 302

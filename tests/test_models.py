@@ -44,6 +44,15 @@ def invoice(document):
     return Invoice.objects.create(document=document)
 
 
+def test_database_rejects_a_second_invoice_for_one_document(invoice):
+    # One document retains at most one invoice; model validation reports the
+    # conflict directly and a bypassing write still hits the database constraint.
+    with pytest.raises(ValidationError, match="Invoice with this Document already exists."):
+        Invoice(document=invoice.document).save()
+    with pytest.raises(IntegrityError), transaction.atomic():
+        Invoice.objects.bulk_create([Invoice(document=invoice.document)])
+
+
 @pytest.fixture
 def section(invoice, property):
     return BillingSection.objects.create(

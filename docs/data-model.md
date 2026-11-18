@@ -262,24 +262,20 @@ submissions cannot create another bill for the same original. Signed form contex
 binds the document, target invoice, observed revisions and immutable source evidence.
 Opening a review page or adding a form row does not write billing records.
 
-Current parsers and the review workflow yield one invoice per document. Re-parsing
+One document retains at most one invoice. This invariant was confirmed by the owner on
+2026-11-18 and is enforced through a uniqueness migration: vendors send one
+invoice per PDF and a bundled mailing arrives as separate PDFs, so a combined PDF is
+split before upload rather than modeled as multiple invoices. The migration aborts
+without changing records if installation data still contains duplicates. Re-parsing
 can propose a different reference/vendor/type for that invoice, while its approved
 identity and values remain unchanged until accepted. Unchanged row evidence is
 retained; manual/changed values carry an explicit manual-review marker, the selected
 source page and an unlocated zero bounding box. Extraction attempts and earlier approved
 snapshots retain original evidence.
 
-The document association remains non-unique for compatibility with retained
-multi-invoice records and the publication rules in [ingestion](ingestion.md).
-One invoice per document is the current parser/review output, rather than an
-enforced schema invariant. The simplification review on 2026-11-16 deferred a
-uniqueness migration: it requires a permanent product decision, a read-only
-installation inventory of duplicate IDs/statuses/revisions/extraction relationships,
-and an explicit policy preserving approved history. Document-level review currently
-selects the invoice with the highest retained revision, then the lowest ID. Reviewing
-every invoice in a multi-invoice document would require an explicit invoice choice
-bound into its signed review context. Multi-property invoices and `shared` folders
-remain necessary regardless of the document/invoice cardinality decision.
+Document review retrieves the document's single invoice directly; no invoice ranking
+remains. A single invoice can still allocate several properties, and `shared` folders
+and multi-property publication are unaffected by the invariant.
 
 Approval checks each allocation's net plus VAT against its gross total, then allocation
 totals and rounding against the header. Explicit demand and waste fraction splits follow

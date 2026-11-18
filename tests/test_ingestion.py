@@ -268,7 +268,7 @@ def test_single_property_path_sanitizes_reference_and_uses_collision_suffix(pdf,
 
 def test_unapproved_invoice_cannot_publish(pdf):
     document, _ = ingest(pdf)
-    with pytest.raises(ValidationError, match="Approve every"):
+    with pytest.raises(ValidationError, match="Approve this document"):
         storage.publish_original(document.pk)
     assert document.storage_state == "inbox"
 

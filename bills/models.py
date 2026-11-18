@@ -959,6 +959,7 @@ class Invoice(ValidatedModel):
 
     class Meta:
         constraints = [
+            models.UniqueConstraint(fields=["document"], name="invoice_document_unique"),
             models.UniqueConstraint(
                 fields=["vendor", "reference", "kind"],
                 condition=Q(status="approved"),
