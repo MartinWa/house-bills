@@ -5,10 +5,13 @@ import json
 import os
 import re
 import subprocess
+import time
 from pathlib import Path
 
 STABLE_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 EXPECTED_CI_JOBS = {"Checks (Linux)", "Browser (Chromium)", "Container (Linux)"}
+CI_POLL_SECONDS = 20
+CI_WAIT_SECONDS = 900
 
 
 def version_number(tag, *, legacy=False):
@@ -21,17 +24,7 @@ def read_command(*arguments):
     return subprocess.run(arguments, check=True, capture_output=True, text=True).stdout.strip()
 
 
-def validate_source(tag, *, event_name, tag_created):
-    """Require a new stable tag on a tested main commit."""
-    if event_name == "push" and tag_created != "true":
-        raise ValueError("Release tags must be new; do not move or overwrite an existing tag.")
-    if version_number(tag) is None:
-        raise ValueError("Release tags must use X.Y.Z without a v prefix or prerelease suffix.")
-    commit = read_command("git", "rev-parse", "HEAD")
-    tag_commit = read_command("git", "rev-parse", f"refs/tags/{tag}^{{commit}}")
-    if commit != tag_commit:
-        raise ValueError("The release tag no longer points at the triggering commit.")
-    read_command("git", "merge-base", "--is-ancestor", "HEAD", "origin/main")
+def read_ci_run(commit):
     runs = json.loads(
         read_command(
             "gh",
@@ -51,17 +44,54 @@ def validate_source(tag, *, event_name, tag_created):
             "databaseId,conclusion,headSha,headBranch,event",
         )
     )
+    return runs[0] if runs else None
+
+
+def wait_for_ci_run(
+    commit,
+    *,
+    wait_seconds=CI_WAIT_SECONDS,
+    poll_seconds=CI_POLL_SECONDS,
+    sleep=time.sleep,
+    monotonic=time.monotonic,
+):
+    """Wait for the CI run on a commit to conclude, because a tag often lands first."""
+    deadline = monotonic() + wait_seconds
+    while True:
+        run = read_ci_run(commit)
+        if run and run["conclusion"]:
+            return run
+        if monotonic() >= deadline:
+            return run
+        sleep(poll_seconds)
+
+
+def validate_source(tag, *, event_name, tag_created):
+    """Require a new stable tag on a tested main commit."""
+    if event_name == "push" and tag_created != "true":
+        raise ValueError("Release tags must be new; do not move or overwrite an existing tag.")
+    if version_number(tag) is None:
+        raise ValueError("Release tags must use X.Y.Z without a v prefix or prerelease suffix.")
+    commit = read_command("git", "rev-parse", "HEAD")
+    tag_commit = read_command("git", "rev-parse", f"refs/tags/{tag}^{{commit}}")
+    if commit != tag_commit:
+        raise ValueError("The release tag no longer points at the triggering commit.")
+    read_command("git", "merge-base", "--is-ancestor", "HEAD", "origin/main")
+    run = wait_for_ci_run(commit)
     if (
-        not runs
-        or runs[0]["conclusion"] != "success"
-        or runs[0]["headSha"] != commit
-        or runs[0]["headBranch"] != "main"
-        or runs[0]["event"] != "push"
+        not run
+        or run["conclusion"] != "success"
+        or run["headSha"] != commit
+        or run["headBranch"] != "main"
+        or run["event"] != "push"
     ):
-        raise ValueError("The release commit must have a successful CI push run on main.")
-    jobs = json.loads(
-        read_command("gh", "run", "view", str(runs[0]["databaseId"]), "--json", "jobs")
-    )["jobs"]
+        raise ValueError(
+            "The release commit must have a successful CI push run on main. CI had not "
+            "finished or did not pass; re-run this workflow once it has."
+        )
+    jobs = json.loads(read_command("gh", "run", "view", str(run["databaseId"]), "--json", "jobs"))[
+        "jobs"
+    ]
     completed = {job["name"] for job in jobs if job["conclusion"] == "success"}
     if not EXPECTED_CI_JOBS <= completed:
         raise ValueError(

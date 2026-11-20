@@ -56,6 +56,8 @@ def test_release_requires_the_tagged_commit_and_all_successful_ci_jobs(monkeypat
         raise AssertionError(arguments)
 
     monkeypatch.setattr(publish_release, "read_command", read_command)
+    # The wait path is covered separately; read the run once and decide immediately.
+    monkeypatch.setattr(publish_release, "wait_for_ci_run", publish_release.read_ci_run)
     if failure:
         with pytest.raises(ValueError):
             publish_release.validate_source("1.0.0", event_name="push", tag_created="true")
@@ -65,6 +67,79 @@ def test_release_requires_the_tagged_commit_and_all_successful_ci_jobs(monkeypat
             == commit
         )
     assert all(arguments[:3] != ("gh", "release", "create") for arguments in commands)
+
+
+class FakeClock:
+    def __init__(self, *values):
+        self.values = list(values)
+
+    def __call__(self):
+        return self.values.pop(0)
+
+
+def test_wait_for_ci_run_returns_when_ci_concludes(monkeypatch):
+    runs = [{"conclusion": None}, {"conclusion": None}, {"conclusion": "success"}]
+    monkeypatch.setattr(publish_release, "read_ci_run", lambda commit: runs.pop(0))
+    slept = []
+
+    run = publish_release.wait_for_ci_run(
+        "abc",
+        wait_seconds=60,
+        poll_seconds=5,
+        sleep=slept.append,
+        monotonic=FakeClock(0, 5, 10),
+    )
+
+    assert run == {"conclusion": "success"}
+    assert slept == [5, 5]
+
+
+def test_wait_for_ci_run_gives_up_at_the_deadline(monkeypatch):
+    monkeypatch.setattr(publish_release, "read_ci_run", lambda commit: {"conclusion": None})
+    slept = []
+
+    run = publish_release.wait_for_ci_run(
+        "abc",
+        wait_seconds=60,
+        poll_seconds=5,
+        sleep=slept.append,
+        monotonic=FakeClock(0, 60),
+    )
+
+    assert run == {"conclusion": None}
+    assert slept == []
+
+
+def test_wait_for_ci_run_tolerates_a_run_that_does_not_exist_yet(monkeypatch):
+    runs = [None, {"conclusion": "success"}]
+    monkeypatch.setattr(publish_release, "read_ci_run", lambda commit: runs.pop(0))
+
+    run = publish_release.wait_for_ci_run(
+        "abc",
+        wait_seconds=60,
+        poll_seconds=5,
+        sleep=lambda seconds: None,
+        monotonic=FakeClock(0, 5),
+    )
+
+    assert run == {"conclusion": "success"}
+
+
+def test_release_refuses_ci_that_has_not_concluded(monkeypatch):
+    commit = "a" * 40
+
+    def read_command(*arguments):
+        if arguments[:2] == ("git", "rev-parse"):
+            return commit
+        if arguments[:2] == ("git", "merge-base"):
+            return ""
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(publish_release, "read_command", read_command)
+    monkeypatch.setattr(publish_release, "wait_for_ci_run", lambda commit: None)
+
+    with pytest.raises(ValueError, match="re-run this workflow"):
+        publish_release.validate_source("1.0.0", event_name="push", tag_created="true")
 
 
 def test_release_plan_preserves_drafts_existing_releases_and_latest_order():
