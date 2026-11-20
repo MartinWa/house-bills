@@ -158,7 +158,10 @@ The release workflow accepts stable numeric `X.Y.Z` tags on main commits with a 
 CI push run containing all three application, browser and container jobs. It tests the
 versioned Linux/amd64 image, audits it, emits an SPDX SBOM and publishes the tested image
 with provenance/SBOM attestations to GHCR. Existing version tags are not overwritten;
-`latest` advances only for the current stable release. A Git tag supplies the image version
+`latest` advances only for the current stable release. Pushing the tag immediately after a
+merge is fine: the workflow waits up to fifteen minutes for the CI run on that commit to
+conclude instead of failing, and re-running it is always safe, because an existing image
+version is never overwritten. A Git tag supplies the image version
 and application footer through the `HOUSE_BILLS_VERSION` build argument; no version bump
 in `pyproject.toml` or `uv.lock` is needed. See [application version and update checks](deployment.md#configure-and-initialize).
 
