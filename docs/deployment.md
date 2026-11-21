@@ -260,8 +260,11 @@ records the effective settings either way.
 
 The probe verifies parsed/manual upload and review, correction history, reporting, duplicates,
 private source access, migration guards and static/HTTPS behavior. It also checks parser
-plugin path policy, load status and read-only plugin code, and that `parsers --check`
-passes for unset and empty directories while failing for missing or rejected ones. It creates
+plugin path policy, load status and read-only plugin mounts, and that `parsers --check`
+passes for unset and empty directories while failing for missing or rejected ones. CI runs
+the same probe through `compose.parser-plugins.yaml` with an operator-owned directory bound
+read-only at `/parsers`, so the override, effective non-root UID, read-only mount, denied
+writes and storage-path rejection are exercised together. It creates
 a checksum-verified backup, restores all database rows and originals into a new directory,
 then starts that instance with migrations disabled and checks authenticated HTTP reports
 and original downloads. This establishes local image behavior, not NAS deployment.

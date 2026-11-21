@@ -26,7 +26,14 @@ MAX_MONEY = 10**15
 MAX_QUANTITY = 10**15
 SERVICES = {"electricity", "electricity_network", "electricity_supply", "water", "waste", "other"}
 UNITS = {"kWh", "kW", "m3", "kg"}
-HEADER_STRINGS = ("layout_family", "layout_version", "parser_revision", "reference", "currency")
+HEADER_LIMITS = {
+    "layout_family": 40,
+    "layout_version": 40,
+    "parser_revision": 80,
+    "reference": MAX_TEXT_LENGTH,
+    "currency": 40,
+}
+HEADER_STRINGS = tuple(HEADER_LIMITS)
 HEADER_MONEY = (
     "net_minor",
     "vat_minor",
@@ -111,9 +118,9 @@ def _usages(values, budget, section_id, errors):
         if not isinstance(usage, Usage):
             errors.append(f"invalid usage in {section_id}")
             continue
-        if usage.utility not in SERVICES:
+        if not isinstance(usage.utility, str) or usage.utility not in SERVICES:
             errors.append(f"invalid usage utility in {section_id}")
-        if usage.unit not in UNITS:
+        if not isinstance(usage.unit, str) or usage.unit not in UNITS:
             errors.append(f"invalid usage unit in {section_id}")
         if (
             isinstance(usage.quantity_milli, bool)
@@ -138,7 +145,7 @@ def _section(section, identifiers, usages, seen, errors):
     if section.section_id in seen:
         errors.append(f"duplicate section {section.section_id}")
     seen.add(section.section_id)
-    if section.service not in SERVICES:
+    if not isinstance(section.service, str) or section.service not in SERVICES:
         errors.append(f"invalid service in {section.section_id}")
     if not isinstance(section.subcategory, str) or len(section.subcategory) > MAX_CONTEXT_LENGTH:
         errors.append(f"invalid subcategory in {section.section_id}")
@@ -159,9 +166,7 @@ def validate_candidate(candidate) -> None:
         raise ContractError("invalid candidate")
     for name in HEADER_STRINGS:
         value = getattr(candidate, name)
-        if not isinstance(value, str) or len(value) > (
-            MAX_TEXT_LENGTH if name == "reference" else MAX_CONTEXT_LENGTH
-        ):
+        if not isinstance(value, str) or len(value) > HEADER_LIMITS[name]:
             errors.append(f"invalid {name}")
     for name in HEADER_MONEY:
         _money(getattr(candidate, name), name, errors)
@@ -190,6 +195,7 @@ def validate_candidate(candidate) -> None:
                 errors.append("invalid issue")
     identifiers = [0]
     usages = [0]
+    _identifiers(candidate.identifiers, identifiers, "identifiers", errors)
     seen = set()
     if not isinstance(candidate.sections, list):
         errors.append("invalid sections")
@@ -202,10 +208,11 @@ def validate_candidate(candidate) -> None:
         errors.append("too many identifiers")
     if usages[0] > MAX_USAGES:
         errors.append("too many usages")
-    try:
-        json.dumps(candidate.to_dict(), allow_nan=False)
-    except TypeError, ValueError:
-        errors.append("unserializable candidate")
+    if not errors:
+        try:
+            json.dumps(candidate.to_dict(), allow_nan=False)
+        except Exception:
+            errors.append("unserializable candidate")
     if errors:
         raise ContractError("; ".join(dict.fromkeys(errors)))
 
@@ -230,7 +237,7 @@ def _safe_section(section):
                 sections=[section],
             )
         )
-    except ContractError:
+    except Exception:
         return None
     return section
 
@@ -259,9 +266,7 @@ def safe_candidate(source, fallback: Candidate) -> Candidate:
                 _money(value, name, errors)
             elif name in ("invoice_date", "due_date"):
                 _date(value, name, errors)
-            elif isinstance(value, str) and len(value) <= (
-                MAX_TEXT_LENGTH if name == "reference" else MAX_CONTEXT_LENGTH
-            ):
+            elif isinstance(value, str) and len(value) <= HEADER_LIMITS[name]:
                 pass
             else:
                 errors.append(f"invalid {name}")

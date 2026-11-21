@@ -510,13 +510,14 @@ def parse(pages, *, candidate=None):
 
 
 def check_parser_plugins():
-    """Verify plugin path policy, load status and read-only code in the image."""
+    """Verify plugin path policy, load status and the read-only code mount."""
     from django.core.management import call_command
     from django.core.management.base import CommandError
 
     from bills.parsing import registry
 
-    storage_root = Path(settings.MEDIA_ROOT).parent
+    assert os.geteuid() != 0, "Plugins must run as the configured non-root user."
+    storage_root = Path(settings.MEDIA_ROOT).parent.resolve()
     assert storage_root.is_absolute()
     for value in (str(storage_root / "plugins"), "relative/parsers"):
         result = subprocess.run(
@@ -544,27 +545,39 @@ def check_parser_plugins():
         settings.HOUSE_BILLS_PARSER_PLUGINS = scratch
         registry.reset()
         call_command("parsers", check=True, stdout=open(os.devnull, "w"))
-        plugin = Path(scratch) / "probe_layout.py"
-        plugin.write_text(PLUGIN_SOURCE, encoding="utf-8")
-        plugin.chmod(0o444)
-        Path(scratch).chmod(0o555)
+    mounted = Path("/parsers")
+    if mounted.is_dir():
+        # The optional Compose override supplies this read-only bind mount.
+        assert mounted.resolve() != storage_root
+        assert storage_root not in mounted.resolve().parents
+        settings.HOUSE_BILLS_PARSER_PLUGINS = str(mounted)
         registry.reset()
+        call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+        plugins = [
+            parser
+            for parser in registry.parsers()
+            if getattr(parser, "PARSER_SOURCE", "") == "plugin"
+        ]
+        assert plugins and all(len(parser.FINGERPRINT) == 64 for parser in plugins)
+        assert not os.access(mounted, os.W_OK), "The plugin mount must be read-only."
         try:
+            (mounted / "tamper.py").write_text("tamper", encoding="utf-8")
+        except OSError:
+            pass
+        else:
+            (mounted / "tamper.py").unlink()
+            raise AssertionError("Read-only plugin code must not be writable.")
+    else:
+        with tempfile.TemporaryDirectory(prefix="parser-plugins-") as scratch:
+            (Path(scratch) / "probe_layout.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
+            settings.HOUSE_BILLS_PARSER_PLUGINS = scratch
+            registry.reset()
             call_command("parsers", check=True, stdout=open(os.devnull, "w"))
             parser = registry.installed("plugin_probe_layout", "v1")
             assert parser is not None and len(parser.FINGERPRINT) == 64
-            assert not os.access(scratch, os.W_OK) and not os.access(plugin, os.W_OK)
-            try:
-                plugin.write_text("tampered", encoding="utf-8")
-            except PermissionError:
-                pass
-            else:
-                raise AssertionError("Read-only plugin code must not be writable.")
-        finally:
-            Path(scratch).chmod(0o755)
-            settings.HOUSE_BILLS_PARSER_PLUGINS = ""
-            registry.reset()
-    print("Parser plugin path, load and read-only checks passed.")
+    settings.HOUSE_BILLS_PARSER_PLUGINS = ""
+    registry.reset()
+    print("Parser plugin path, load and read-only mount checks passed.")
 
 
 def main():

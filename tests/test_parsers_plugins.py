@@ -625,3 +625,197 @@ def test_plugin_attempt_without_a_fingerprint_requires_a_new_extraction(
     plan, warnings = plan_retained_cost_split(invoice, house.pk)
     assert plan is None and "recorded plugin source is unavailable" in warnings[0]
     assert invoice.review_revision == 1
+
+
+def _candidate(*sections, identifiers=None):
+    return Candidate(
+        "plugin_synthetic",
+        "v1",
+        "1",
+        "",
+        None,
+        None,
+        "SEK",
+        None,
+        None,
+        None,
+        None,
+        None,
+        {},
+        identifiers=list(identifiers or []),
+        sections=list(sections),
+    )
+
+
+def _section(section_id, service, net=0, *, subcategory=""):
+    return Section(
+        section_id,
+        service,
+        [Identifier("contract", "777", Evidence(1, "Synthetic", (0, 0, 1, 1)))],
+        net_minor=net,
+        vat_minor=0,
+        gross_minor=net,
+        subcategory=subcategory,
+    )
+
+
+def _configure(parser, candidate, properties, *, selected, operation="waste_cost_split"):
+    return api.configure(
+        candidate,
+        [],
+        properties,
+        family=parser.FAMILY,
+        version=parser.VERSION,
+        operation=operation,
+        section_ids=frozenset(selected),
+        configuration={},
+    )
+
+
+def test_hook_cannot_reassign_an_existing_property(settings, tmp_path):
+    from bills.parsing.configuration import ContractError
+
+    extra = """
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    changed = dict(section_properties)
+    changed["section_02"] = 99
+    return changed, []
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    parser = registry.installed("plugin_synthetic", "v1")
+    candidate = _candidate(_section("section_01", "waste"), _section("section_02", "water"))
+    properties = {"section_01": 7, "section_02": 8}
+    with pytest.raises(ContractError, match="property assignment"):
+        _configure(parser, candidate, properties, selected=properties)
+    assert candidate.sections[1].service == "water"
+
+
+def test_operation_scope_rejects_changes_to_other_services(settings, tmp_path):
+    from bills.parsing.configuration import ContractError
+
+    extra = """
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    for section in candidate.sections:
+        if section.service == "water":
+            section.net_minor -= 100
+            section.gross_minor -= 100
+        if section.service == "waste":
+            section.net_minor += 100
+            section.gross_minor += 100
+    return section_properties, []
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    parser = registry.installed("plugin_synthetic", "v1")
+    candidate = _candidate(
+        _section("section_01", "waste", 2000), _section("section_02", "water", 1000)
+    )
+    properties = {"section_01": 7, "section_02": 7}
+    with pytest.raises(ContractError, match="unrelated section"):
+        _configure(parser, candidate, properties, selected=properties)
+    assert candidate.sections[0].net_minor == 2000
+    assert candidate.sections[1].net_minor == 1000
+
+
+def test_malformed_hook_output_raises_contract_error_and_restores(settings, tmp_path):
+    from bills.parsing.configuration import ContractError
+
+    extra = """
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    candidate.sections = ["bad"]
+    return section_properties, []
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    parser = registry.installed("plugin_synthetic", "v1")
+    candidate = _candidate(_section("section_01", "waste"))
+    properties = {"section_01": 7}
+    with pytest.raises(ContractError):
+        _configure(parser, candidate, properties, selected=properties)
+    assert isinstance(candidate.sections, list)
+    assert isinstance(candidate.sections[0], Section)
+
+
+def test_validation_rejects_malformed_services_and_invoice_identifiers():
+    from bills.parsing.configuration import ContractError
+    from bills.parsing.validation import safe_candidate, validate_candidate
+
+    malformed = _section("section_01", [])
+    candidate = _candidate(malformed)
+    with pytest.raises(ContractError, match="invalid service"):
+        validate_candidate(candidate)
+    with pytest.raises(ContractError, match="invalid section"):
+        validate_candidate(_candidate("not a section"))
+    fallback = _candidate()
+    recovered = safe_candidate(candidate, fallback)
+    assert recovered.sections == []
+
+    identifiers = _candidate(identifiers=[1])
+    with pytest.raises(ContractError, match="identifier"):
+        validate_candidate(identifiers)
+    assert safe_candidate(identifiers, fallback).identifiers == []
+
+
+def test_revision_length_matches_discovery_and_model_limits():
+    from bills.parsing.configuration import ContractError
+    from bills.parsing.validation import validate_candidate
+
+    candidate = _candidate(identifiers=[])
+    candidate.parser_revision = "r" * 80
+    validate_candidate(candidate)
+    candidate.parser_revision = "r" * 81
+    with pytest.raises(ContractError, match="parser_revision"):
+        validate_candidate(candidate)
+
+
+def test_parser_cannot_erase_the_reader_snapshot(settings, tmp_path):
+    extra = """
+def parse(pages, *, candidate=None):
+    candidate = candidate or read_header(pages)
+    pages.clear()
+    raise RuntimeError("synthetic-secret-pages")
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    configure_vendor()
+    document, attempt, _ = upload(tmp_path, pages())
+    assert document.state == "review"
+    assert attempt.page_evidence
+    assert attempt.candidate["reference"] == "123456"
+    assert "synthetic-secret-pages" not in attempt.error
+
+
+def test_rejected_parser_identity_is_not_retained_in_recovery(settings, tmp_path):
+    extra = """
+def parse(pages, *, candidate=None):
+    candidate = candidate or read_header(pages)
+    candidate.layout_family = "plugin_other"
+    candidate.layout_version = "v9"
+    candidate.parser_revision = "tampered"
+    raise RuntimeError("synthetic")
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    configure_vendor()
+    document, attempt, _ = upload(tmp_path, pages())
+    assert document.state == "review" and "extraction failed" in attempt.error
+    assert (attempt.layout_family, attempt.layout_version, attempt.parser_revision) == (
+        "plugin_synthetic",
+        "v1",
+        "1",
+    )
+    assert attempt.candidate["routing"]["selected_parser"]["family"] == "plugin_synthetic"
+
+
+def test_relative_plugin_paths_still_respect_storage_containment(tmp_path, monkeypatch):
+    from house_bills.settings import base
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(base, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(base, "MEDIA_ROOT", tmp_path / "invoices")
+    with pytest.raises(ImproperlyConfigured):
+        base._parser_directory("plugins")
+    monkeypatch.setattr(base, "DATA_DIR", tmp_path / "elsewhere")
+    assert base._parser_directory("plugins") == "plugins"

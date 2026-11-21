@@ -118,8 +118,6 @@ def _parser_directory(value):
     if not value:
         return ""
     path = Path(value)
-    if not path.is_absolute():
-        return value
     resolved = path.resolve()
     for root in (DATA_DIR, MEDIA_ROOT):
         resolved_root = root.resolve()

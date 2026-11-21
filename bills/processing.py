@@ -55,6 +55,17 @@ def _read_header(parser, pages, candidate):
     return proposed, False
 
 
+def _recovered(source, fallback):
+    """Keep valid partial values but never retain a rejected parser identity."""
+    recovered = safe_candidate(source, fallback)
+    (
+        recovered.layout_family,
+        recovered.layout_version,
+        recovered.parser_revision,
+    ) = (fallback.layout_family, fallback.layout_version, fallback.parser_revision)
+    return recovered
+
+
 def _parse(parser, pages, candidate):
     """Invoke parse on a copy so a corrupting or raising parser cannot destroy the fallback."""
     fallback = copy.deepcopy(candidate)
@@ -68,7 +79,7 @@ def _parse(parser, pages, candidate):
             raise ContractError("parser metadata mismatch")
     except Exception:
         record_failure(parser, "parse", "contract_failure")
-        return safe_candidate(working, fallback), True
+        return _recovered(working, fallback), True
     return working, False
 
 
@@ -160,14 +171,16 @@ def parse_document(document_id, *, force=False, expected_revision=None):
         except OSError, ValidationError:
             read_error = "Original is unavailable or its checksum does not match. Retry storage."
 
+        # Parser entry points receive copies; the reader's snapshot stays immutable.
+        evidence_pages = copy.deepcopy(pages)
         begin_document()
-        recognition = recognize_vendor(pages)
+        recognition = recognize_vendor(evidence_pages)
         families = (
             list(recognition.vendor.layout_families.values_list("family", flat=True))
             if recognition.vendor
             else list(layouts())
         )
-        matches = match_layouts(pages, families)
+        matches = match_layouts(copy.deepcopy(evidence_pages), families)
         parser = matches[0] if len(matches) == 1 and not read_error else None
         routing = {
             "vendor_id": recognition.vendor.pk if recognition.vendor else None,
@@ -181,7 +194,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             "section_properties": {},
         }
         fallback = header(
-            pages,
+            evidence_pages,
             parser.FAMILY if parser else "",
             parser.VERSION if parser else "",
             parser.REVISION if parser else "",
@@ -190,16 +203,16 @@ def parse_document(document_id, *, force=False, expected_revision=None):
         error = read_error or recognition.issue
         if not error and not parser:
             error = _ambiguity_message(matches) if matches else "Invoice layout is unsupported."
-        if not read_error and not any(line for page in pages for line in page):
+        if not read_error and not any(line for page in evidence_pages for line in page):
             error = "PDF has no readable text. Manual review is required."
         if parser:
-            candidate, header_failed = _read_header(parser, pages, fallback)
-            candidate, parse_failed = _parse(parser, pages, candidate)
+            candidate, header_failed = _read_header(parser, copy.deepcopy(evidence_pages), fallback)
+            candidate, parse_failed = _parse(parser, copy.deepcopy(evidence_pages), candidate)
             if header_failed or parse_failed:
                 # Retain in-progress fields even for an unexpected parser bug.
                 error = EXTRACTION_FAILED
             _property_mapping(candidate, routing, recognition.vendor)
-            _configured_split(parser, candidate, pages, routing)
+            _configured_split(parser, candidate, copy.deepcopy(evidence_pages), routing)
         electricity = []
         for section in candidate.sections:
             house_id = routing["section_properties"].get(section.section_id)
@@ -222,7 +235,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             Invoice.Kind.CREDIT
             if any(
                 anchor(line, label)
-                for page in pages
+                for page in evidence_pages
                 for line in page
                 for label in ("Kreditfaktura", "Kreditnota")
             )
@@ -233,7 +246,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
         try:
             validate_candidate(candidate)
         except ContractError:
-            candidate = safe_candidate(candidate, fallback)
+            candidate = _recovered(candidate, fallback)
             candidate.issues.append(EXTRACTION_FAILED)
             error = error or EXTRACTION_FAILED
             routing["section_properties"] = {
@@ -247,7 +260,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             error=error,
             routing=routing,
             needs_review=True,
-            page_evidence=[asdict(line) for page in pages for line in page],
+            page_evidence=[asdict(line) for page in evidence_pages for line in page],
             vendor=recognition.vendor,
             kind=kind,
         )

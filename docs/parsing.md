@@ -371,9 +371,12 @@ and `electricity_demand_split`; each invocation requests exactly one. `section_i
 frozen set of host-selected original IDs. `configuration` maps those IDs to plain records
 with `enabled_waste_fractions` (a frozen set of catalogue keys) and is empty for demand
 splitting. Hooks receive no Django objects and perform no database or storage access.
-They may change only the requested cost/usage split in selected sections, must keep
-headers, totals, unselected sections and unrelated usage intact, and return
-`(section_properties, warnings)`. New sections inherit their source property's ID.
+They may change only the requested cost/usage split in selected sections of that
+operation's own service: waste splitting touches only waste allocations and demand
+splitting only network allocations. Every other selected allocation, all unselected
+sections, existing property assignments, headers, totals and unrelated usage must stay
+intact. Hooks return `(section_properties, warnings)`, and new sections inherit their
+source property's ID.
 Unsupported operations return the values unchanged with an explicit warning. See
 [review and correction](review.md#re-parsing-and-stale-forms) for how retained
 corrections use the approval's exact recorded parser.

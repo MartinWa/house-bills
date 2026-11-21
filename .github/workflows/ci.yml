@@ -66,6 +66,7 @@ jobs:
           docker compose -f compose.yaml -f compose.host-port.yaml config --quiet
           docker compose -f compose.yaml -f compose.proxy-network.yaml config --quiet
           docker compose -f compose.yaml -f compose.host-port.yaml -f compose.proxy-network.yaml config --quiet
+          docker compose -f compose.yaml -f compose.parser-plugins.yaml config --quiet
           rm .env
       - name: Lint and check formatting
         run: |
@@ -195,5 +196,41 @@ jobs:
               python manage.py migrate --check
               python manage.py check --deploy --database default
             '
+      - name: Verify the optional parser-plugin override and read-only mount
+        run: |
+          parser_dir="$RUNNER_TEMP/house-bills-parsers"
+          data_dir="$RUNNER_TEMP/house-bills-data"
+          env_file="$RUNNER_TEMP/house-bills.env"
+          mkdir -p "$parser_dir" "$data_dir"
+          cat > "$parser_dir/probe_layout.py" <<'PY'
+          from bills.parsing import api
+
+          API_VERSION = 1
+          FAMILY = "plugin_probe_layout"
+          VERSION = "v1"
+          REVISION = "1"
+
+
+          def matches(pages):
+              return False
+
+
+          def parse(pages, *, candidate=None):
+              return candidate or api.header(pages, FAMILY, VERSION, REVISION)
+          PY
+          cat > "$env_file" <<EOF
+          HOUSE_BILLS_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')
+          HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid
+          HOUSE_BILLS_CSRF_TRUSTED_ORIGINS=https://ci.invalid
+          HOUSE_BILLS_UPDATE_CHECK=false
+          EOF
+          export HOUSE_BILLS_IMAGE=house-bills:ci
+          export HOUSE_BILLS_ENV_FILE="$env_file"
+          export APP_UID="$(id -u)"
+          export APP_GID="$(id -g)"
+          export APP_DATA_PATH="$data_dir"
+          export APP_PARSER_PATH="$parser_dir"
+          docker compose -f compose.yaml -f compose.parser-plugins.yaml run --rm app \
+            python -m tools.check_production
       - name: Audit the tested production image
         run: bash tools/audit_image.sh house-bills:ci
