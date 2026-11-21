@@ -21,6 +21,20 @@ def env_list(name):
     return [value.strip() for value in os.environ.get(name, "").split(",") if value.strip()]
 
 
+def env_text(name, default=""):
+    """Read a value from the environment, or from a file named by its NAME_FILE companion."""
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    path = os.environ.get(f"{name}_FILE", "").strip()
+    if not path:
+        return default
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ImproperlyConfigured(f"Read {name}_FILE {path}: {exc}") from exc
+
+
 INSTALLED_APPS = [
     "house_bills.admin_site.HouseBillsAdminConfig",
     "django.contrib.auth",

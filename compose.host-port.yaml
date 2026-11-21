@@ -1,0 +1,5 @@
+# Publish the application on loopback only, for a reverse proxy running on the host.
+services:
+  app:
+    ports:
+      - "127.0.0.1:${HOUSE_BILLS_HOST_PORT:-8000}:8000"

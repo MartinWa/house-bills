@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Audit the already tested local image; optionally emit its SPDX SBOM.
+# Audit an image by digest; optionally emit its SPDX SBOM for one platform.
 set -euo pipefail
 image=$1
 sbom=${2:-}
+platform=${3:-}
+platform_args=()
+if [ -n "$platform" ]; then
+  platform_args=(--platform "$platform")
+fi
 audit_dir=$(mktemp -d)
 trap 'rm -rf -- "$audit_dir"' EXIT
 curl --fail --silent --show-error --location --retry 3 \
@@ -13,7 +18,8 @@ printf '%s  %s\n' \
   "$audit_dir/trivy.tar.gz" | sha256sum --check
 tar -xzf "$audit_dir/trivy.tar.gz" -C "$audit_dir" trivy
 "$audit_dir/trivy" image --scanners vuln --severity HIGH,CRITICAL \
-  --ignore-unfixed --exit-code 1 --timeout 10m "$image"
+  --ignore-unfixed --exit-code 1 --timeout 10m "${platform_args[@]}" "$image"
 if [ -n "$sbom" ]; then
-  "$audit_dir/trivy" image --scanners license --format spdx-json --output "$sbom" "$image"
+  "$audit_dir/trivy" image --scanners license --format spdx-json --output "$sbom" \
+    "${platform_args[@]}" "$image"
 fi

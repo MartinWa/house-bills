@@ -29,14 +29,16 @@ the configured non-root runtime. Original storage has no public URL route.
 
 ## Configure and initialize
 
-Choose a tested image through `HOUSE_BILLS_IMAGE`. For local evaluation, build:
+Copy `.env.example` to an untracked `.env` (`Copy-Item .env.example .env` in PowerShell)
+and replace its placeholders. Choose a tested image through `HOUSE_BILLS_IMAGE`.
+For local evaluation, build from the working copy with the local-build override, which
+always builds the production target and tags `house-bills:local`:
 
 ```sh
-docker build --tag house-bills:local .
+docker compose -f compose.yaml -f compose.local-build.yaml build app
 ```
 
-Copy `.env.example` to an untracked `.env` (`Copy-Item .env.example .env` in PowerShell)
-and replace its placeholders. Generate a random secret, for example:
+Generate a random secret with that image and keep it across restarts:
 
 ```sh
 docker run --rm house-bills:local python -c "import secrets; print(secrets.token_urlsafe(64))"
@@ -46,6 +48,7 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | --- | --- |
 | `HOUSE_BILLS_IMAGE` | Required local image tag or published GHCR version/digest. Defaults to `house-bills:local` in the example. |
 | `HOUSE_BILLS_SECRET_KEY` | Private random secret of at least 50 characters. Preserve across restarts. |
+| `HOUSE_BILLS_SECRET_KEY_FILE` | Read the secret from a Docker or Podman secret file instead of `HOUSE_BILLS_SECRET_KEY`. |
 | `HOUSE_BILLS_ALLOWED_HOSTS` | Comma-separated exact hostnames, without schemes or wildcards. |
 | `HOUSE_BILLS_CSRF_TRUSTED_ORIGINS` | Comma-separated exact trusted HTTPS origins. |
 | `HOUSE_BILLS_TIME_ZONE` | Defaults to `Europe/Stockholm`. |
@@ -55,13 +58,16 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `HOUSE_BILLS_TRUST_PROXY` | Trust only `X-Forwarded-Proto`; defaults to `false`. |
 | `APP_UID`, `APP_GID` | Non-root numeric container process IDs. |
 | `APP_DATA_PATH` | Absolute private host-local data directory. |
-| `PROXY_NETWORK` | Existing private Docker network used by the HTTPS reverse proxy. |
+| `HOUSE_BILLS_NETWORK` | Private network name the base file creates; defaults to `house-bills`. |
+| `HOUSE_BILLS_HOST_PORT` | Loopback port for `compose.host-port.yaml`; defaults to 8000. |
+| `PROXY_NETWORK` | Existing private Docker network joined by `compose.proxy-network.yaml`. |
 
 After a release is published, select its tested `ghcr.io/martinwa/house-bills:X.Y.Z`
-tag or immutable digest and run `docker compose pull app`. The release workflow currently
-targets Linux/amd64. Keep the selected version/digest with the recovery configuration;
-avoid silently following `latest` for installation upgrades. The local Docker build
-sets `HOUSE_BILLS_VERSION=development` unless a version is explicitly supplied with
+tag or immutable digest and run `docker compose pull app`. Each release publishes
+`linux/amd64` and `linux/arm64` under one image index; a host pulls the platform it
+runs. Keep the selected version/digest with the recovery configuration; avoid
+silently following `latest` for installation upgrades. The local Docker build sets
+`HOUSE_BILLS_VERSION=development` unless a version is explicitly supplied with
 `--build-arg HOUSE_BILLS_VERSION=X.Y.Z`.
 
 The footer shows the application version and links to releases and GitHub. Local
@@ -85,22 +91,39 @@ Compose mounts it at `/data`, keeps the image filesystem read-only, provides `/t
 scratch storage, drops capabilities and bounds log retention. The server refuses root
 execution, DEBUG settings and missing production configuration.
 
-Point the existing private HTTPS reverse proxy at the service's container port 8000.
+The base file publishes no host ports, bundles no proxy and creates one private bridge
+network named by `HOUSE_BILLS_NETWORK` (default `house-bills`). Choose the pattern that
+matches the HTTPS reverse proxy, and add the same `-f` override to every command below:
+
+| Pattern | How to run it |
+| --- | --- |
+| Proxy container on the same network | Attach it with `docker network connect house-bills <proxy-container>` (or the `HOUSE_BILLS_NETWORK` you set) and forward to `app:8000`. |
+| Proxy that already owns a private network | Add `-f compose.proxy-network.yaml` and set `PROXY_NETWORK` to that network. |
+| Proxy running on the host | Add `-f compose.host-port.yaml`; the app is published on `127.0.0.1:${HOUSE_BILLS_HOST_PORT:-8000}`. |
+
+An installation created from an earlier `compose.yaml` joined an external proxy network by
+default; add `-f compose.proxy-network.yaml` with `PROXY_NETWORK` set to that network to
+keep the same attachment. The data directory is unchanged either way.
+
 When the proxy terminates HTTPS, set `HOUSE_BILLS_TRUST_PROXY=true` and configure it to
 discard visitor-supplied `X-Forwarded-Proto` and replace it with the original scheme.
 Trust applies to peers that can reach the application port, so restrict this network
 to trusted proxy peers. Waitress removes untrusted forwarding headers and accepts only
 the scheme header when proxy trust is enabled. Secure cookies and HTTPS redirects stay
-enabled. Production Compose publishes no host ports and bundles no proxy.
+enabled.
 
 ```sh
 docker compose config --quiet
 docker compose run --rm app python manage.py migrate --noinput
 docker compose run --rm app python manage.py createsuperuser
 docker compose run --rm app python manage.py check --deploy --database default
-docker compose up -d --no-build app
+docker compose up -d app
 docker compose logs --tail=100 app
 ```
+
+For a local build, keep one override set and use
+`docker compose -f compose.yaml -f compose.local-build.yaml up -d app`, which builds
+the production target because the override pins `pull_policy: build`.
 
 `check --deploy` retains the reference's visible W005/W021 warnings: this private service
 does not enable HSTS for all sibling domains or request public preload. The production
@@ -145,11 +168,13 @@ docker compose stop app
 docker compose run --rm app python manage.py migrate --noinput
 docker compose run --rm app python manage.py migrate --check
 docker compose run --rm app python manage.py check --deploy --database default
-docker compose up -d --no-build app
+docker compose up -d app
 docker compose logs --tail=100 app
 ```
 
-For a local image, build it explicitly before stopping the app instead of pulling.
+For a local build, add the same Compose overrides and run
+`docker compose -f compose.yaml -f compose.local-build.yaml build app` before stopping
+the app instead of pulling.
 Confirm configuration, approved totals, signed usage, correction history, Reports and
 authenticated original downloads. Run the clean-restoration procedure independently;
 image updates do not replace installation state or accepted corrections. If an upgrade
@@ -168,6 +193,10 @@ the container exits; no installation configuration or real invoice data is used.
 ```sh
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /data:mode=1777 --tmpfs /tmp --env HOUSE_BILLS_SECRET_KEY=synthetic-container-check-key-never-for-runtime-000000000000000000 --env HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid house-bills:local python -m tools.check_production
 ```
+
+Mount a secret file and set `HOUSE_BILLS_SECRET_KEY_FILE` instead of
+`HOUSE_BILLS_SECRET_KEY` to probe that path. The recovery configuration inside the probe
+records the effective settings either way.
 
 The probe verifies parsed/manual upload and review, correction history, reporting,
 duplicates, private source access, migration guards and static/HTTPS behavior. It creates

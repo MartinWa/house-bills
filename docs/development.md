@@ -120,7 +120,8 @@ external network access and collects synthetic traces, screenshots and server lo
 `.github/workflows/ci.yml` provides these checks:
 
 - **Checks (Linux)**: locked exports, Ruff, Django, migration drift, clean development
-  startup and synthetic application/parser tests.
+  startup, production Compose configuration for every override combination and synthetic
+  application/parser tests.
 - **Browser (Chromium)**: locked npm dependency audit and the isolated browser scenario.
 - **Container (Linux)**: actionlint, locked Python dependency audit, production build,
   HTTP/runtime checks and a Trivy audit for fixable high/critical vulnerabilities.
@@ -151,14 +152,20 @@ Repository settings currently in use:
 - The `Protect release tags` ruleset blocks deleting or moving `X.Y.Z` tags.
 
 Direct pushes to `main` are therefore rejected; push a branch and open a pull request.
+The [contributor agreement](../CONTRIBUTING.md#contributor-agreement) is enforced by a
+GitHub app rather than a workflow, so it is not part of `ci.yml`; add its status check to
+the `Protect main` ruleset when the app is installed.
 
 ## Releases
 
 The release workflow accepts stable numeric `X.Y.Z` tags on main commits with a successful
-CI push run containing all three application, browser and container jobs. It tests the
-versioned Linux/amd64 image, audits it, emits an SPDX SBOM and publishes the tested image
-with provenance/SBOM attestations to GHCR. Existing version tags are not overwritten;
-`latest` advances only for the current stable release. Pushing the tag immediately after a
+CI push run containing all three application, browser and container jobs. It builds the
+versioned `linux/amd64` and `linux/arm64` images separately by digest, runs the production
+probe on each platform, audits each one and emits one SPDX SBOM per platform. Only the
+checked digests are joined into the published image index, which carries the provenance
+attestation; each platform manifest carries its own SBOM attestation. Existing version
+tags are not overwritten; `latest` advances only for the current stable release and points
+at the attested index. Pushing the tag immediately after a
 merge is fine: the workflow waits up to fifteen minutes for the CI run on that commit to
 conclude instead of failing, and re-running it is always safe, because an existing image
 version is never overwritten. A Git tag supplies the image version
@@ -177,10 +184,21 @@ Use the chosen version; `0.0.1` is illustrative. After the first stable tag, omi
 given `-Push`; publishing a tag triggers image/release publication. Obtain authorization
 before pushing. CI and releases never deploy or upgrade a NAS instance.
 
+The workflow ends by requiring the GHCR package to be pullable without authentication,
+because GitHub creates container packages private even for a public repository. It asks
+GitHub to set the visibility itself and otherwise fails with the one-time instruction to
+open the package settings and make it public; later releases inherit it.
+
 Use the [production probe](deployment.md#disposable-production-probe) for a local build.
 In Linux with Docker, `bash tools/audit_image.sh house-bills:local` audits that image;
-an optional second argument selects the SPDX output path. The script verifies its
-pinned Trivy download before use.
+an optional second argument selects the SPDX output path and a third scans one platform,
+for example `linux/arm64`. The script verifies its pinned Trivy download before use.
+`tools/check_release_image.sh` is what the release workflow runs per platform: it expects
+`IMAGE`, `VERSION`, `SBOM` and `PLATFORM` in the environment, runs the production probe on
+the pulled digest and then audits it.
+
+The arm64 image is built under emulation and is first exercised in the release workflow;
+no arm64 host is available for local verification.
 
 ## Dependency updates
 

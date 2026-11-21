@@ -2,9 +2,6 @@
 services:
   app:
     image: "${HOUSE_BILLS_IMAGE:?Set a tested local or released image tag or digest}"
-    build:
-      context: .
-      target: production
     env_file: "${HOUSE_BILLS_ENV_FILE:-.env}"
     environment:
       DJANGO_SETTINGS_MODULE: house_bills.settings.production
@@ -12,8 +9,6 @@ services:
     user: "${APP_UID:?Set a non-root APP_UID}:${APP_GID:?Set APP_GID}"
     volumes:
       - "${APP_DATA_PATH:?Set a private host-local data directory}:/data"
-    networks:
-      - managed-proxy
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -28,6 +23,5 @@ services:
         max-size: "10m"
         max-file: "3"
 networks:
-  managed-proxy:
-    external: true
-    name: "${PROXY_NETWORK:?Set the existing private proxy network}"
+  default:
+    name: "${HOUSE_BILLS_NETWORK:-house-bills}"

@@ -555,10 +555,16 @@ def check_backup_restore(database):
     with tempfile.TemporaryDirectory(prefix="house-bills-recovery-") as scratch:
         root = Path(scratch)
         configuration = root / "operator.env"
+        # The backup round-trip only copies and compares this file, and the restored
+        # instance starts from the inherited environment, so it carries installation
+        # settings and no secret material.
         configuration.write_text(
             "\n".join(
-                f"{key}={os.environ[key]}"
-                for key in ("HOUSE_BILLS_SECRET_KEY", "HOUSE_BILLS_ALLOWED_HOSTS")
+                [
+                    "# Synthetic operator configuration for the production probe.",
+                    f"HOUSE_BILLS_ALLOWED_HOSTS={','.join(settings.ALLOWED_HOSTS)}",
+                    f"HOUSE_BILLS_TIME_ZONE={settings.TIME_ZONE}",
+                ]
             )
             + "\n",
             encoding="utf-8",
