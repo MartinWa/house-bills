@@ -90,7 +90,7 @@ reviewed environment. Use distinct proxy routing and
 ```sh
 docker compose run --rm app python manage.py migrate --check
 docker compose run --rm app python manage.py check --deploy --database default
-docker compose up -d --no-build app
+docker compose up -d app
 ```
 
 Sign in and check configuration, totals, signed consumption, correction history,

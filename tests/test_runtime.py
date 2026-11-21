@@ -145,3 +145,42 @@ def test_production_refuses_invalid_installation_configuration(
     )
     assert result.returncode != 0
     assert message in result.stderr
+
+
+def production_environment(monkeypatch, tmp_path):
+    monkeypatch.delenv("HOUSE_BILLS_SECRET_KEY", raising=False)
+    monkeypatch.delenv("HOUSE_BILLS_SECRET_KEY_FILE", raising=False)
+    monkeypatch.setenv("HOUSE_BILLS_ALLOWED_HOSTS", "bills.invalid")
+    monkeypatch.setenv("HOUSE_BILLS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HOUSE_BILLS_CSRF_TRUSTED_ORIGINS", "https://bills.invalid")
+    monkeypatch.setenv("HOUSE_BILLS_TRUST_PROXY", "false")
+
+
+def import_production_settings():
+    return subprocess.run(
+        [sys.executable, "-c", "import house_bills.settings.production"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+
+def test_production_reads_the_secret_key_from_a_file(monkeypatch, tmp_path):
+    secret = tmp_path / "secret-key"
+    secret.write_text("synthetic-production-file-key-" * 3, encoding="utf-8")
+    production_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("HOUSE_BILLS_SECRET_KEY_FILE", str(secret))
+
+    result = import_production_settings()
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_production_reports_an_unreadable_secret_file(monkeypatch, tmp_path):
+    production_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("HOUSE_BILLS_SECRET_KEY_FILE", str(tmp_path / "missing-key"))
+
+    result = import_production_settings()
+
+    assert result.returncode != 0
+    assert "Read HOUSE_BILLS_SECRET_KEY_FILE" in result.stderr

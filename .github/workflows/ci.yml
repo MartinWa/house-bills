@@ -58,6 +58,15 @@ jobs:
           cache-from: type=gha,scope=ci-development
           cache-to: type=gha,scope=ci-development,mode=max
           github-token: ""
+      - name: Validate production Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose -f compose.yaml -f compose.local-build.yaml config --quiet
+          docker compose -f compose.yaml -f compose.host-port.yaml config --quiet
+          docker compose -f compose.yaml -f compose.proxy-network.yaml config --quiet
+          docker compose -f compose.yaml -f compose.host-port.yaml -f compose.proxy-network.yaml config --quiet
+          rm .env
       - name: Lint and check formatting
         run: |
           docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py manage.py

@@ -63,9 +63,12 @@ invoices. See [initial setup](docs/setup.md) for the first approved bill and
 [development](docs/development.md) for tests and browser checks.
 
 Production uses a non-root, read-only image, host-local SQLite and private HTTPS
-through an existing reverse proxy. A local production build is available for evaluation.
-See [installation and upgrades](docs/deployment.md) and verify
-[backup and clean restoration](docs/backup-and-recovery.md) before normal real-data use.
+through an existing reverse proxy. Released images cover `linux/amd64` and
+`linux/arm64`. A local production build is available for evaluation. Optional Compose
+overrides publish a loopback port for a proxy on the host, join an existing proxy
+network, or build from the working copy. See [installation and upgrades](docs/deployment.md)
+and verify [backup and clean restoration](docs/backup-and-recovery.md) before normal
+real-data use.
 
 ## Limits and documentation
 
@@ -87,8 +90,14 @@ with synthetic data.
 - [Review, approval and correction](docs/review.md)
 - [Approved reporting](docs/reporting.md) and [SQL examples](docs/reporting-examples.sql)
 - [Parser result contract](docs/parser-results.md) and [parser maintenance](docs/parsing.md)
-- [Security expectations](SECURITY.md) and [contributing](CONTRIBUTING.md)
+- [Security expectations](SECURITY.md), [contributing](CONTRIBUTING.md) and the
+  [contributor license agreement](CLA.md)
 
 House Bills is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
+Noncommercial use needs nothing further; commercial use requires a separate paid
+license from the copyright holder, arranged through the repository's Discussions.
 See [NOTICE](NOTICE) for attribution and the boundary for independently authored
 parser plugins and separately licensed dependencies.
+
+Contributions are accepted under [CLA.md](CLA.md), which keeps the contributor's
+copyright and grants the project the rights that dual licensing needs.

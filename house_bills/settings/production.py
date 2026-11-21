@@ -5,13 +5,16 @@ import os
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
-from .base import DATA_DIR, env_bool, env_list
+from .base import DATA_DIR, env_bool, env_list, env_text
 
-SECRET_KEY = os.environ.get("HOUSE_BILLS_SECRET_KEY", "")
+SECRET_KEY = env_text("HOUSE_BILLS_SECRET_KEY")
 ALLOWED_HOSTS = env_list("HOUSE_BILLS_ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env_list("HOUSE_BILLS_CSRF_TRUSTED_ORIGINS")
 if len(SECRET_KEY) < 50 or SECRET_KEY.startswith("REPLACE"):
-    raise ImproperlyConfigured("Set a random HOUSE_BILLS_SECRET_KEY of at least 50 characters.")
+    raise ImproperlyConfigured(
+        "Set a random HOUSE_BILLS_SECRET_KEY of at least 50 characters, or point "
+        "HOUSE_BILLS_SECRET_KEY_FILE at a Docker or Podman secret."
+    )
 if not ALLOWED_HOSTS or any("*" in host or "://" in host for host in ALLOWED_HOSTS):
     raise ImproperlyConfigured(
         "Set explicit HOUSE_BILLS_ALLOWED_HOSTS without schemes or wildcards."

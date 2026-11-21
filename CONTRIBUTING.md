@@ -57,3 +57,34 @@ private plans and verification logs out of public guides.
 Contributions use the project [license](LICENSE); independently authored parser plugins
 may use their own, but derived code remains subject to it. Preserve [NOTICE](NOTICE) and
 dependency notices. Report vulnerabilities through [SECURITY.md](SECURITY.md).
+
+## Contributor agreement
+
+Before a first pull request can be merged, sign the [Contributor License
+Agreement](CLA.md). An app comments on the pull request with a signing link; one
+signature covers your future contributions too. You keep the copyright in your
+contribution.
+
+Signing matters because the project is dual licensed: it is published under the
+PolyForm Noncommercial License 1.0.0 and also offered commercially. The agreement is
+what lets a contribution be part of both. If you contribute in the course of
+employment, read section 6 first: your employer may own the work, and an authorised
+person has to sign for the entity.
+
+The project does not use a Developer Certificate of Origin (`Signed-off-by`), because
+a DCO certifies that a contribution may be distributed under the project's current
+licence and does not permit relicensing it.
+
+### For maintainers
+
+Signatures are collected by [CLA Assistant](https://cla-assistant.io), a free GitHub
+app, not by a workflow in this repository:
+
+1. Create a public gist containing `CLA.md` and copy its URL.
+2. Sign in at <https://cla-assistant.io> with GitHub, add this repository, and paste
+the gist URL.
+3. Make **CLA Assistant** a required status check in the `Protect main` ruleset.
+
+Signatures are stored in that gist, so contributor accounts never enter this
+repository. The `contributor-assistant/github-action` action is not used: it was
+archived upstream in 2026 and has no maintained release.

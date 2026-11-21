@@ -1,0 +1,8 @@
+# Build from this working copy instead of deploying a published image.
+services:
+  app:
+    image: house-bills:local
+    pull_policy: build
+    build:
+      context: .
+      target: production
