@@ -85,11 +85,24 @@ def _check_usage(candidate, before_counts, before_ids):
                 added[key] -= 1
 
 
-def _totals(sections):
+def _cost_totals(sections):
+    """Signed totals plus unknown counts, so a hook can neither fill nor clear them."""
+    names = ("net_minor", "vat_minor", "gross_minor")
     return tuple(
-        sum(getattr(section, name) or 0 for section in sections)
-        for name in ("net_minor", "vat_minor", "gross_minor")
-    )
+        sum(getattr(section, name) or 0 for section in sections) for name in names
+    ) + tuple(sum(1 for section in sections if getattr(section, name) is None) for name in names)
+
+
+def _source_key(section):
+    """The printed contract/product/installation allocation a section belongs to."""
+    return tuple((identifier.kind, identifier.value) for identifier in section.identifiers)
+
+
+def _source_groups(sections):
+    groups = {}
+    for section in sections:
+        groups.setdefault(_source_key(section), []).append(section)
+    return groups
 
 
 def _restore(candidate, snapshot):
@@ -127,13 +140,34 @@ def _sections(candidate):
     return sections
 
 
-def _check_scope(operation, before_sections, after_sections, selected):
-    """A hook may only repartition the operation's own service."""
+def _check_scope(
+    operation, before_sections, after_sections, selected, original_properties, new_properties
+):
+    """A hook may only repartition the operation's own service.
+
+    A new section must keep the printed identifiers and inherited property of the
+    source allocation it came from, and every source keeps its own cost totals and
+    existing usage. Replacing one selected source with complete fraction parts is
+    valid; removing any other existing section is not.
+    """
     scope = OPERATION_SCOPES[operation]
+    sources = _source_groups(before_sections.values())
+    eligible = {
+        _source_key(section)
+        for section_id, section in before_sections.items()
+        if section_id in selected and section.service in scope["existing"]
+    }
+    allowed_identifiers = {
+        tuple(section.identifiers) for key in eligible for section in sources[key]
+    }
     for section_id, before in before_sections.items():
         after = after_sections.get(section_id)
         if after is None:
-            raise ContractError("hook removed an existing section")
+            if section_id not in selected:
+                raise ContractError("hook removed an existing section")
+            if before.service not in scope["existing"]:
+                raise ContractError("hook removed an unrelated section")
+            continue
         if section_id not in selected:
             if after != before:
                 raise ContractError("hook changed an unselected section")
@@ -144,11 +178,6 @@ def _check_scope(operation, before_sections, after_sections, selected):
             continue
         if after.service != before.service or after.identifiers != before.identifiers:
             raise ContractError("hook changed an unrelated section")
-    allowed_identifiers = {
-        tuple(before_sections[section_id].identifiers)
-        for section_id in selected
-        if before_sections[section_id].service in scope["existing"]
-    }
     for section_id, section in after_sections.items():
         if section_id in before_sections:
             continue
@@ -156,8 +185,24 @@ def _check_scope(operation, before_sections, after_sections, selected):
             raise ContractError("hook created an unrelated section")
         if section.subcategory not in scope["new_subcategories"]:
             raise ContractError("hook created an unrelated section")
-        if tuple(section.identifiers) not in allowed_identifiers:
+        key = _source_key(section)
+        if key not in eligible or tuple(section.identifiers) not in allowed_identifiers:
             raise ContractError("hook created a section outside its source")
+        inherited = {original_properties.get(source.section_id) for source in sources[key]}
+        if len(inherited) != 1 or new_properties.get(section_id) not in inherited:
+            raise ContractError("hook assigned a new section outside its scope")
+    after_groups = _source_groups(after_sections.values())
+    for key in eligible:
+        before, after = sources[key], after_groups.get(key, [])
+        if _cost_totals(before) != _cost_totals(after):
+            raise ContractError("hook changed the cost of a source allocation")
+        remaining = Counter(_usage_fields(usage) for section in after for usage in section.usages)
+        for section in before:
+            for usage in section.usages:
+                fields = _usage_fields(usage)
+                if remaining[fields] <= 0:
+                    raise ContractError("hook moved usage outside its source allocation")
+                remaining[fields] -= 1
 
 
 def configure(
@@ -214,7 +259,7 @@ def configure(
     before_header = copy.deepcopy(_header(candidate))
     before_sections = copy.deepcopy(before_sections)
     before_usage = _usage_counts(candidate)
-    before_totals = _totals(candidate.sections)
+    before_totals = _cost_totals(candidate.sections)
     try:
         result = hook(
             candidate,
@@ -237,22 +282,26 @@ def configure(
         after_sections = _sections(candidate)
         if set(new_properties) != set(after_sections):
             raise ContractError("hook property keys do not match candidate sections")
-        allowed_properties = {original_properties.get(section_id) for section_id in selected}
         for section_id, property_id in new_properties.items():
             if isinstance(property_id, bool) or not isinstance(property_id, int | None):
                 raise ContractError("invalid hook property value")
             if section_id in before_sections:
                 if property_id != original_properties.get(section_id):
                     raise ContractError("hook changed an existing property assignment")
-            elif property_id not in allowed_properties:
-                raise ContractError("hook assigned a new section outside its scope")
         validate_candidate(candidate)
         if _header(candidate) != before_header:
             raise ContractError("hook changed header fields")
         _check_usage(candidate, before_usage, set(before_sections))
-        if _totals(candidate.sections) != before_totals:
+        if _cost_totals(candidate.sections) != before_totals:
             raise ContractError("hook changed section cost totals")
-        _check_scope(operation, before_sections, after_sections, selected)
+        _check_scope(
+            operation,
+            before_sections,
+            after_sections,
+            selected,
+            original_properties,
+            new_properties,
+        )
     except ContractError:
         _restore(candidate, snapshot)
         raise

@@ -128,6 +128,8 @@ def _usages(values, budget, section_id, errors):
             or abs(usage.quantity_milli) > MAX_QUANTITY
         ):
             errors.append(f"invalid usage quantity in {section_id}")
+        if usage.start is None or usage.end is None:
+            errors.append(f"missing usage period in {section_id}")
         _date(usage.start, f"usage start in {section_id}", errors)
         _date(usage.end, f"usage end in {section_id}", errors)
         _text(usage.basis, MAX_CONTEXT_LENGTH, f"usage basis in {section_id}", errors)

@@ -5,6 +5,7 @@ size, metadata and entry-point signatures; it is not a sandbox and cannot contai
 arbitrary code. See SECURITY.md for the operator trust model.
 """
 
+import ast
 import hashlib
 import inspect
 import os
@@ -66,6 +67,15 @@ def fingerprint(source, family, version, revision):
     """Hash the exact executed source snapshot with its declared identity."""
     header = f"house-bills-plugin-v1\n{family}\n{version}\n{revision}\n".encode()
     return hashlib.sha256(header + source).hexdigest()
+
+
+def code_fingerprint(module, dependencies):
+    """Hash a module's own source with the shared siblings it imports."""
+    digest = hashlib.sha256(b"house-bills-plugin-code-v1\n")
+    digest.update(f"{module.FINGERPRINT or ''}\n".encode())
+    for name, source in dependencies:
+        digest.update(f"{name}\0{source}\n".encode())
+    return digest.hexdigest()
 
 
 def plugin_set_digest(entries):
@@ -216,6 +226,43 @@ def _register_namespace(directory):
     return namespace
 
 
+def _sibling_imports(source):
+    """Sibling module names a snapshot imports, including deferred relative imports."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError, ValueError:
+        return frozenset()
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            if node.level == 1 and node.module:
+                names.add(node.module.split(".", 1)[0])
+            elif node.level == 1:
+                names.update(alias.name for alias in node.names)
+            elif node.level == 0 and node.module == PLUGIN_NAMESPACE:
+                names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.Import):
+            prefix = f"{PLUGIN_NAMESPACE}."
+            for alias in node.names:
+                if alias.name.startswith(prefix):
+                    names.add(alias.name[len(prefix) :].split(".", 1)[0])
+    return frozenset(names)
+
+
+def _waits_on_sibling(error):
+    """True when an import failed because a not-yet-executed sibling is missing.
+
+    ``from . import sibling`` raises ImportError about the private package instead
+    of ModuleNotFoundError, so both forms must be retried.
+    """
+    name = getattr(error, "name", None)
+    if isinstance(name, str) and (
+        name == PLUGIN_NAMESPACE or name.startswith(f"{PLUGIN_NAMESPACE}.")
+    ):
+        return True
+    return PLUGIN_NAMESPACE in str(error)
+
+
 def _load(directory, sources):
     """Execute every snapshot, retrying files that wait on a sibling import.
 
@@ -229,12 +276,12 @@ def _load(directory, sources):
         for stem in sorted(pending):
             try:
                 _execute(directory, stem, pending[stem])
-            except ModuleNotFoundError as exc:
-                if exc.name and exc.name.startswith(f"{PLUGIN_NAMESPACE}."):
-                    continue
-                errors.append((stem, "import_failed"))
             except PluginRejected as exc:
                 errors.append((stem, exc.code))
+            except ImportError as exc:
+                if _waits_on_sibling(exc):
+                    continue
+                errors.append((stem, "import_failed"))
             except Exception:
                 errors.append((stem, "import_failed"))
             del pending[stem]
@@ -243,6 +290,33 @@ def _load(directory, sources):
             errors.extend((stem, "import_failed") for stem in sorted(pending))
             break
     return errors
+
+
+def _code_identities(modules, dependencies):
+    """Fingerprint each executed module together with its transitive siblings."""
+    closures = {}
+
+    def closure(stem):
+        if stem in closures:
+            return closures[stem]
+        closures[stem] = frozenset()
+        found = set()
+        for dependency in sorted(dependencies.get(stem, ())):
+            if dependency in modules and dependency != stem:
+                found.add(dependency)
+                found.update(closure(dependency))
+        closures[stem] = frozenset(found - {stem})
+        return closures[stem]
+
+    for stem in sorted(modules):
+        module = modules[stem]
+        shared = [
+            (name, modules[name].FINGERPRINT)
+            for name in sorted(closure(stem))
+            if getattr(modules[name], "FINGERPRINT", None)
+        ]
+        module.PLUGIN_DEPENDENCIES = tuple(name for name, _ in shared)
+        module.CODE_FINGERPRINT = code_fingerprint(module, shared)
 
 
 def _namespace_entries():
@@ -305,6 +379,12 @@ def discover(directory):
         except OSError:
             status.errors.append(PluginError(filename, "unreadable"))
     status.errors.extend(PluginError(name, code) for name, code in _load(resolved, snapshots))
+    loaded = {
+        stem: module
+        for stem in snapshots
+        if (module := sys.modules.get(f"{PLUGIN_NAMESPACE}.{stem}")) is not None
+    }
+    _code_identities(loaded, {stem: _sibling_imports(source) for stem, source in snapshots.items()})
     seen = set()
     for stem in sorted(snapshots):
         module = sys.modules.get(f"{PLUGIN_NAMESPACE}.{stem}")

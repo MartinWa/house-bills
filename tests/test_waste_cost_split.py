@@ -19,7 +19,7 @@ from bills.parsing.waste_costs import allocated_vat, split_waste_costs
 from bills.reporting import read_report
 from bills.services import StaleReviewError, approve_review, record_extraction
 from bills.waste_costs import plan_retained_cost_split, reviewed_candidate
-from tests.examples import installed_identity, layout_01, layout_01_v2, layout_03
+from tests.examples import installed_routing, layout_01, layout_01_v2, layout_03
 
 from .synthetic import multi_service, write_pdf
 
@@ -84,6 +84,53 @@ def test_fraction_costs_keep_shared_fees_and_move_weights_once(parsed):
         original["net_minor"],
         original["vat_minor"],
         original["invoice_total_minor"],
+    ]
+
+
+def test_complete_fraction_charges_replace_the_parent_without_shared_fees(tmp_path):
+    from bills.parsing.api import configure
+
+    source = multi_service(demand=False)
+    for page in source:
+        for index, line in enumerate(page):
+            if not isinstance(line, str):
+                continue
+            if line.startswith(("Grundavgift avfall", "Hämtningsavgift")):
+                page[index] = "Information: kärl 190 liter"
+            elif line.startswith("Matavfall 140L"):
+                page[index] = line.replace("9,60 kr", "21,60 kr")
+            elif line.startswith("Restavfall 190L"):
+                page[index] = line.replace("30,00 kr", "90,00 kr")
+    pages = read_pdf(write_pdf(tmp_path / "complete-fractions.pdf", source))
+    candidate = layout_01.parse(pages)
+    properties = {section.section_id: 7 for section in candidate.sections}
+    configuration = {
+        section_id: {"enabled_waste_fractions": frozenset({"matavfall", "restavfall"})}
+        for section_id in properties
+    }
+    updated, warnings = configure(
+        candidate,
+        pages,
+        properties,
+        family=layout_01.FAMILY,
+        version=layout_01.VERSION,
+        operation="waste_cost_split",
+        section_ids=frozenset(properties),
+        configuration=configuration,
+    )
+    assert warnings == []
+    assert "section_02" not in updated
+    assert set(updated.values()) == {7}
+    parts = [
+        section
+        for section in candidate.sections
+        if section.identifiers and section.identifiers[0].value == "9902"
+    ]
+    assert [
+        (part.subcategory, part.net_minor, part.vat_minor, part.gross_minor) for part in parts
+    ] == [
+        ("matavfall", 2160, 540, 2700),
+        ("restavfall", 9000, 2250, 11250),
     ]
 
 
@@ -214,9 +261,7 @@ def retained(parsed, settings, tmp_path, django_user_model):
         candidate,
         vendor=vendor,
         page_evidence=[asdict(line) for page in pages for line in page],
-        routing={
-            "selected_parser": installed_identity(candidate.layout_family, candidate.layout_version)
-        },
+        routing=installed_routing(candidate.layout_family, candidate.layout_version),
     )
     candidate.reference = "reviewed-reference"
     candidate.invoice_date = date(2024, 3, 6)
@@ -297,6 +342,42 @@ def test_cost_split_plan_cannot_replace_a_newer_approval(retained):
         approve_review(invoice.pk, **plan, actor=actor)
     invoice.refresh_from_db()
     assert invoice.review_revision == 2
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "target,message",
+    [
+        ("code_fingerprint", "shared code"),
+        ("host_implementation", "host parsing implementation"),
+    ],
+)
+def test_retained_split_requires_the_recorded_code_and_host(retained, target, message):
+    invoice, house, actor, attempt = retained
+    routing = copy.deepcopy(attempt.candidate["routing"])
+    if target == "host_implementation":
+        routing[target] = "0" * 64
+    else:
+        routing["selected_parser"][target] = "0" * 64
+    candidate = reviewed_candidate(invoice.reviews.get().snapshot["values"])
+    extraction = record_extraction(
+        invoice.document_id,
+        candidate,
+        page_evidence=attempt.page_evidence,
+        routing=routing,
+    )
+    approve_review(
+        invoice.pk,
+        expected_revision=1,
+        candidate=candidate,
+        vendor=invoice.vendor,
+        section_properties={},
+        actor=actor,
+        extraction=extraction,
+    )
+    invoice.refresh_from_db()
+    plan, warnings = plan_retained_cost_split(invoice, house.pk)
+    assert plan is None and message in warnings[0]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -584,9 +665,7 @@ def test_retained_corrections_require_the_recorded_parser_operation(retained):
         invoice.document_id,
         candidate,
         page_evidence=invoice.reviews.get().extraction.page_evidence,
-        routing={
-            "selected_parser": installed_identity(candidate.layout_family, candidate.layout_version)
-        },
+        routing=installed_routing(candidate.layout_family, candidate.layout_version),
     )
     approve_review(
         invoice.pk,
@@ -707,11 +786,7 @@ def test_invalid_correction_rolls_back_one_invoice_and_continues_the_batch(retai
             candidate,
             vendor=invoice.vendor,
             page_evidence=attempt.page_evidence,
-            routing={
-                "selected_parser": installed_identity(
-                    candidate.layout_family, candidate.layout_version
-                )
-            },
+            routing=installed_routing(candidate.layout_family, candidate.layout_version),
         )
         invoices.append(
             approve_review(

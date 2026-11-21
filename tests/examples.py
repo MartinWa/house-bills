@@ -42,12 +42,24 @@ def installed_identity(family, version):
         "version": parser.VERSION,
         "revision": parser.REVISION,
         "fingerprint": parser.FINGERPRINT,
+        "code_fingerprint": parser.CODE_FINGERPRINT,
+    }
+
+
+def installed_routing(family, version):
+    """Routing metadata that matches ingestion for the installed parser."""
+    from bills.parsing import registry
+
+    return {
+        "selected_parser": installed_identity(family, version),
+        "host_implementation": registry.host_implementation_digest(),
     }
 
 
 __all__ = [
     "EXAMPLES",
     "installed_identity",
+    "installed_routing",
     "layout_01",
     "layout_01_v2",
     "layout_02",

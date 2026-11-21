@@ -114,9 +114,9 @@ current mappings or explicit reviewed assignments again.
 
 `ExtractionAttempt` stores layout/version/revision, candidate fields, all readable
 page lines and private `routing` metadata: vendor, issuer evidence, layout matches with
-fingerprint, the selected parser, `API_VERSION`, host `APP_VERSION`, the loaded
-installed-set digest, per-stage parser failures, invoice kind and proposed section
-properties. Missing values are null. Independent
+source and code fingerprints, the selected parser, `API_VERSION`, host `APP_VERSION`, the
+loaded installed-set digest, the host implementation digest, per-stage parser failures,
+invoice kind and proposed section properties. Missing values are null. Independent
 headers and previously extracted sections survive invalid fields or parser errors.
 Parsers retain service cost totals and overall billing periods. Layout 01 separates
 printed Effektavgift and configured waste fraction charges, balancing their VAT to
@@ -392,14 +392,19 @@ policy is different: a relative production path or a path equal to or beneath `D
 Each accepted file has a SHA-256 fingerprint over the exact compiled source snapshot plus
 its declared family/version/revision. Existing bytecode caches are neither read nor
 written, so the fingerprint describes what executed. Support modules are digested too, so
-a shared helper cannot change without moving the installed-set digest. The extraction
-attempt's `routing`
-payload records each matched parser's identity, fingerprint, the selected parser,
-host `APP_VERSION`, `API_VERSION` and a digest over the installed set. The fingerprint
-identifies installed source; shared API implementation changes are identified by the host
-release. A retained correction requires the recorded fingerprint, so changed code needs a
-re-parse and review first. Re-parsing after a parser change legitimately produces a new
-fingerprint on a
+a shared helper cannot change without moving the installed-set digest. Each module also
+gets a code fingerprint over its own snapshot and the transitive sibling imports it
+declares, so a parser that reuses shared code cannot keep its identity when that code
+changes. Relative imports may appear in any filename order: the loader retries files that
+wait on a sibling and reports only the files that never resolve.
+
+The extraction attempt's `routing` payload records each matched parser's identity, source
+and code fingerprints, the selected parser, host `APP_VERSION`, `API_VERSION`, a digest
+over the installed set and a digest over the host parsing implementation. A retained
+correction requires the recorded source fingerprint, code fingerprint and host
+implementation digest, so changed parser code, shared code or hook implementation needs a
+re-parse and review first. Re-parsing after such a change legitimately produces new
+fingerprints on a
 new attempt; earlier attempts stay immutable.
 
 Entry-point exceptions and malformed results never break ingestion for other documents.
@@ -423,8 +428,13 @@ They may change only the requested cost/usage split in selected sections of that
 operation's own service: waste splitting touches only waste allocations and demand
 splitting only network allocations. Every other selected allocation, all unselected
 sections, existing property assignments, headers, totals and unrelated usage must stay
-intact. Hooks return `(section_properties, warnings)`, and new sections inherit their
-source property's ID.
+intact. A new section must keep the printed identifiers of one selected source
+allocation, inherit that source's property and stay within the source's own cost totals
+and existing usage; identifier keys are the printed contract, product or installation
+numbers. A complete fraction split may replace its parent allocation with the fraction
+sections when it conserves the parent's costs and usage. Hooks return
+`(section_properties, warnings)`, and the returned property mapping covers exactly the
+resulting section IDs.
 Unsupported operations return the values unchanged with an explicit warning. See
 [review and correction](review.md#re-parsing-and-stale-forms) for how retained
 corrections use the approval's exact recorded parser.

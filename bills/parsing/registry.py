@@ -4,6 +4,8 @@ import hashlib
 import sys
 import threading
 from contextvars import ContextVar
+from functools import lru_cache
+from pathlib import Path
 
 from . import plugins
 from .api import API_VERSION
@@ -17,6 +19,11 @@ def parser_fingerprint(parser):
     return getattr(parser, "FINGERPRINT", None)
 
 
+def parser_code_fingerprint(parser):
+    """Source fingerprint of a parser together with its shared siblings."""
+    return getattr(parser, "CODE_FINGERPRINT", None)
+
+
 def parser_identity(parser):
     """Host-generated, bounded identity; no path or exception detail."""
     return {
@@ -24,7 +31,30 @@ def parser_identity(parser):
         "version": parser.VERSION,
         "revision": parser.REVISION,
         "fingerprint": parser_fingerprint(parser),
+        "code_fingerprint": parser_code_fingerprint(parser),
     }
+
+
+@lru_cache(maxsize=1)
+def host_implementation_digest():
+    """Digest of the host parser implementation that runs extraction and hooks.
+
+    Retained corrections replay stored evidence through this code, so a correction
+    requires the same host implementation that produced the proposal. An unreadable
+    source set yields an empty digest and refuses corrections instead of guessing.
+    """
+    package = Path(__file__).resolve().parent
+    sources = [(f"parsing/{path.name}", path) for path in package.glob("*.py")]
+    sources.append(("categories.py", package.parent / "categories.py"))
+    digest = hashlib.sha256(b"house-bills-host-implementation-v1\n")
+    try:
+        for label, path in sorted(sources):
+            digest.update(f"{label}\0".encode())
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+    except OSError:
+        return ""
+    return digest.hexdigest()
 
 
 def _configured_directory():

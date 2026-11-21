@@ -16,6 +16,7 @@ from .parsing.reader import PDFReadError, read_pdf
 from .parsing.recognition import recognize_vendor
 from .parsing.registry import (
     begin_document,
+    host_implementation_digest,
     layouts,
     match_layouts,
     parser_identity,
@@ -188,6 +189,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             "layout_matches": [parser_identity(match) for match in matches],
             "selected_parser": parser_identity(parser) if parser else None,
             "plugin_set_digest": parser_set_digest(settings.APP_VERSION),
+            "host_implementation": host_implementation_digest(),
             "api_version": API_VERSION,
             "app_version": settings.APP_VERSION,
             "failures": [],
@@ -218,6 +220,12 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             house_id = routing["section_properties"].get(section.section_id)
             for usage in section.usages:
                 if usage.utility != "electricity" or usage.unit != "kWh" or house_id is None:
+                    continue
+                if usage.start is None or usage.end is None:
+                    # Validate the contract before comparing; never fail the attempt here.
+                    candidate.issues.append(
+                        f"Missing usage period in {section.section_id} needs review."
+                    )
                     continue
                 for other, other_house, other_service in electricity:
                     if (

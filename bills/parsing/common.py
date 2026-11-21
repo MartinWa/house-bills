@@ -137,6 +137,8 @@ def reconcile(candidate: Candidate) -> Candidate:
             if (
                 usage.utility != category
                 or usage.unit not in expected_units
+                or usage.start is None
+                or usage.end is None
                 or usage.start >= usage.end
             ):
                 candidate.issues.append(f"Invalid usage in {section.section_id}")

@@ -9,7 +9,14 @@ from .models import Property, PropertyService
 from .parsing.api import API_VERSION, configure
 from .parsing.common import reconcile
 from .parsing.compatibility import cost_totals_candidate
-from .parsing.registry import installed, layouts, match_layouts, parser_fingerprint
+from .parsing.registry import (
+    host_implementation_digest,
+    installed,
+    layouts,
+    match_layouts,
+    parser_code_fingerprint,
+    parser_fingerprint,
+)
 from .parsing.types import Candidate, Evidence, Identifier, Section, Usage
 from .parsing.validation import ContractError
 
@@ -113,15 +120,12 @@ def _approval_identity(review):
     )
 
 
-def _recorded_fingerprint(extraction):
+def _recorded_routing(extraction):
     routing = extraction.candidate.get("routing")
     if not isinstance(routing, dict):
-        return None
+        return {}, {}
     selected = routing.get("selected_parser")
-    if not isinstance(selected, dict):
-        return None
-    fingerprint = selected.get("fingerprint")
-    return fingerprint if isinstance(fingerprint, str) else None
+    return routing, selected if isinstance(selected, dict) else {}
 
 
 def _select_extraction(invoice, review):
@@ -165,11 +169,24 @@ def retained_source(invoice, review, operation):
                 "The recorded parser revision differs from the installed code; re-parse and "
                 "review before correcting costs."
             ]
-        recorded = _recorded_fingerprint(extraction)
-        if not recorded or recorded != parser_fingerprint(parser):
+        routing, selected = _recorded_routing(extraction)
+        recorded = selected.get("fingerprint")
+        if not isinstance(recorded, str) or recorded != parser_fingerprint(parser):
             return None, [
                 "The recorded parser source is unavailable; re-parse and review before "
                 "correcting costs."
+            ]
+        code = parser_code_fingerprint(parser)
+        if not code or selected.get("code_fingerprint") != code:
+            return None, [
+                "The recorded parser shared code differs from the installed implementation; "
+                "re-parse and review before correcting costs."
+            ]
+        host = host_implementation_digest()
+        if not host or routing.get("host_implementation") != host:
+            return None, [
+                "The host parsing implementation differs from the recorded extraction; "
+                "re-parse and review before correcting costs."
             ]
     else:
         matches = match_layouts(pages, list(layouts()))
@@ -192,7 +209,9 @@ def retained_source(invoice, review, operation):
             "version": parser.VERSION,
             "revision": parser.REVISION,
             "fingerprint": parser_fingerprint(parser),
+            "code_fingerprint": parser_code_fingerprint(parser),
         },
+        "host_implementation": host_implementation_digest(),
         "api_version": API_VERSION,
         "app_version": settings.APP_VERSION,
         "operation": operation,

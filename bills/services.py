@@ -30,13 +30,21 @@ class StaleReviewError(ValidationError):
 PROVENANCE_KEYS = {
     "extraction_id",
     "parser",
+    "host_implementation",
     "api_version",
     "app_version",
     "operation",
     "section_ids",
     "limitation",
 }
-PARSER_PROVENANCE_KEYS = {"family", "version", "revision", "source", "fingerprint"}
+PARSER_PROVENANCE_KEYS = {
+    "family",
+    "version",
+    "revision",
+    "source",
+    "fingerprint",
+    "code_fingerprint",
+}
 MAX_PROVENANCE_BYTES = 4096
 
 

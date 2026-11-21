@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,7 @@ from bills.models import (
 from bills.parsing import api, registry
 from bills.parsing.api import Candidate, Section
 from bills.parsing.plugins import fingerprint, plugin_set_digest
-from bills.parsing.types import Evidence, Identifier
+from bills.parsing.types import Evidence, Identifier, Usage
 from tests.examples import EXAMPLES
 from tests.synthetic import shared_supply, write_pdf
 
@@ -181,8 +182,13 @@ def test_mounted_plugin_loads_matches_extracts_and_records_provenance(settings, 
         "version": "v1",
         "revision": "1",
         "fingerprint": parser.FINGERPRINT,
+        "code_fingerprint": parser.CODE_FINGERPRINT,
     }
+    assert parser.PLUGIN_DEPENDENCIES == ()
     assert attempt.candidate["routing"]["plugin_set_digest"]
+    assert attempt.candidate["routing"]["host_implementation"] == (
+        registry.host_implementation_digest()
+    )
     assert attempt.candidate["routing"]["section_properties"] == {"section_01": house.pk}
     assert (
         not BillingSection.objects.exists()
@@ -357,6 +363,51 @@ def test_sibling_support_module_is_loaded_without_metadata_and_digested(settings
     assert registry.status().digest != first
 
 
+FORWARD_SIBLING = '''"""Synthetic parser whose sibling sorts after its own filename."""
+
+from bills.parsing import api
+
+from . import _shared
+
+API_VERSION = 1
+FAMILY = "plugin_forward"
+VERSION = "v1"
+REVISION = "1"
+
+
+def matches(pages):
+    return any(_shared.MARKER in api.text(line) for page in pages for line in page)
+
+
+def parse(pages, *, candidate=None):
+    return candidate or api.header(pages, FAMILY, VERSION, REVISION)
+'''
+
+
+def test_sibling_import_order_does_not_depend_on_filenames(settings, tmp_path):
+    directory = install(settings, tmp_path, FORWARD_SIBLING, name="Z_forward.py")
+    (directory / "_shared.py").write_text(SHARED, encoding="utf-8")
+    registry.reset()
+    assert registry.status().errors == []
+    parser = registry.installed("plugin_forward", "v1")
+    assert parser is not None
+    assert parser.PLUGIN_DEPENDENCIES == ("_shared",)
+
+
+def test_shared_sibling_source_changes_only_the_parser_code_fingerprint(settings, tmp_path):
+    directory = install(settings, tmp_path, SIBLING_PLUGIN)
+    (directory / "_shared.py").write_text(SHARED, encoding="utf-8")
+    registry.reset()
+    first = registry.installed("plugin_sibling", "v1")
+    assert first.PLUGIN_DEPENDENCIES == ("_shared",) and len(first.CODE_FINGERPRINT) == 64
+    source_fingerprint, code_fingerprint = first.FINGERPRINT, first.CODE_FINGERPRINT
+    (directory / "_shared.py").write_text(SHARED.replace("Synthetic", "Synthetic2"))
+    registry.reset()
+    second = registry.installed("plugin_sibling", "v1")
+    assert second.FINGERPRINT == source_fingerprint
+    assert second.CODE_FINGERPRINT != code_fingerprint
+
+
 def test_missing_support_module_rejects_the_importing_parser(settings, tmp_path):
     install(settings, tmp_path, SIBLING_PLUGIN)
     assert "import_failed" in {error.code for error in registry.status().errors}
@@ -423,6 +474,32 @@ def configure_sections(
     document, attempt, _ = upload(tmp_path, pages())
     assert attempt.candidate["reference"] == "123456"
     assert any("Configured cost split failed" in issue for issue in attempt.candidate["issues"])
+
+
+def test_invalid_usage_periods_do_not_crash_ingestion(settings, tmp_path):
+    extra = """
+def parse(pages, *, candidate=None):
+    candidate = candidate or read_header(pages)
+    line = next(line for page in pages for line in page if api.text(line).startswith("Vatten"))
+    candidate.sections.append(
+        api.Section(
+            "section_01",
+            "water",
+            [api.Identifier("contract", "777", line)],
+            usages=[api.Usage("water", "m3", 1000, None, None, "billed", line)],
+            net_minor=candidate.net_minor,
+            vat_minor=candidate.vat_minor,
+            gross_minor=(candidate.net_minor or 0) + (candidate.vat_minor or 0),
+        )
+    )
+    return candidate
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    configure_vendor()
+    document, attempt, _ = upload(tmp_path, pages())
+    assert document.state == "review"
+    assert attempt.revision == 1 and "extraction failed" in attempt.error
+    assert attempt.candidate["sections"] == []
 
 
 def test_missing_and_empty_plugin_directories_install_no_parsers(settings, tmp_path):
@@ -694,11 +771,11 @@ def _candidate(*sections, identifiers=None):
     )
 
 
-def _section(section_id, service, net=0, *, subcategory=""):
+def _section(section_id, service, net=0, *, subcategory="", value="777"):
     return Section(
         section_id,
         service,
-        [Identifier("contract", "777", Evidence(1, "Synthetic", (0, 0, 1, 1)))],
+        [Identifier("contract", value, Evidence(1, "Synthetic", (0, 0, 1, 1)))],
         net_minor=net,
         vat_minor=0,
         gross_minor=net,
@@ -785,6 +862,175 @@ def configure_sections(
         _configure(parser, candidate, properties, selected=properties)
     assert isinstance(candidate.sections, list)
     assert isinstance(candidate.sections[0], Section)
+
+
+SPLIT_CHILD = """
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    parent = next(section for section in candidate.sections if section.section_id == "waste_a")
+    parent.net_minor -= 400
+    parent.gross_minor -= 400
+    candidate.sections.append(
+        api.Section(
+            "waste_a_matavfall",
+            "waste",
+            list(parent.identifiers),
+            net_minor=400,
+            vat_minor=0,
+            gross_minor=400,
+            subcategory="matavfall",
+        )
+    )
+    changed = dict(section_properties)
+    changed["waste_a_matavfall"] = {property_id}
+    return changed, []
+"""
+
+
+@pytest.fixture(params=[7, 8], ids=["inherited", "other-property"])
+def split_child_parser(request, settings, tmp_path):
+    extra = SPLIT_CHILD.format(property_id=request.param)
+    install(settings, tmp_path, plugin_source(extra=extra))
+    return registry.installed("plugin_synthetic", "v1"), request.param
+
+
+def test_hook_splits_only_into_its_own_source_property(split_child_parser):
+    from bills.parsing.configuration import ContractError
+
+    parser, property_id = split_child_parser
+    candidate = _candidate(
+        _section("waste_a", "waste", 1000, value="A"),
+        _section("waste_b", "waste", 500, value="B"),
+    )
+    properties = {"waste_a": 7, "waste_b": 8}
+    if property_id == 7:
+        updated, warnings = _configure(parser, candidate, properties, selected=properties)
+        assert warnings == []
+        assert updated == {"waste_a": 7, "waste_a_matavfall": 7, "waste_b": 8}
+        assert [(section.section_id, section.net_minor) for section in candidate.sections] == [
+            ("waste_a", 600),
+            ("waste_b", 500),
+            ("waste_a_matavfall", 400),
+        ]
+    else:
+        with pytest.raises(ContractError, match="outside its scope"):
+            _configure(parser, candidate, properties, selected=properties)
+        assert [section.section_id for section in candidate.sections] == [
+            "waste_a",
+            "waste_b",
+        ]
+        assert candidate.sections[0].net_minor == 1000
+
+
+def test_hook_cannot_move_costs_between_source_allocations(settings, tmp_path):
+    from bills.parsing.configuration import ContractError
+
+    extra = """
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    candidate.sections[0].net_minor -= 100
+    candidate.sections[0].gross_minor -= 100
+    candidate.sections[1].net_minor += 100
+    candidate.sections[1].gross_minor += 100
+    return section_properties, []
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    parser = registry.installed("plugin_synthetic", "v1")
+    candidate = _candidate(
+        _section("waste_a", "waste", 1000, value="A"),
+        _section("waste_b", "waste", 500, value="B"),
+    )
+    properties = {"waste_a": 7, "waste_b": 7}
+    with pytest.raises(ContractError, match="cost of a source allocation"):
+        _configure(parser, candidate, properties, selected=properties)
+    assert candidate.sections[0].net_minor == 1000
+    assert candidate.sections[1].net_minor == 500
+
+
+def test_hook_cannot_move_existing_usage_between_sources(settings, tmp_path):
+    from bills.parsing.configuration import ContractError
+
+    extra = """
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    first, second = candidate.sections
+    second.usages = [*first.usages, *second.usages]
+    first.usages = []
+    return section_properties, []
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    parser = registry.installed("plugin_synthetic", "v1")
+    evidence = Evidence(1, "Synthetic weight", (0, 0, 1, 1))
+    usage = Usage("waste", "kg", 1000, date(2024, 1, 1), date(2024, 2, 1), "billed", evidence)
+    first = _section("waste_a", "waste", 1000, value="A")
+    first.usages = [usage]
+    candidate = _candidate(first, _section("waste_b", "waste", 500, value="B"))
+    properties = {"waste_a": 7, "waste_b": 7}
+    with pytest.raises(ContractError, match="usage outside its source allocation"):
+        _configure(parser, candidate, properties, selected=properties)
+    assert candidate.sections[0].usages == [usage]
+    assert candidate.sections[1].usages == []
+
+
+def test_hook_may_replace_a_source_with_its_complete_fraction_split(settings, tmp_path):
+    extra = """
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    parent = candidate.sections[0]
+    candidate.sections = [
+        api.Section(
+            "waste_a_matavfall",
+            "waste",
+            list(parent.identifiers),
+            net_minor=600,
+            vat_minor=0,
+            gross_minor=600,
+            subcategory="matavfall",
+        ),
+        api.Section(
+            "waste_a_restavfall",
+            "waste",
+            list(parent.identifiers),
+            net_minor=400,
+            vat_minor=0,
+            gross_minor=400,
+            subcategory="restavfall",
+        ),
+    ]
+    return {
+        "waste_a_matavfall": section_properties["waste_a"],
+        "waste_a_restavfall": section_properties["waste_a"],
+    }, []
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    parser = registry.installed("plugin_synthetic", "v1")
+    candidate = _candidate(_section("waste_a", "waste", 1000, value="A"))
+    updated, warnings = _configure(parser, candidate, {"waste_a": 7}, selected={"waste_a"})
+    assert warnings == []
+    assert updated == {"waste_a_matavfall": 7, "waste_a_restavfall": 7}
+    assert [(section.section_id, section.net_minor) for section in candidate.sections] == [
+        ("waste_a_matavfall", 600),
+        ("waste_a_restavfall", 400),
+    ]
+
+
+def test_candidate_contract_requires_usage_periods():
+    from bills.parsing.configuration import ContractError
+    from bills.parsing.validation import validate_candidate
+
+    evidence = Evidence(1, "Synthetic", (0, 0, 1, 1))
+    section = Section(
+        "section_01",
+        "water",
+        [Identifier("contract", "777", evidence)],
+        usages=[Usage("water", "m3", 1000, None, None, "billed", evidence)],
+    )
+    with pytest.raises(ContractError, match="missing usage period"):
+        validate_candidate(_candidate(section))
 
 
 def test_validation_rejects_malformed_services_and_invoice_identifiers():

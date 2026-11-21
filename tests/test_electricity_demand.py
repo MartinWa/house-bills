@@ -19,7 +19,7 @@ from bills.parsing.reader import read_pdf
 from bills.parsing.types import Evidence, Identifier
 from bills.reporting import read_report
 from bills.services import StaleReviewError, approve_review, record_extraction
-from tests.examples import installed_identity, layout_01, layout_01_v2
+from tests.examples import installed_routing, layout_01, layout_01_v2
 
 from .api.helpers import BASE, api_client, manual_body, send, setup  # noqa: F401
 from .synthetic import multi_service, write_pdf
@@ -252,9 +252,7 @@ def retained(tmp_path, settings, django_user_model, request):
         candidate,
         vendor=vendor,
         page_evidence=[asdict(line) for page in pages for line in page],
-        routing={
-            "selected_parser": installed_identity(candidate.layout_family, candidate.layout_version)
-        },
+        routing=installed_routing(candidate.layout_family, candidate.layout_version),
     )
     candidate.reference = "reviewed-reference"
     candidate.invoice_date = date(2024, 3, 6)
