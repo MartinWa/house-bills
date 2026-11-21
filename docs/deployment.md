@@ -56,6 +56,8 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `HOUSE_BILLS_MIGRATE_ON_START` | Apply migrations before serving; defaults to `true`. |
 | `HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES` | Original PDF limit; defaults to 20971520 (20 MiB), with 64 KiB extra request allowance. |
 | `HOUSE_BILLS_TRUST_PROXY` | Trust only `X-Forwarded-Proto`; defaults to `false`. |
+| `HOUSE_BILLS_PARSER_PLUGINS` | Optional absolute path to an operator-managed parser plugin directory mounted read-only (recommended `/parsers`). Empty by default. |
+| `HOUSE_BILLS_PARSER_PLUGINS_FILE` | Read the plugin directory from a Docker or Podman secret file instead of the value above. |
 | `APP_UID`, `APP_GID` | Non-root numeric container process IDs. |
 | `APP_DATA_PATH` | Absolute private host-local data directory. |
 | `HOUSE_BILLS_NETWORK` | Private network name the base file creates; defaults to `house-bills`. |
@@ -155,6 +157,64 @@ Originals live in `/data/invoices`, with authenticated downloads and resumable s
 and publication. See [uploads and private originals](ingestion.md) for recovery and
 the shared-lock contract used by operational backups.
 
+## Optional parser plugins
+
+New invoice layouts can be installed as single-file Python plugins without changing or
+rebuilding the image. This is an operator deployment action with the trust model in
+[SECURITY.md](../SECURITY.md): plugins run with application privileges. There is no
+upload, source editor or automatic update path.
+
+Keep the setting empty for the default deployment. To enable plugins, add the optional
+override and point it at an existing host directory outside `APP_DATA_PATH`:
+
+```sh
+# Private .env
+APP_PARSER_PATH=/srv/house-bills/parsers
+HOUSE_BILLS_PARSER_PLUGINS=/parsers
+
+docker compose -f compose.yaml -f compose.parser-plugins.yaml up -d app
+docker compose -f compose.yaml -f compose.parser-plugins.yaml run --rm app \
+  python manage.py parsers --check
+```
+
+`compose.parser-plugins.yaml` binds `APP_PARSER_PATH` read-only at `/parsers` with
+`bind.create_host_path: false`; it keeps the base capability drops, `no-new-privileges`,
+private exposure and read-only image filesystem. The host directory must already exist,
+ownered by the installation operator, readable but not writable by the application UID,
+and have no writable alias elsewhere in the container. A missing bind source stops
+container creation; that is a Compose error, distinct from a configured directory that is
+missing inside a running container.
+
+Use `HOUSE_BILLS_PARSER_PLUGINS_FILE` instead when the path comes from a secret file. A
+relative production path, or a path equal to or beneath `DATA_DIR` or `MEDIA_ROOT`
+(including symlink aliases), rejects configuration. An unset or empty directory is a clean
+state. A configured directory that is missing, unreadable or not a directory does not
+stop startup: built-ins remain available and `parsers --check` fails with a load error.
+Rejected files are reported with bounded filenames and error codes, without paths or
+exception text.
+
+`parsers` lists each installed parser with its source, family/version/revision, plugin
+fingerprint and load error, and reports vendor formats that have no installed parser.
+`--check` exits non-zero on directory load errors, rejected files or such missing
+references; prefix warnings alone pass. Unset and empty directories pass when no
+configured vendor references an unavailable family.
+
+The loader reads top-level regular `*.py` files only, skips names starting with `_`, and
+accepts at most 64 files of 1 MiB each. It neither reads nor writes plugin bytecode caches,
+so the read-only image filesystem is unaffected. A plugin family routes only after it is
+added to that vendor's invoice formats; existing vendor records are not changed by
+loading code. Adding, changing or removing a plugin requires restarting the container and
+explicitly re-parsing the affected documents with `manage.py parse_documents` (or the
+document page). Approved values, review history and published originals stay unchanged
+until a reviewed correction accepts different values.
+
+Plugins are deliberately outside the backup and restore set: backups archive the database
+and `MEDIA_ROOT`. Restoring an installation requires redeploying the same reviewed plugin
+directory; otherwise its plugin extractions lose reproducibility. Review the source and
+dependencies, test against wholly synthetic documents in a disposable container, and keep
+the reviewed version and digest for rollback. See [deterministic parsing](parsing.md) for
+the API, contract and a worked synthetic plugin.
+
 ## Manual upgrades
 
 Create and verify a coordinated backup including the private environment and
@@ -198,8 +258,10 @@ Mount a secret file and set `HOUSE_BILLS_SECRET_KEY_FILE` instead of
 `HOUSE_BILLS_SECRET_KEY` to probe that path. The recovery configuration inside the probe
 records the effective settings either way.
 
-The probe verifies parsed/manual upload and review, correction history, reporting,
-duplicates, private source access, migration guards and static/HTTPS behavior. It creates
+The probe verifies parsed/manual upload and review, correction history, reporting, duplicates,
+private source access, migration guards and static/HTTPS behavior. It also checks parser
+plugin path policy, load status and read-only plugin code, and that `parsers --check`
+passes for unset and empty directories while failing for missing or rejected ones. It creates
 a checksum-verified backup, restores all database rows and originals into a new directory,
 then starts that instance with migrations disabled and checks authenticated HTTP reports
 and original downloads. This establishes local image behavior, not NAS deployment.

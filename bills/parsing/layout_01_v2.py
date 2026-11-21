@@ -31,6 +31,9 @@ def matches(pages):
     )
 
 
+configure_sections = layout_01.configure_sections
+
+
 def read_header(pages):
     candidate = layout_01.read_header(pages)
     candidate.layout_version, candidate.parser_revision = VERSION, REVISION

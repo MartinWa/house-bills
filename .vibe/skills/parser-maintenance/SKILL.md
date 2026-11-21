@@ -39,10 +39,12 @@ Built-in modules under `bills/parsing/`:
   later section-parser failure.
 - Use the existing candidate, section, identifier, usage and evidence types
   from the result contract; do not invent parallel types.
-- Register the version in `bills/parsing/registry.py`; keep earlier versions
-  registered alongside their replacements.
-- Loading modules from a mounted directory is not implemented; reparse through
-  the service (see below).
+- Register the version in `bills/parsing/registry.py` for a built-in, or install
+  a single-file plugin in the read-only mounted directory; keep earlier versions
+  registered alongside their replacements. Plugin code imports only
+  `bills.parsing.api` and declares `API_VERSION`.
+- A configured plugin directory is discovered lazily; run
+  `python manage.py parsers --check` and reparse through the service (see below).
 
 ## Workflow for a change
 

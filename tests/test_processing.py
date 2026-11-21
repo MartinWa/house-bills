@@ -27,7 +27,7 @@ from bills.models import (
 from bills.parsing import layout_02
 from bills.parsing.reader import PDFReadError, read_pdf
 from bills.parsing.recognition import recognize_vendor
-from bills.parsing.registry import LAYOUTS
+from bills.parsing.registry import layouts
 from bills.parsing.types import Evidence
 from bills.services import approve_review
 from tools.synthetic_pdf import invoice_pdf
@@ -47,7 +47,7 @@ def originals(settings, tmp_path):
 def configured():
     vendor = Vendor.objects.create(name="Synthetic Utilities", slug="synthetic-utilities")
     VendorIssuerIdentifier.objects.create(vendor=vendor, kind="vat", value=ISSUER)
-    for family in LAYOUTS:
+    for family in layouts():
         VendorLayoutFamily.objects.create(vendor=vendor, family=family)
     houses = [Property.objects.create(name=f"House {i}", slug=f"house-{i}") for i in (1, 2)]
     for i, house in enumerate(houses, 1):
@@ -98,7 +98,7 @@ def test_supported_uploads_persist_proposals_without_approved_rows(
     candidate = attempt.candidate
     assert not duplicate and document.state == "review" and attempt.state == "review"
     assert (attempt.layout_family, attempt.layout_version) == (family, version)
-    assert attempt.parser_revision == LAYOUTS[family][version]
+    assert attempt.parser_revision == layouts()[family][version]
     assert candidate["issues"] == [] and candidate["requires_review"]
     assert [u["quantity_milli"] for s in candidate["sections"] for u in s["usages"]] == quantities
     assert all(candidate["routing"]["section_properties"].values())

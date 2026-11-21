@@ -77,8 +77,10 @@ records. It has no tenant or per-property isolation. Parsing is synchronous;
 NAS timing has not been measured. Reports use invoice dates for costs and whole
 billed consumption periods, without calendar-month proration. Selected demand and waste
 fraction charges are separated; remaining fee details stay in the original PDF.
-Folder import, historical OCR, Grafana access transport
-and loading parser plugins from a mounted directory are not implemented.
+Folder import, historical OCR, Grafana access transport and an in-application
+extension/package system are not implemented. New invoice layouts can be installed as
+single-file plugins in an operator-managed, read-only mount; see
+[parser plugins](docs/parsing.md#parser-plugins).
 
 Release publishing is configured, but the first published image and NAS verification
 are pending; local production builds and the automated Grafana check support evaluation

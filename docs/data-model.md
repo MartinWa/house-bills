@@ -25,9 +25,11 @@ The billing lists are grouped in both the Administration dashboard and sidebar:
    cannot belong to two vendors.
 3. Select the vendor's **Invoice formats**. One vendor may use both `layout_01` and
    `layout_02`; vendors remain stable when a layout version changes. The installed
-   registry supplies coexisting versions and implementation revisions; see
-   [deterministic parsing](parsing.md). Configuration enables installed extraction
-   rules; an unfamiliar structure requires review and a parser update.
+   registry supplies coexisting versions and implementation revisions for built-in and
+   mounted plugin parsers; see [deterministic parsing](parsing.md). Families and versions
+   stay strings, so a plugin family needs no migration but does need a
+   `VendorLayoutFamily` row per vendor before it can route. Configuration enables installed
+   extraction rules; an unfamiliar structure requires review and a parser update.
 4. Map installation, contract or product-number identifiers to each house. These keys
    are scoped by vendor and identifier kind. Installation and vendor identification
    numbers ignore spaces and hyphens; vendor numbers also normalize case. Contract

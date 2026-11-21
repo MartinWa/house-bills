@@ -492,6 +492,81 @@ def run_server(*, migrate, trust_proxy, restored_data=None):
             print(log.read().decode(), end="")
 
 
+PLUGIN_SOURCE = """from bills.parsing import api
+
+API_VERSION = 1
+FAMILY = "plugin_probe_layout"
+VERSION = "v1"
+REVISION = "1"
+
+
+def matches(pages):
+    return False
+
+
+def parse(pages, *, candidate=None):
+    return candidate or api.header(pages, FAMILY, VERSION, REVISION)
+"""
+
+
+def check_parser_plugins():
+    """Verify plugin path policy, load status and read-only code in the image."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    from bills.parsing import registry
+
+    storage_root = Path(settings.MEDIA_ROOT).parent
+    assert storage_root.is_absolute()
+    for value in (str(storage_root / "plugins"), "relative/parsers"):
+        result = subprocess.run(
+            [sys.executable, "-c", "import house_bills.settings.production"],
+            env={**os.environ, "HOUSE_BILLS_PARSER_PLUGINS": value},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode != 0, value
+        assert "HOUSE_BILLS_PARSER_PLUGINS" in result.stderr, result.stderr
+    settings.HOUSE_BILLS_PARSER_PLUGINS = ""
+    registry.reset()
+    call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+    with tempfile.TemporaryDirectory(prefix="missing-parsers-") as scratch:
+        settings.HOUSE_BILLS_PARSER_PLUGINS = str(Path(scratch) / "absent")
+        registry.reset()
+        assert "layout_01" in registry.layouts()
+        try:
+            call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+        except CommandError:
+            pass
+        else:
+            raise AssertionError("A missing configured plugin directory must fail --check.")
+        settings.HOUSE_BILLS_PARSER_PLUGINS = scratch
+        registry.reset()
+        call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+        plugin = Path(scratch) / "probe_layout.py"
+        plugin.write_text(PLUGIN_SOURCE, encoding="utf-8")
+        plugin.chmod(0o444)
+        Path(scratch).chmod(0o555)
+        registry.reset()
+        try:
+            call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+            parser = registry.installed("plugin_probe_layout", "v1")
+            assert parser is not None and len(parser.FINGERPRINT) == 64
+            assert not os.access(scratch, os.W_OK) and not os.access(plugin, os.W_OK)
+            try:
+                plugin.write_text("tampered", encoding="utf-8")
+            except PermissionError:
+                pass
+            else:
+                raise AssertionError("Read-only plugin code must not be writable.")
+        finally:
+            Path(scratch).chmod(0o755)
+            settings.HOUSE_BILLS_PARSER_PLUGINS = ""
+            registry.reset()
+    print("Parser plugin path, load and read-only checks passed.")
+
+
 def main():
     assert os.geteuid() != 0, "Production must run as non-root."
     assert all(
@@ -531,6 +606,7 @@ def main():
         assert connection.execute("SELECT COUNT(*) FROM django_migrations").fetchone()[0] > 0
     run_server(migrate=False, trust_proxy=False)
     check_backup_restore(database)
+    check_parser_plugins()
     print("Non-root production startup, migration guards, HTTPS/proxy and static checks passed.")
 
 

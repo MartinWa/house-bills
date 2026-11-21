@@ -24,10 +24,14 @@ wrapped cover footers above a payment slip. Recipient addresses, filenames, cust
 service specifications do not identify the vendor. Conflicting vendors need review.
 
 The registry in `bills/parsing/registry.py` retains coexisting versions and their
-implementation revisions. A recognized vendor's compatible families limit structural
-matches. With an unknown vendor, an unambiguous installed structure can still yield
-fields without vendor or property assignments. Unknown or multiple matching versions
-remain review proposals. Dates and filenames never select the newest parser.
+implementation revisions for built-in and operator-installed parsers. It is built lazily,
+so a mounted plugin directory is discovered without rebuilding the image. A recognized
+vendor's compatible families limit structural matches. With an unknown vendor, an
+unambiguous installed structure can still yield fields without vendor or property
+assignments. Unknown or multiple matching versions remain review proposals. Dates and
+filenames never select the newest parser. A plugin family routes only after it is added to
+a vendor's invoice formats; a recognized vendor with no formats yields **Invoice layout
+is unsupported**. Matchers must be strict because exactly one match is required.
 
 | Family/version | Billing structure | Revision |
 | --- | --- | --- |
@@ -102,8 +106,10 @@ current mappings or explicit reviewed assignments again.
 ## Proposals and failures
 
 `ExtractionAttempt` stores layout/version/revision, candidate fields, all readable
-page lines and private `routing` metadata: vendor, issuer evidence, layout matches,
-invoice kind and proposed section properties. Missing values are null. Independent
+page lines and private `routing` metadata: vendor, issuer evidence, layout matches with
+source/fingerprint, the selected parser, `API_VERSION`, host `APP_VERSION`, the loaded
+plugin-set digest, per-stage parser failures, invoice kind and proposed section
+properties. Missing values are null. Independent
 headers and previously extracted sections survive invalid fields or parser errors.
 Parsers retain service cost totals and overall billing periods. Layout 01 separates
 printed Effektavgift and configured waste fraction charges, balancing their VAT to
@@ -117,7 +123,11 @@ See [the result contract](parser-results.md) for quantity and tax conventions.
 
 Every attempt leaves the document in **Needs review**. Unknown or unreadable sources,
 ambiguous routing and unexpected parser errors also record failed attempts with safe
-reasons. Invalid extracted fields retain candidate issues. Original bytes and checksums
+reasons. The ambiguity message names the matching family/version entries. Malformed
+plugin results are rejected against a bounded candidate contract: independently valid
+header fields and sections are retained, malformed portions are discarded with an issue,
+and serialization is checked before the database write. Invalid extracted fields retain
+candidate issues. Original bytes and checksums
 are preserved. Parsing creates no approved allocations or usage; the approval service
 rejects unresolved issues and invalid allocations. Recognized different-file invoice
 identities become review records and expose source conflicts.
@@ -169,9 +179,205 @@ Built-in modules declare `FAMILY`, `VERSION` and `REVISION`, implement structura
 An optional `read_header(pages)` extracts format-specific header fields before section
 parsing so those fields survive a later parser failure. Use the existing candidate,
 section, identifier, usage and evidence types; see [the result contract](parser-results.md).
-Register built-in versions in `bills/parsing/registry.py`, rebuild the image and explicitly
+Register built-in versions in `bills/parsing/registry.py` and rebuild the image, or
+install a single-file plugin in the mounted parser directory; in both cases explicitly
 re-parse selected documents. Follow [contributing](../CONTRIBUTING.md) for fixtures/checks.
 
-Loading modules from a mounted directory is not implemented; see
-[security expectations](../SECURITY.md) for the trust boundary and [NOTICE](../NOTICE)
-for plugin licensing.
+## Parser plugins
+
+Operators can install new layouts without changing image code or rebuilding anything.
+A plugin is exactly one top-level `.py` file in an operator-managed directory mounted
+read-only as `/parsers`. Set `HOUSE_BILLS_PARSER_PLUGINS=/parsers` (or use
+`HOUSE_BILLS_PARSER_PLUGINS_FILE` for a secret file) and add the optional
+`compose.parser-plugins.yaml` override. The setting is empty by default. The directory is
+not part of backups: redeploy it together with the image. Adding, changing or removing a
+plugin requires a container restart and an explicit re-parse of the affected documents:
+
+```sh
+python manage.py parsers --check
+python manage.py parse_documents 12 19
+```
+
+The loader reads only top-level files whose names are Python identifiers and do not
+start with `_`. It accepts regular files only (no symlinks, subpackages, FIFOs or
+devices), at most 64 files and 1 MiB per source. It adds no `sys.path` entry, so shared
+code must come from `bills.parsing.api` or be inlined; a bare `import helper` binds an
+installed module or fails. It reads each source once, compiles that
+snapshot and executes it in a private `house_bills_plugins.<stem>` module. Import must be
+cheap and side-effect free: do not query the database, touch storage or write files,
+because discovery also runs for management commands such as `migrate`.
+
+Plugin vocabulary is deliberately unchanged: services must be `electricity`,
+`electricity_network`, `electricity_supply`, `water`, `waste` or `other`, and usage units
+`kWh`, `kW`, `m3` or `kg`. District heating, gas, new units, multi-country labels and
+multi-file plugin packages are later work; an unsupported value fails validation rather
+than being silently accepted.
+
+### Stable API
+
+Plugins import only `bills.parsing.api`, which re-exports the candidate types
+(`Candidate`, `Section`, `Usage`, `Identifier`, `Evidence`), normalization helpers
+(`NUMBER`, `DATE`, `PERIOD`, `money`, `quantity`, `source_date`, `source_period`, `unit`,
+`anchor`, `starts`, `text`, `normalized_text`) and extraction helpers (`header`,
+`reconcile`, `capture`, `empty_header`, `installation`, `identity_fields`, `cost_period`,
+`due_amount`, `price_quantities`, `tax_basis`, `last_money`). `API_VERSION = 1` keeps
+those names, signatures and value conventions stable; breaking changes require a new
+version. Everything else under `bills.parsing` is internal.
+
+A plugin declares the version it targets and the loader rejects a mismatch before the
+module reaches the registry:
+
+```python
+API_VERSION = 1
+FAMILY = "plugin_example_energy"
+VERSION = "v1"
+REVISION = "1"
+```
+
+`FAMILY` uses `[a-z][a-z0-9_]*` and the documented `plugin_<owner>_<layout>` prefix
+(a different prefix only warns). `VERSION` and `REVISION` use
+`[A-Za-z0-9][A-Za-z0-9._+-]*` within the model length limits. A `(FAMILY, VERSION) pair
+may not collide with a built-in parser or another plugin. Entry points are validated by
+signature:
+
+- `matches(pages)` returns a real `bool`. Raise or return a non-boolean and the parser is
+excluded and its failure recorded; other parsers keep working.
+- `read_header(pages)` returns a `Candidate`; `parse(pages, *, candidate=None)` mutates
+  and returns the supplied candidate. The host checks both the return value, its identity
+  with the supplied object and the candidate's parser metadata.
+- `configure_sections` is optional; see [the configuration hook](#configuration-hook).
+
+A candidate may be partial: null fields and financial inconsistencies are review issues,
+not contract failures. Malformed objects, duplicate section IDs, too many sections/usages
+and unsupported units are contract failures; the host then retains a safe review proposal
+built from independently valid header fields and sections.
+
+### Worked synthetic plugin
+
+This wholly synthetic single-file plugin uses only the public API and the standard
+library. It matches one labelled structure, keeps a partial candidate when the amount is
+missing and exposes an optional scoped configuration hook:
+
+```python
+"""Synthetic example: one water allocation per labelled invoice."""
+
+import re
+
+from bills.parsing import api
+
+API_VERSION = 1
+FAMILY = "plugin_example_water"
+VERSION = "v1"
+REVISION = "1"
+LINE = re.compile(rf"Water charge\s+({api.DATE})\s+-\s+({api.DATE})\s+({api.NUMBER})\s+m3")
+
+
+def matches(pages):
+    return any("Example Utility invoice" in api.text(line) for page in pages for line in page)
+
+
+def read_header(pages):
+    return api.header(pages, FAMILY, VERSION, REVISION)
+
+
+def parse(pages, *, candidate=None):
+    candidate = candidate or read_header(pages)
+    for line in (row for page in pages for row in page):
+        match = LINE.search(api.text(line))
+        if not match:
+            continue
+        start, end = api.source_date(match[1]), api.source_date(match[2])
+        candidate.sections.append(
+            api.Section(
+                "section_01",
+                "water",
+                [],
+                usages=[
+                    api.Usage("water", "m3", api.quantity(match[3]), start, end, "billed", line)
+                ],
+                start=start,
+                end=end,
+                net_minor=candidate.net_minor,
+                vat_minor=candidate.vat_minor,
+                gross_minor=(candidate.net_minor or 0) + (candidate.vat_minor or 0),
+            )
+        )
+    return api.reconcile(candidate)
+
+
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    # Operations in API version 1 are waste_cost_split and electricity_demand_split.
+    return dict(section_properties), []
+```
+
+Test it against wholly synthetic PDFs with plain pages, without models or a database:
+
+```python
+from bills.parsing.plugins import discover
+from bills.parsing.reader import read_pdf
+
+pages = read_pdf("synthetic-example.pdf")
+plugin = discover("/parsers").parsers[0]
+assert plugin.matches(pages)
+candidate = plugin.parse(pages)
+assert candidate.requires_review
+print(candidate.to_dict())
+```
+
+Then place the file in the mounted directory and verify the load:
+
+```sh
+# Host directory is owned by the operator, readable but not writable by APP_UID.
+docker compose -f compose.yaml -f compose.parser-plugins.yaml run --rm app \
+  python manage.py parsers --check
+```
+
+`parsers` lists every installed parser with source, family/version/revision, plugin
+fingerprint and load error. `--check` exits non-zero for directory load errors, rejected
+files or a configured vendor format with no installed parser. Prefix warnings alone do not
+fail. An unset or empty directory passes when no vendor references an unavailable family.
+A missing or unreadable configured directory leaves startup running with built-ins and
+reports the load error; it does not raise a settings exception. Invalid path policy is
+different: a relative production path or a path equal to or beneath `DATA_DIR` or
+`MEDIA_ROOT` (including symlink aliases) rejects configuration.
+
+### Fingerprints and failure isolation
+
+Each accepted plugin has a SHA-256 fingerprint over the exact compiled source snapshot
+plus its declared family/version/revision. Existing bytecode caches are neither read nor
+written, so the fingerprint describes what executed. The extraction attempt's `routing`
+payload records each matched parser's identity, source, fingerprint, the selected parser,
+host `APP_VERSION`, `API_VERSION` and a digest over the loaded plugin set. The fingerprint
+identifies plugin source; shared API implementation changes are identified by the host
+release. Re-parsing after a plugin change legitimately produces a new fingerprint on a
+new attempt; earlier attempts stay immutable.
+
+Entry-point exceptions and malformed results never break ingestion for other documents.
+Diagnostics record a parser identity and stage, not exception text, paths, source snippets
+or local values. Detailed failures are investigated locally with synthetic documents.
+A failing matcher is excluded; a failing selected parser keeps a safe partial proposal;
+a failing configuration hook restores the pre-hook candidate and property mapping.
+Process exits, hangs and resource exhaustion are outside these guards.
+
+### Configuration hook
+
+`configure_sections(candidate, pages, section_properties, *, operation, section_ids,
+configuration)` is an optional protocol, not an exported function. The host resolves the
+exact recorded family/version through `api.configure(...)` and validates the effects in
+both ingestion and retained corrections. API version 1 operations are `waste_cost_split`
+and `electricity_demand_split`; each invocation requests exactly one. `section_ids` is a
+frozen set of host-selected original IDs. `configuration` maps those IDs to plain records
+with `enabled_waste_fractions` (a frozen set of catalogue keys) and is empty for demand
+splitting. Hooks receive no Django objects and perform no database or storage access.
+They may change only the requested cost/usage split in selected sections, must keep
+headers, totals, unselected sections and unrelated usage intact, and return
+`(section_properties, warnings)`. New sections inherit their source property's ID.
+Unsupported operations return the values unchanged with an explicit warning. See
+[review and correction](review.md#re-parsing-and-stale-forms) for how retained
+corrections use the approval's exact recorded parser.
+
+Plugins execute with application privileges. Read
+[security expectations](../SECURITY.md) before mounting code; [NOTICE](../NOTICE)
+states the licensing position for independently authored plugins.

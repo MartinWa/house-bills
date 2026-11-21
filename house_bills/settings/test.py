@@ -8,6 +8,7 @@ TEST_DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASES["default"]["NAME"] = TEST_DATA_DIR / "db.sqlite3"
 DATABASES["default"]["TEST"] = {"NAME": TEST_DATA_DIR / "test.sqlite3"}
 SECRET_KEY = "synthetic-test-secret-not-for-real-installations-" * 2
+HOUSE_BILLS_PARSER_PLUGINS = ""
 DEBUG = False
 ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
 STATIC_ROOT = TEST_DATA_DIR / "staticfiles"

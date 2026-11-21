@@ -111,3 +111,20 @@ def test_example_environment_documents_every_deployment_setting():
     ):
         assert f"{name}=" in example
     assert "HOUSE_BILLS_ENV_FILE" not in example
+
+
+def test_parser_plugin_override_is_optional_read_only_and_never_creates_paths():
+    override = read("compose.parser-plugins.yaml")
+    base = read("compose.yaml")
+    example = read(".env.example")
+
+    assert "HOUSE_BILLS_PARSER_PLUGINS: /parsers" in override
+    assert (
+        'source: "${APP_PARSER_PATH:?Set an existing operator-owned parser code directory}"'
+        in override
+    )
+    assert "read_only: true" in override and "create_host_path: false" in override
+    assert "cap_drop" not in override and "no-new-privileges" not in override
+    assert 'user: "${APP_UID:?Set a non-root APP_UID}:${APP_GID:?Set APP_GID}"' in base
+    assert "read_only: true" in base and "no-new-privileges:true" in base
+    assert "HOUSE_BILLS_PARSER_PLUGINS=/parsers" in example

@@ -5,6 +5,15 @@ candidates. Installed layouts, versions and revisions are listed in
 [deterministic parsing](parsing.md); that guide also covers routing and proposal
 persistence.
 
+Extraction attempts also record private routing metadata: matched parsers with their
+family/version/revision, source (built-in or plugin) and fingerprint, the selected parser,
+`API_VERSION`, the host `APP_VERSION`, a digest over the loaded plugin set and per-stage
+parser failures. A plugin fingerprint is a SHA-256 over the exact compiled source snapshot
+that executed, including its declared family/version/revision; bytecode caches are never
+read. It identifies plugin source, while shared API implementation changes are identified
+by the host release. It is not part of the immutable original, and re-parsing after a
+plugin change legitimately yields a new fingerprint on a new attempt.
+
 `reader.read_pdf()` returns text lines with one-based page numbers and PDF-point
 bounding boxes `(x0, top, x1, bottom)`. A four-point vertical tolerance keeps totals
 together when labels and amounts have slightly different baselines. Reading does not

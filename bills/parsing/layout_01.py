@@ -20,6 +20,7 @@ from .normalization import (
 )
 from .normalization import unit as normalize_unit
 from .types import Evidence, Identifier, Section, Usage
+from .waste_costs import split_waste_costs
 
 FAMILY, VERSION, REVISION = "layout_01", "v1", "12"
 SERVICE = {
@@ -333,6 +334,34 @@ def _extract_section(candidate, section, lines, all_lines, waste_totals, *, lega
                 candidate.issues.append(
                     f"Missing billed electricity consumption in {section.section_id}"
                 )
+
+
+def _inherited_properties(candidate, section_properties, sources):
+    return {
+        section.section_id: section_properties.get(
+            sources.get(section.section_id, section.section_id)
+        )
+        for section in candidate.sections
+    }
+
+
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    """Optional host-mediated cost split; the same hook runs for plugins."""
+    if operation == "waste_cost_split":
+        tracked = {
+            section_id: set(
+                (configuration.get(section_id) or {}).get("enabled_waste_fractions", ())
+            )
+            for section_id in section_ids
+        }
+        sources, warnings = split_waste_costs(candidate, pages, tracked)
+        return _inherited_properties(candidate, section_properties, sources), warnings
+    if operation == "electricity_demand_split":
+        sources, warnings = split_electricity_demand(candidate, pages, set(section_ids))
+        return _inherited_properties(candidate, section_properties, sources), warnings
+    return dict(section_properties), [f"Unsupported parser operation: {operation}"]
 
 
 def parse(pages: list[list[Evidence]], *, candidate=None):
