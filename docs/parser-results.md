@@ -5,21 +5,31 @@ candidates. Installed layouts, versions and revisions are listed in
 [deterministic parsing](parsing.md); that guide also covers routing and proposal
 persistence.
 
+Extraction attempts also record private routing metadata: matched parsers with their
+family/version/revision and fingerprint, the selected parser,
+`API_VERSION`, the host `APP_VERSION`, a digest over the installed parser set and per-stage
+parser failures. A parser fingerprint is a SHA-256 over the exact compiled source snapshot
+that executed, including its declared family/version/revision; bytecode caches are never
+read. It identifies installed source, while shared API implementation changes are
+identified by the host release. It is not part of the immutable original, and re-parsing
+after a parser change legitimately yields a new fingerprint on a new attempt.
+
 `reader.read_pdf()` returns text lines with one-based page numbers and PDF-point
 bounding boxes `(x0, top, x1, bottom)`. A four-point vertical tolerance keeps totals
 together when labels and amounts have slightly different baselines. Reading does not
 recognize vendors or assign properties. Call an installed parser explicitly:
 
 ```python
-from bills.parsing import layout_01
+from bills.parsing import registry
 from bills.parsing.reader import read_pdf
 
-candidate = layout_01.parse(read_pdf("private/example.pdf"))
+parser = registry.installed("layout_01", "v1")  # installed from the parser directory
+candidate = parser.parse(read_pdf("private/example.pdf"))
 private_result = candidate.to_dict()
 ```
 
-Neither module contains vendor names or private identifiers. The registry selects by
-structure and keeps earlier versions available for older invoices. Historical
+Parser files contain no vendor identities beyond the printed labels they match. The
+registry selects by structure and keeps earlier versions available for older invoices. Historical
 `Avfall prodnr ... Kärl ...` headings identify their named waste fraction from each
 section's printed net and VAT totals.
 

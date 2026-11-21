@@ -1,11 +1,26 @@
-"""Electricity supply v1: an installation row above each specification."""
+"""Example plugin: deterministic extraction for the layout_02 invoice structure."""
 
 import re
 
-from .common import header, last_money, reconcile
-from .normalization import NUMBER, PERIOD, anchor, quantity, source_period, starts, text
-from .normalization import unit as normalize_unit
-from .types import Evidence, Identifier, Section, Usage
+from bills.parsing import api
+
+API_VERSION = 1
+
+Evidence = api.Evidence
+Identifier = api.Identifier
+NUMBER = api.NUMBER
+PERIOD = api.PERIOD
+Section = api.Section
+Usage = api.Usage
+anchor = api.anchor
+header = api.header
+last_money = api.last_money
+normalize_unit = api.unit
+quantity = api.quantity
+reconcile = api.reconcile
+source_period = api.source_period
+starts = api.starts
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_02", "v1", "3"
 TITLE = "Fakturaspecifikation"

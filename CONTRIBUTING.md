@@ -36,8 +36,9 @@ Follow [parser maintenance](docs/parsing.md) and the
 
 Separate vendor recognition, extraction and property assignment. Match source
 structures rather than vendor names, filenames or invoice dates. Preserve useful
-fields and evidence on failure; parsers never approve records. Register built-in
-modules in `bills/parsing/registry.py`; they require an image rebuild (see
+fields and evidence on failure; parsers never approve records. Parsers are installed
+plugin files, never compiled into the image; new formats and fixes belong in
+`docs/examples/parsers/` as reviewed examples (see
 [parser maintenance](docs/parsing.md#maintenance)).
 
 ## Checks
@@ -54,7 +55,7 @@ with `package.json` and rebuild the browser target. Runtime images must exclude
 test/browser dependencies. Documentation describes implemented behavior; keep
 private plans and verification logs out of public guides.
 
-Contributions use the project [license](LICENSE); independently authored parser plugins
+Contributions use the project [license](LICENSE); independently authored parsers
 may use their own, but derived code remains subject to it. Preserve [NOTICE](NOTICE) and
 dependency notices. Report vulnerabilities through [SECURITY.md](SECURITY.md).
 

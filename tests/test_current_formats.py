@@ -13,12 +13,12 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing import layout_03, layout_04, layout_05, layout_06, layout_06_v2
 from bills.parsing.reader import read_pdf
 from bills.parsing.registry import match_layouts
 from bills.processing import parse_document
 from bills.services import approve_review
 from bills.storage import ingest_pdf, private_path
+from tests.examples import layout_03, layout_04, layout_05, layout_06, layout_06_v2
 
 from .current_formats import chart_supply, cover_supply, monthly_network, quarterly_waste
 from .synthetic import write_pdf
@@ -36,7 +36,8 @@ def test_current_formats_match_reconcile_and_keep_one_consumption(
     tmp_path, parser, fixture, net, vat, rounding, total, billed
 ):
     pages = read_pdf(write_pdf(tmp_path / "synthetic.pdf", fixture()))
-    assert match_layouts(pages, [row[0].FAMILY for row in FORMATS]) == [parser]
+    matched = match_layouts(pages, [row[0].FAMILY for row in FORMATS])
+    assert [(p.FAMILY, p.VERSION) for p in matched] == [(parser.FAMILY, parser.VERSION)]
     candidate = parser.parse(pages)
     assert not candidate.issues
     assert (
@@ -218,7 +219,8 @@ def test_network_due_date_accepts_encoded_label_and_retains_conflicting_dates_fo
             for line in values[1]
         ]
     pages = read_pdf(write_pdf(tmp_path / "synthetic.pdf", values))
-    assert match_layouts(pages, [parser.FAMILY]) == [parser]
+    matched = match_layouts(pages, [parser.FAMILY])
+    assert [(p.FAMILY, p.VERSION) for p in matched] == [(parser.FAMILY, parser.VERSION)]
     candidate = parser.parse(pages)
     assert candidate.due_date.isoformat() == "2024-03-29"
     assert candidate.header_evidence["due_date"].text == due_line

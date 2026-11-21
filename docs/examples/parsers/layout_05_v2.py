@@ -1,7 +1,13 @@
-"""Supply specification with explicit billed meter-table consumption beside a chart."""
+"""Example plugin: deterministic extraction for the layout_05_v2 invoice structure."""
+
+from bills.parsing import api
 
 from . import layout_05
-from .normalization import anchor, text
+
+API_VERSION = 1
+
+anchor = api.anchor
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_05", "v2", "1"
 

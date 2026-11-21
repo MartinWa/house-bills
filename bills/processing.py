@@ -1,20 +1,130 @@
 """Read and propose outside database write transactions; never approve extraction."""
 
+import copy
 from dataclasses import asdict
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from filelock import FileLock
 
 from .models import Document, Invoice
+from .parsing.api import API_VERSION, configure
 from .parsing.common import header
 from .parsing.normalization import anchor
 from .parsing.reader import PDFReadError, read_pdf
 from .parsing.recognition import recognize_vendor
-from .parsing.registry import LAYOUTS, match_layouts
+from .parsing.registry import (
+    begin_document,
+    layouts,
+    match_layouts,
+    parser_identity,
+    parser_set_digest,
+    record_failure,
+    take_failures,
+)
+from .parsing.validation import ContractError, safe_candidate, validate_candidate
 from .services import StaleReviewError, record_extraction, resolve_section_property
 from .storage import open_original, private_path
-from .waste_costs import split_configured_costs
+from .waste_costs import configured_section_configuration
+
+EXTRACTION_FAILED = "Invoice extraction failed. Review the retained source and candidate values."
+AMBIGUOUS = "Invoice layout is ambiguous."
+
+
+def _identity_agrees(candidate, parser):
+    return (
+        candidate.layout_family,
+        candidate.layout_version,
+        candidate.parser_revision,
+    ) == (parser.FAMILY, parser.VERSION, parser.REVISION)
+
+
+def _read_header(parser, pages, candidate):
+    """Use format-specific headers, but never replace a validated fallback with junk."""
+    if not hasattr(parser, "read_header"):
+        return candidate, False
+    try:
+        proposed = parser.read_header(pages)
+        validate_candidate(proposed)
+        if not _identity_agrees(proposed, parser):
+            raise ContractError("parser metadata mismatch")
+    except Exception:
+        record_failure(parser, "read_header", "contract_failure")
+        return candidate, True
+    return proposed, False
+
+
+def _recovered(source, fallback):
+    """Keep valid partial values but never retain a rejected parser identity."""
+    recovered = safe_candidate(source, fallback)
+    (
+        recovered.layout_family,
+        recovered.layout_version,
+        recovered.parser_revision,
+    ) = (fallback.layout_family, fallback.layout_version, fallback.parser_revision)
+    return recovered
+
+
+def _parse(parser, pages, candidate):
+    """Invoke parse on a copy so a corrupting or raising parser cannot destroy the fallback."""
+    fallback = copy.deepcopy(candidate)
+    working = copy.deepcopy(candidate)
+    try:
+        returned = parser.parse(pages, candidate=working)
+        if returned is not working:
+            raise ContractError("parse must return the supplied candidate")
+        validate_candidate(working)
+        if not _identity_agrees(working, parser):
+            raise ContractError("parser metadata mismatch")
+    except Exception:
+        record_failure(parser, "parse", "contract_failure")
+        return _recovered(working, fallback), True
+    return working, False
+
+
+def _property_mapping(candidate, routing, vendor):
+    for section in candidate.sections:
+        try:
+            house = resolve_section_property(vendor, section.identifiers) if vendor else None
+            routing["section_properties"][section.section_id] = house.pk if house else None
+            if house is None:
+                candidate.issues.append(f"Missing property mapping in {section.section_id}")
+        except ValidationError:
+            routing["section_properties"][section.section_id] = None
+            candidate.issues.append(f"Conflicting property mappings in {section.section_id}")
+
+
+def _configured_split(parser, candidate, pages, routing):
+    """Invoke the optional operation without privileging any parser family."""
+    if not hasattr(parser, "configure_sections"):
+        return
+    properties = routing["section_properties"]
+    selected = frozenset(properties)
+    try:
+        properties, warnings = configure(
+            candidate,
+            pages,
+            properties,
+            family=parser.FAMILY,
+            version=parser.VERSION,
+            operation="waste_cost_split",
+            section_ids=selected,
+            configuration=configured_section_configuration(properties),
+        )
+    except ContractError:
+        record_failure(parser, "configure_sections", "contract_failure")
+        candidate.issues.append("Configured cost split failed; costs remain combined.")
+        return
+    routing["section_properties"] = properties
+    candidate.issues.extend(warnings)
+
+
+def _ambiguity_message(matches):
+    named = ", ".join(f"{parser.FAMILY}/{parser.VERSION}" for parser in matches[:4])
+    if len(matches) > 4:
+        named = f"{named}, and more"
+    return f"{AMBIGUOUS} Matching parsers: {named}."
 
 
 def parse_document(document_id, *, force=False, expected_revision=None):
@@ -61,66 +171,48 @@ def parse_document(document_id, *, force=False, expected_revision=None):
         except OSError, ValidationError:
             read_error = "Original is unavailable or its checksum does not match. Retry storage."
 
-        recognition = recognize_vendor(pages)
+        # Parser entry points receive copies; the reader's snapshot stays immutable.
+        evidence_pages = copy.deepcopy(pages)
+        begin_document()
+        recognition = recognize_vendor(evidence_pages)
         families = (
             list(recognition.vendor.layout_families.values_list("family", flat=True))
             if recognition.vendor
-            else list(LAYOUTS)
+            else list(layouts())
         )
-        matches = match_layouts(pages, families)
+        matches = match_layouts(copy.deepcopy(evidence_pages), families)
         parser = matches[0] if len(matches) == 1 and not read_error else None
-        candidate = header(
-            pages,
+        routing = {
+            "vendor_id": recognition.vendor.pk if recognition.vendor else None,
+            "issuer_identifiers": [asdict(identifier) for identifier in recognition.identifiers],
+            "layout_matches": [parser_identity(match) for match in matches],
+            "selected_parser": parser_identity(parser) if parser else None,
+            "plugin_set_digest": parser_set_digest(settings.APP_VERSION),
+            "api_version": API_VERSION,
+            "app_version": settings.APP_VERSION,
+            "failures": [],
+            "section_properties": {},
+        }
+        fallback = header(
+            evidence_pages,
             parser.FAMILY if parser else "",
             parser.VERSION if parser else "",
             parser.REVISION if parser else "",
         )
-        routing = {
-            "vendor_id": recognition.vendor.pk if recognition.vendor else None,
-            "issuer_identifiers": [asdict(identifier) for identifier in recognition.identifiers],
-            "layout_matches": [
-                {"family": p.FAMILY, "version": p.VERSION, "revision": p.REVISION} for p in matches
-            ],
-            "section_properties": {},
-        }
+        candidate = fallback
         error = read_error or recognition.issue
         if not error and not parser:
-            error = "Invoice layout is ambiguous." if matches else "Invoice layout is unsupported."
-        if not read_error and not any(line for page in pages for line in page):
+            error = _ambiguity_message(matches) if matches else "Invoice layout is unsupported."
+        if not read_error and not any(line for page in evidence_pages for line in page):
             error = "PDF has no readable text. Manual review is required."
         if parser:
-            try:
-                if hasattr(parser, "read_header"):
-                    candidate = parser.read_header(pages)
-                parser.parse(pages, candidate=candidate)
-            except Exception:
+            candidate, header_failed = _read_header(parser, copy.deepcopy(evidence_pages), fallback)
+            candidate, parse_failed = _parse(parser, copy.deepcopy(evidence_pages), candidate)
+            if header_failed or parse_failed:
                 # Retain in-progress fields even for an unexpected parser bug.
-                error = (
-                    "Invoice extraction failed. Review the retained source and candidate values."
-                )
-            for section in candidate.sections:
-                try:
-                    house = (
-                        resolve_section_property(recognition.vendor, section.identifiers)
-                        if recognition.vendor
-                        else None
-                    )
-                    routing["section_properties"][section.section_id] = house.pk if house else None
-                    if house is None:
-                        candidate.issues.append(f"Missing property mapping in {section.section_id}")
-                except ValidationError:
-                    routing["section_properties"][section.section_id] = None
-                    candidate.issues.append(
-                        f"Conflicting property mappings in {section.section_id}"
-                    )
-            if parser.FAMILY == "layout_01":
-                properties, warnings = split_configured_costs(
-                    candidate,
-                    pages,
-                    routing["section_properties"],
-                )
-                routing["section_properties"] = properties
-                candidate.issues.extend(warnings)
+                error = EXTRACTION_FAILED
+            _property_mapping(candidate, routing, recognition.vendor)
+            _configured_split(parser, candidate, copy.deepcopy(evidence_pages), routing)
         electricity = []
         for section in candidate.sections:
             house_id = routing["section_properties"].get(section.section_id)
@@ -143,7 +235,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             Invoice.Kind.CREDIT
             if any(
                 anchor(line, label)
-                for page in pages
+                for page in evidence_pages
                 for line in page
                 for label in ("Kreditfaktura", "Kreditnota")
             )
@@ -151,13 +243,24 @@ def parse_document(document_id, *, force=False, expected_revision=None):
         )
         routing["kind"] = kind
         candidate.issues = list(dict.fromkeys(candidate.issues))
+        try:
+            validate_candidate(candidate)
+        except ContractError:
+            candidate = _recovered(candidate, fallback)
+            candidate.issues.append(EXTRACTION_FAILED)
+            error = error or EXTRACTION_FAILED
+            routing["section_properties"] = {
+                section.section_id: routing["section_properties"].get(section.section_id)
+                for section in candidate.sections
+            }
+        routing["failures"] = take_failures()
         return record_extraction(
             document_id,
             candidate,
             error=error,
             routing=routing,
             needs_review=True,
-            page_evidence=[asdict(line) for page in pages for line in page],
+            page_evidence=[asdict(line) for page in evidence_pages for line in page],
             vendor=recognition.vendor,
             kind=kind,
         )

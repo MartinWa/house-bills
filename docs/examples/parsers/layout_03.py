@@ -1,20 +1,26 @@
-"""Quarterly waste invoice with a printed VAT basis and a payment summary."""
+"""Example plugin: deterministic extraction for the layout_03 invoice structure."""
 
 import re
 
-from bills.categories import waste_cost_subcategory
+from bills.parsing import api
 
-from .common import reconcile
-from .layout_helpers import (
-    capture,
-    cost_period,
-    empty_header,
-    identity_fields,
-    installation,
-    tax_basis,
-)
-from .normalization import DATE, NUMBER, PERIOD, money, source_period, text
-from .types import Section
+API_VERSION = 1
+
+DATE = api.DATE
+NUMBER = api.NUMBER
+PERIOD = api.PERIOD
+Section = api.Section
+capture = api.capture
+cost_period = api.cost_period
+empty_header = api.empty_header
+identity_fields = api.identity_fields
+installation = api.installation
+money = api.money
+reconcile = api.reconcile
+source_period = api.source_period
+tax_basis = api.tax_basis
+text = api.text
+waste_cost_subcategory = api.waste_cost_subcategory
 
 FAMILY, VERSION, REVISION = "layout_03", "v1", "3"
 TAX = rf"^Moms\s+25\s*%\s+beräknat på\s+({NUMBER})\s+({NUMBER})$"

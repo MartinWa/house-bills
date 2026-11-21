@@ -1,29 +1,30 @@
-"""Single-installation electricity supply with a cover totals row and specification."""
+"""Example plugin: deterministic extraction for the layout_04 invoice structure."""
 
 import re
 
-from .common import reconcile
-from .layout_helpers import (
-    QUANTITY,
-    capture,
-    cost_period,
-    empty_header,
-    identity_fields,
-    installation,
-    price_quantities,
-)
-from .normalization import (
-    DATE,
-    NUMBER,
-    anchor,
-    money,
-    quantity,
-    source_date,
-    source_period,
-    starts,
-    text,
-)
-from .types import Section, Usage
+from bills.parsing import api
+
+API_VERSION = 1
+
+DATE = api.DATE
+NUMBER = api.NUMBER
+QUANTITY = api.QUANTITY
+Section = api.Section
+Usage = api.Usage
+anchor = api.anchor
+capture = api.capture
+cost_period = api.cost_period
+empty_header = api.empty_header
+identity_fields = api.identity_fields
+installation = api.installation
+money = api.money
+price_quantities = api.price_quantities
+quantity = api.quantity
+reconcile = api.reconcile
+source_date = api.source_date
+source_period = api.source_period
+starts = api.starts
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_04", "v1", "1"
 ITEM = re.compile(r"^\*?(Medelspotpris|Rörliga kostnader|Fasta påslag|Månadsavgift)\b", re.I)

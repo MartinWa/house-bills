@@ -1,20 +1,30 @@
-"""Electricity supply with an explicit consumption table beside a historical chart."""
+"""Example plugin: deterministic extraction for the layout_05 invoice structure."""
 
 import re
 
-from .common import reconcile
-from .layout_helpers import (
-    QUANTITY,
-    capture,
-    cost_period,
-    due_amount,
-    empty_header,
-    identity_fields,
-    installation,
-    tax_basis,
-)
-from .normalization import DATE, NUMBER, PERIOD, anchor, money, quantity, source_period, text
-from .types import Section, Usage
+from bills.parsing import api
+
+API_VERSION = 1
+
+DATE = api.DATE
+NUMBER = api.NUMBER
+PERIOD = api.PERIOD
+QUANTITY = api.QUANTITY
+Section = api.Section
+Usage = api.Usage
+anchor = api.anchor
+capture = api.capture
+cost_period = api.cost_period
+due_amount = api.due_amount
+empty_header = api.empty_header
+identity_fields = api.identity_fields
+installation = api.installation
+money = api.money
+quantity = api.quantity
+reconcile = api.reconcile
+source_period = api.source_period
+tax_basis = api.tax_basis
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_05", "v1", "2"
 TAX = rf"^Moms\s+25\s*%\s+av\s+({NUMBER})\s*kr\s+({NUMBER})\s*kr$"

@@ -1,9 +1,14 @@
-"""Historical product-number network, water and supply specifications."""
+"""Example plugin: deterministic extraction for the layout_01_v2 invoice structure."""
 
 import re
 
+from bills.parsing import api
+
 from . import layout_01
-from .normalization import text
+
+API_VERSION = 1
+
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_01", "v2", "7"
 PRODUCT = re.compile(
@@ -29,6 +34,9 @@ def matches(pages):
     return any(layout_01.specification(line) for page in pages for line in page) and any(
         PRODUCT.match(text(line)) for page in pages for line in page
     )
+
+
+configure_sections = layout_01.configure_sections
 
 
 def read_header(pages):

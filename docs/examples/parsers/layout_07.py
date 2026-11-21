@@ -1,11 +1,27 @@
-"""Electricity supply with an area-labelled consumption row and inclusive VAT."""
+"""Example plugin: deterministic extraction for the layout_07 invoice structure."""
 
 import re
 
-from .common import reconcile
-from .layout_helpers import capture, cost_period, empty_header, identity_fields, installation
-from .normalization import DATE, NUMBER, anchor, money, quantity, source_date, source_period, text
-from .types import Section, Usage
+from bills.parsing import api
+
+API_VERSION = 1
+
+DATE = api.DATE
+NUMBER = api.NUMBER
+Section = api.Section
+Usage = api.Usage
+anchor = api.anchor
+capture = api.capture
+cost_period = api.cost_period
+empty_header = api.empty_header
+identity_fields = api.identity_fields
+installation = api.installation
+money = api.money
+quantity = api.quantity
+reconcile = api.reconcile
+source_date = api.source_date
+source_period = api.source_period
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_07", "v1", "1"
 TAX = rf"^Moms\s+25\s*%\s+på\s+({NUMBER})\s*kr\s+ingår\s+med\s+({NUMBER})\s*kr$"

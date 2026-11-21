@@ -6,11 +6,11 @@ from datetime import date
 import pytest
 
 from bills.categories import waste_cost_subcategory
-from bills.parsing import layout_01, layout_02, layout_02_v2
 from bills.parsing.common import last_money, reconcile
 from bills.parsing.normalization import money, quantity, source_date, source_period
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Evidence
+from tests.examples import layout_01, layout_02, layout_02_v2
 
 from .synthetic import multi_service, shared_supply, write_pdf
 

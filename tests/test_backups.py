@@ -15,9 +15,9 @@ from django.db import connection, connections, transaction
 
 from bills import backups, storage
 from bills.models import Property, Vendor
-from bills.parsing import layout_02
 from bills.parsing.reader import read_pdf
 from bills.services import approve_review
+from tests.examples import layout_02
 
 from .synthetic import shared_supply, write_pdf
 from .test_ingestion import approve, ingest

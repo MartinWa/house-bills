@@ -1,16 +1,20 @@
 # Initial setup
 
 Start [local development](development.md#local-application) for evaluation or
-follow [production installation](deployment.md). Create a staff account, sign in
+follow [production installation](deployment.md). The image ships no parser code, so
+install the reviewed parser directory you need (for example a copy of
+`docs/examples/parsers/`) before configuring invoice formats; see
+[installed parsers](parsing.md#installed-parsers). Create a staff account, sign in
 and open **User → Administration**.
 
 1. Add a property such as **Example House** with a slug such as `example-house`.
 2. Add a vendor such as **Example Utilities**. Under **Vendor identification**, add
    its labelled organization/VAT identifier from the issuer part of an invoice.
    Keep actual identifiers private.
-3. Select compatible **Invoice formats**. Upload a representative PDF and inspect
-   its proposal if you need to identify its family. An unfamiliar structure uses
-   manual review.
+3. Select compatible **Invoice formats**. The choices are the installed parsers, so
+   install the directory first. Upload a representative PDF and inspect its proposal if
+   you need to identify its family. An unfamiliar structure uses manual review or needs
+   a new parser.
 4. Add **Invoice property rules** for installation or contract keys. Each section of a
    shared invoice maps independently. Shared customer accounts and recipient
    postal addresses do not identify a property.

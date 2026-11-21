@@ -4,6 +4,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def isolated_parser_registry():
+    """Keep ambient or test-installed plugins from leaking between tests."""
+    from bills.parsing import registry
+
+    registry.reset()
+    yield
+    registry.reset()
+
+
+@pytest.fixture(autouse=True)
 def classification_catalogue(request):
     if request.node.get_closest_marker("django_db") or any(
         name in request.fixturenames for name in ("db", "transactional_db", "admin_user")

@@ -172,8 +172,30 @@ charge from the remaining general allocation. Existing fraction costs, VAT, peri
 and weights stay as reviewed; the new parts share the remaining allocation's VAT.
 Contracts whose reviewed totals differ from the source are retained with a warning.
 Manual entries without source charge amounts remain combined.
-Corrections are limited to Layout 01 extractions. Older extractions with no layout
-family must match the full Layout 01 signature before their evidence is used.
+Corrections use the current approval's linked extraction and the exact parser identity
+recorded for it. A newer unapproved proposal never changes the correction source, and a
+linked extraction without readable evidence is reported instead of substituted. The
+recorded parser version must be installed, its revision must match the installed code and
+so must its recorded fingerprint. On a mismatch, a missing version or a missing hook, the
+command reports a parser-specific warning and makes no correction plan: redeploy matching
+code, or explicitly re-parse and review a new proposal, before correcting with changed
+code. Legacy approvals without a linked extraction use retained attempts only when their
+recorded identity agrees with the approval. Without recorded identity, one strict matching
+installed parser with a hook may be used, and the reconstructed provenance is recorded.
+Attempts without a recorded fingerprint require a new extraction.
+
+Each operation is scoped: a waste command splits only configured waste fractions for the
+selected property, and a demand command separates only printed demand charges and billed
+kW for the selected property; repeated calls are idempotent. New review snapshots record
+the source extraction ID, invoked parser family/version/revision/source/fingerprint, host
+and API versions, operation, selected section IDs and any legacy provenance limitation.
+Earlier extraction metadata and review snapshots remain immutable. Use the matching
+command for each operation:
+
+```sh
+docker compose -f compose.development.yaml exec app python manage.py split_electricity_demand --property PROPERTY_ID --apply --reviewer STAFF_USER_ID
+```
+
 The command continues after stale or invalid invoice corrections, prints each
 failure and a final count, and exits unsuccessfully if any corrections failed.
 Successful corrections remain saved; rerunning retries the failed invoices.

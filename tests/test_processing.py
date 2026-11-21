@@ -24,12 +24,13 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing import layout_02
+from bills.parsing import registry
 from bills.parsing.reader import PDFReadError, read_pdf
 from bills.parsing.recognition import recognize_vendor
-from bills.parsing.registry import LAYOUTS
+from bills.parsing.registry import layouts
 from bills.parsing.types import Evidence
 from bills.services import approve_review
+from tests.examples import layout_02
 from tools.synthetic_pdf import invoice_pdf
 
 from .synthetic import multi_service, shared_supply, write_pdf
@@ -47,7 +48,7 @@ def originals(settings, tmp_path):
 def configured():
     vendor = Vendor.objects.create(name="Synthetic Utilities", slug="synthetic-utilities")
     VendorIssuerIdentifier.objects.create(vendor=vendor, kind="vat", value=ISSUER)
-    for family in LAYOUTS:
+    for family in layouts():
         VendorLayoutFamily.objects.create(vendor=vendor, family=family)
     houses = [Property.objects.create(name=f"House {i}", slug=f"house-{i}") for i in (1, 2)]
     for i, house in enumerate(houses, 1):
@@ -98,7 +99,7 @@ def test_supported_uploads_persist_proposals_without_approved_rows(
     candidate = attempt.candidate
     assert not duplicate and document.state == "review" and attempt.state == "review"
     assert (attempt.layout_family, attempt.layout_version) == (family, version)
-    assert attempt.parser_revision == LAYOUTS[family][version]
+    assert attempt.parser_revision == layouts()[family][version]
     assert candidate["issues"] == [] and candidate["requires_review"]
     assert [u["quantity_milli"] for s in candidate["sections"] for u in s["usages"]] == quantities
     assert all(candidate["routing"]["section_properties"].values())
@@ -350,8 +351,9 @@ def test_parser_bug_keeps_mutated_candidate_and_original(tmp_path, configured, m
         layout_02_original(pages, candidate=candidate)
         raise RuntimeError("Synthetic error must not leak private details")
 
-    layout_02_original = layout_02.parse
-    monkeypatch.setattr(layout_02, "parse", broken_parse)
+    installed = registry.installed(layout_02.FAMILY, layout_02.VERSION)
+    layout_02_original = installed.parse
+    monkeypatch.setattr(installed, "parse", broken_parse)
     document, attempt, _, _ = upload(tmp_path, shared_supply())
     assert "extraction failed" in attempt.error and "private details" not in attempt.error
     assert len(attempt.candidate["sections"]) == 2 and document.state == "review"

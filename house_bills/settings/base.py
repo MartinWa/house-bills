@@ -110,6 +110,25 @@ STORAGES = {
 # Originals are served only by authenticated views, never by static/media routing.
 MEDIA_ROOT = DATA_DIR / "invoices"
 MEDIA_URL = "/private-files/"
+PARSER_PLUGINS_VALUE = env_text("HOUSE_BILLS_PARSER_PLUGINS")
+
+
+def _parser_directory(value):
+    """Configured plugin code must stay outside writable application storage."""
+    if not value:
+        return ""
+    path = Path(value)
+    resolved = path.resolve()
+    for root in (DATA_DIR, MEDIA_ROOT):
+        resolved_root = root.resolve()
+        if resolved == resolved_root or resolved_root in resolved.parents:
+            raise ImproperlyConfigured(
+                "HOUSE_BILLS_PARSER_PLUGINS must be outside application storage."
+            )
+    return value
+
+
+HOUSE_BILLS_PARSER_PLUGINS = _parser_directory(PARSER_PLUGINS_VALUE)
 FILE_UPLOAD_PERMISSIONS = 0o600
 FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o700
 try:

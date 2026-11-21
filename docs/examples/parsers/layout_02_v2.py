@@ -1,14 +1,17 @@
-"""Electricity supply v2: service-specific title and inline installation key.
-
-The replacement structure has its own signature; v1 stays installed for old bills.
-"""
+"""Example plugin: deterministic extraction for the layout_02_v2 invoice structure."""
 
 import re
 
-from .common import header
+from bills.parsing import api
+
 from .layout_02 import ITEM, extract_supply
-from .normalization import anchor, text
-from .types import Identifier
+
+API_VERSION = 1
+
+Identifier = api.Identifier
+anchor = api.anchor
+header = api.header
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_02", "v2", "2"
 TITLE = "Fakturaspecifikation elhandel"

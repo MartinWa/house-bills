@@ -29,7 +29,7 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing.registry import LAYOUTS, layout_family_choices
+from bills.parsing.registry import layout_family_choices, layouts
 
 from . import schemas as s
 from .audit import log_change
@@ -827,7 +827,7 @@ def format_representation(key, vendor_id=None):
         "format_key": key,
         "name": choices[key],
         "vendor_id": vendor_id,
-        "versions": sorted(LAYOUTS[key]),
+        "versions": sorted(layouts()[key]),
         "links": links,
     }
 
@@ -875,7 +875,7 @@ def category(request, key: str):
 def formats(request):
     return catalogue_page(
         request,
-        [format_representation(key) for key in LAYOUTS],
+        [format_representation(key) for key in layouts()],
         sort_keys={"format_key"},
         default="format_key",
     )

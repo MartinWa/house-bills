@@ -77,8 +77,12 @@ records. It has no tenant or per-property isolation. Parsing is synchronous;
 NAS timing has not been measured. Reports use invoice dates for costs and whole
 billed consumption periods, without calendar-month proration. Selected demand and waste
 fraction charges are separated; remaining fee details stay in the original PDF.
-Folder import, historical OCR, Grafana access transport
-and loading parser plugins from a mounted directory are not implemented.
+Folder import, historical OCR, Grafana access transport and an in-application
+extension/package system are not implemented. The image ships no parser code: every
+invoice layout is installed from an operator-managed, read-only directory of single-file
+parsers, and reviewed examples for the supported structures live in
+[`docs/examples/parsers/`](docs/examples/parsers). See
+[installed parsers](docs/parsing.md#installed-parsers).
 
 Release publishing is configured, but the first published image and NAS verification
 are pending; local production builds and the automated Grafana check support evaluation
@@ -97,7 +101,7 @@ House Bills is source-available under [PolyForm Noncommercial 1.0.0](LICENSE).
 Noncommercial use needs nothing further; commercial use requires a separate paid
 license from the copyright holder, arranged through the repository's Discussions.
 See [NOTICE](NOTICE) for attribution and the boundary for independently authored
-parser plugins and separately licensed dependencies.
+parsers and separately licensed dependencies.
 
 Contributions are accepted under [CLA.md](CLA.md), which keeps the contributor's
 copyright and grants the project the rights that dual licensing needs.

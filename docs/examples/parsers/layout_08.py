@@ -1,12 +1,23 @@
-"""Compact supply summary with printed consumption, VAT and invoice rounding."""
+"""Example plugin: deterministic extraction for the layout_08 invoice structure."""
 
 import re
 from datetime import date, timedelta
 
-from .common import reconcile
-from .layout_helpers import capture, empty_header, installation
-from .normalization import NUMBER, money, quantity, source_date, text
-from .types import Section, Usage
+from bills.parsing import api
+
+API_VERSION = 1
+
+NUMBER = api.NUMBER
+Section = api.Section
+Usage = api.Usage
+capture = api.capture
+empty_header = api.empty_header
+installation = api.installation
+money = api.money
+quantity = api.quantity
+reconcile = api.reconcile
+source_date = api.source_date
+text = api.text
 
 FAMILY, VERSION, REVISION = "layout_08", "v1", "3"
 DAY_MONTH = r"(\d{1,2})([a-zåäö]+)\.?"

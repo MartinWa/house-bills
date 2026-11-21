@@ -9,6 +9,9 @@ services:
     init: true
     ports:
       - "127.0.0.1:${HOUSE_BILLS_DEV_PORT:-8001}:8000"
+    environment:
+      # The image ships no parsers; install the reviewed examples for development.
+      HOUSE_BILLS_PARSER_PLUGINS: /app/docs/examples/parsers
     volumes:
       - type: bind
         source: .
@@ -30,6 +33,8 @@ services:
       target: browser
     image: house-bills:browser
     init: true
+    environment:
+      HOUSE_BILLS_PARSER_PLUGINS: /app/docs/examples/parsers
     volumes:
       - type: bind
         source: .

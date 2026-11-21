@@ -492,6 +492,97 @@ def run_server(*, migrate, trust_proxy, restored_data=None):
             print(log.read().decode(), end="")
 
 
+PLUGIN_SOURCE = """from bills.parsing import api
+
+API_VERSION = 1
+FAMILY = "plugin_probe_layout"
+VERSION = "v1"
+REVISION = "1"
+
+
+def matches(pages):
+    return False
+
+
+def parse(pages, *, candidate=None):
+    return candidate or api.header(pages, FAMILY, VERSION, REVISION)
+"""
+
+
+def check_rejects():
+    """True when ``parsers --check`` rejects the current registry state."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    try:
+        call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+    except CommandError:
+        return True
+    return False
+
+
+def check_parser_plugins():
+    """Verify plugin path policy, load status and the read-only code mount."""
+    from django.core.management import call_command
+
+    from bills.parsing import registry
+
+    assert os.geteuid() != 0, "Plugins must run as the configured non-root user."
+    storage_root = Path(settings.MEDIA_ROOT).parent.resolve()
+    assert storage_root.is_absolute()
+    for value in (str(storage_root / "plugins"), "relative/parsers"):
+        result = subprocess.run(
+            [sys.executable, "-c", "import house_bills.settings.production"],
+            env={**os.environ, "HOUSE_BILLS_PARSER_PLUGINS": value},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode != 0, value
+        assert "HOUSE_BILLS_PARSER_PLUGINS" in result.stderr, result.stderr
+    mounted = Path("/parsers")
+    assert mounted.is_dir(), "The probe requires an installed parser directory at /parsers."
+    # The Compose override supplies this read-only bind mount.
+    assert mounted.resolve() != storage_root
+    assert storage_root not in mounted.resolve().parents
+    settings.HOUSE_BILLS_PARSER_PLUGINS = str(mounted)
+    registry.reset()
+    call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+    parsers = registry.parsers()
+    assert parsers and all(len(parser.FINGERPRINT) == 64 for parser in parsers)
+    assert not os.access(mounted, os.W_OK), "The plugin mount must be read-only."
+    try:
+        (mounted / "tamper.py").write_text("tamper", encoding="utf-8")
+    except OSError:
+        pass
+    else:
+        (mounted / "tamper.py").unlink()
+        raise AssertionError("Read-only plugin code must not be writable.")
+    settings.HOUSE_BILLS_PARSER_PLUGINS = ""
+    registry.reset()
+    assert registry.layouts() == {}, "The image must ship no parser code."
+    assert check_rejects(), "A vendor format without an installed parser must fail --check."
+    with tempfile.TemporaryDirectory(prefix="missing-parsers-") as scratch:
+        settings.HOUSE_BILLS_PARSER_PLUGINS = str(Path(scratch) / "absent")
+        registry.reset()
+        assert registry.layouts() == {}
+        assert "directory_missing" in {error.code for error in registry.status().errors}
+        assert check_rejects()
+        settings.HOUSE_BILLS_PARSER_PLUGINS = scratch
+        registry.reset()
+        assert registry.status().errors == []
+        assert check_rejects()
+    with tempfile.TemporaryDirectory(prefix="parser-plugins-") as scratch:
+        (Path(scratch) / "probe_layout.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
+        settings.HOUSE_BILLS_PARSER_PLUGINS = scratch
+        registry.reset()
+        parser = registry.installed("plugin_probe_layout", "v1")
+        assert parser is not None and len(parser.FINGERPRINT) == 64
+    settings.HOUSE_BILLS_PARSER_PLUGINS = str(mounted)
+    registry.reset()
+    print("Parser plugin path, load and read-only mount checks passed.")
+
+
 def main():
     assert os.geteuid() != 0, "Production must run as non-root."
     assert all(
@@ -507,6 +598,12 @@ def main():
         assert os.environ["HOUSE_BILLS_VERSION"] == os.environ["EXPECTED_VERSION"]
     django.setup()
     assert not settings.DEBUG
+    from bills.parsing import registry
+
+    assert registry.layouts(), (
+        "Set HOUSE_BILLS_PARSER_PLUGINS to a mounted, reviewed parser directory "
+        "before running the probe."
+    )
     database = Path(settings.DATABASES["default"]["NAME"])
     assert not database.exists(), "Use fresh, disposable storage for this probe."
     environment = {**os.environ, "HOUSE_BILLS_MIGRATE_ON_START": "false"}
@@ -531,6 +628,7 @@ def main():
         assert connection.execute("SELECT COUNT(*) FROM django_migrations").fetchone()[0] > 0
     run_server(migrate=False, trust_proxy=False)
     check_backup_restore(database)
+    check_parser_plugins()
     print("Non-root production startup, migration guards, HTTPS/proxy and static checks passed.")
 
 

@@ -66,11 +66,12 @@ jobs:
           docker compose -f compose.yaml -f compose.host-port.yaml config --quiet
           docker compose -f compose.yaml -f compose.proxy-network.yaml config --quiet
           docker compose -f compose.yaml -f compose.host-port.yaml -f compose.proxy-network.yaml config --quiet
+          docker compose -f compose.yaml -f compose.parser-plugins.yaml config --quiet
           rm .env
       - name: Lint and check formatting
         run: |
-          docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py manage.py
-          docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py manage.py
+          docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
+          docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
       - name: Check Django and migration drift
         run: |
           docker compose -f compose.development.yaml run --rm app python manage.py check --database default
@@ -119,6 +120,8 @@ jobs:
         run: |
           docker run --name house-bills-ci-browser --network none --init --shm-size=1g \
             --cap-drop ALL --security-opt no-new-privileges:true \
+            --mount type=bind,source="$PWD/docs/examples/parsers",target=/parsers,readonly \
+            --env HOUSE_BILLS_PARSER_PLUGINS=/parsers \
             house-bills:browser python -m tools.run_browser
       - name: Collect synthetic browser artifacts
         if: always()
@@ -187,6 +190,8 @@ jobs:
           docker run --rm --network none --read-only --cap-drop ALL \
             --security-opt no-new-privileges:true \
             --tmpfs /data:mode=1777 --tmpfs /tmp \
+            --mount type=bind,source="$PWD/docs/examples/parsers",target=/parsers,readonly \
+            --env HOUSE_BILLS_PARSER_PLUGINS=/parsers \
             --env HOUSE_BILLS_SECRET_KEY=synthetic-ci-container-key-never-for-runtime-000000000000000000 \
             --env HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid \
             house-bills:ci sh -ec '
@@ -195,5 +200,28 @@ jobs:
               python manage.py migrate --check
               python manage.py check --deploy --database default
             '
+      - name: Verify the parser directory override and read-only mount
+        run: |
+          parser_dir="$RUNNER_TEMP/house-bills-parsers"
+          data_dir="$RUNNER_TEMP/house-bills-data"
+          env_file="$RUNNER_TEMP/house-bills.env"
+          uid="$(id -u)"
+          gid="$(id -g)"
+          mkdir -p "$parser_dir" "$data_dir"
+          # The image ships no parser code: install the reviewed example parsers.
+          cp docs/examples/parsers/*.py "$parser_dir/"
+          cat > "$env_file" <<EOF
+          HOUSE_BILLS_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')
+          HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid
+          HOUSE_BILLS_CSRF_TRUSTED_ORIGINS=https://ci.invalid
+          HOUSE_BILLS_UPDATE_CHECK=false
+          EOF
+          export HOUSE_BILLS_IMAGE=house-bills:ci
+          export HOUSE_BILLS_ENV_FILE="$env_file"
+          export APP_UID="$uid" APP_GID="$gid"
+          export APP_DATA_PATH="$data_dir"
+          export APP_PARSER_PATH="$parser_dir"
+          docker compose -f compose.yaml -f compose.parser-plugins.yaml run --rm app \
+            python -m tools.check_production
       - name: Audit the tested production image
         run: bash tools/audit_image.sh house-bills:ci

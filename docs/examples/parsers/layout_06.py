@@ -1,19 +1,27 @@
-"""Network and energy-tax totals with monthly billed kWh and bounded CID repair."""
+"""Example plugin: deterministic extraction for the layout_06 invoice structure."""
 
 import re
 from datetime import timedelta
 
-from .common import reconcile
-from .layout_helpers import (
-    capture,
-    cost_period,
-    due_amount,
-    empty_header,
-    installation,
-    price_quantities,
-)
-from .normalization import DATE, NUMBER, money, normalized_text, source_date
-from .types import Identifier, Section, Usage
+from bills.parsing import api
+
+API_VERSION = 1
+
+DATE = api.DATE
+Identifier = api.Identifier
+NUMBER = api.NUMBER
+Section = api.Section
+Usage = api.Usage
+capture = api.capture
+cost_period = api.cost_period
+due_amount = api.due_amount
+empty_header = api.empty_header
+installation = api.installation
+money = api.money
+normalized_text = api.normalized_text
+price_quantities = api.price_quantities
+reconcile = api.reconcile
+source_date = api.source_date
 
 FAMILY, VERSION, REVISION = "layout_06", "v1", "4"
 CID = {196: "Ä", 197: "Å", 214: "Ö", 228: "ä", 229: "å", 246: "ö"}
