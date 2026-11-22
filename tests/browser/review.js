@@ -84,7 +84,10 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   await page.goto(`${base}/parsers/`);
   await text("Installed profiles");
   assert((await page.locator("main").innerText()).includes("layout_01"), "Parser page lost an installed profile");
+  await text("2 parser files were rejected");
   await text("broken.py: import_failed");
+  // Same fixture name as tools/run_browser.py; it is the longest reportable filename.
+  await text(`rejected_${"x".repeat(60)}.py: import_failed`);
   await text("Every configured vendor format has an installed parser.");
   assert(!(await page.locator("main").innerText()).includes("/app/docs/examples/parsers"), "Parser page exposed a filesystem path");
   await page.screenshot({ path: `${artifacts}/parsers-desktop.png`, fullPage: true });
@@ -485,6 +488,7 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   assert(download.suggestedFilename() === "unsupported.pdf", "Download filename changed");
   await download.saveAs(`${artifacts}/original.pdf`);
   await page.getByRole("link", { name: "Review invoice", exact: true }).click();
+  await page.waitForLoadState("load");
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Review form overflows on mobile");
   await page.screenshot({ path: `${artifacts}/review-mobile.png` });

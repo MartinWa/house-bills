@@ -26,7 +26,7 @@
   <section aria-labelledby="load-errors-heading">
     <h3 id="load-errors-heading">Load errors</h3>
     {% if health.errors %}
-      <ul>{% for error in health.errors %}<li>{{ error.filename|default:"directory" }}: {{ error.code }}</li>{% endfor %}</ul>
+      <ul class="parser-errors">{% for error in health.errors %}<li>{{ error.filename|default:"directory" }}: {{ error.code }}</li>{% endfor %}</ul>
     {% else %}<p>No load errors.</p>{% endif %}
   </section>
   <section aria-labelledby="missing-formats-heading">

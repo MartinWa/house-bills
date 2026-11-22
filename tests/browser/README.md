@@ -75,12 +75,12 @@ docker compose -f compose.development.yaml run --rm browser python -m tools.run_
 
 `tools/run_browser.py` creates a new database, secret and originals directory under the
 browser state's temporary storage, migrates it, populates synthetic setup and starts
-the application on container loopback. It also copies `docs/examples/parsers` into a
-writable artifact directory, adds a `broken.py` rejection and points
-`HOUSE_BILLS_PARSER_PLUGINS` there, because the browser service mounts the repository
-read-only. It removes that instance after the check. The normal development database is
-never used. Setup additionally refuses any instance already containing users or billing
-records.
+the application on container loopback. It copies the reviewed examples from
+`HOUSE_BILLS_PARSER_PLUGINS` — the Compose bind mount or the CI `/parsers` mount, because
+the image excludes `docs/` — into a writable artifact directory, adds rejected files with
+a short and an 80-character name and points `HOUSE_BILLS_PARSER_PLUGINS` there. It removes
+that instance after the check. The normal development database is never used. Setup
+additionally refuses any instance already containing users or billing records.
 
 The image installs Playwright from `package-lock.json` and Chromium during its build.
 No host Node, browser or Playwright CLI installation is needed. `tests/browser/run.cjs`
