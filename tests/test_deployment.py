@@ -61,6 +61,10 @@ def test_release_helpers_accept_a_platform():
     assert 'platform_args=(--platform "$platform")' in audit
     for name in ("IMAGE", "VERSION", "SBOM", "PLATFORM"):
         assert f"${{{name}:?" in check
+    # The probe requires an installed parser directory and the image ships none.
+    assert "docs/examples/parsers" in check
+    assert "target=/parsers,readonly" in check
+    assert "HOUSE_BILLS_PARSER_PLUGINS=/parsers" in check
 
 
 def test_published_package_must_be_publicly_pullable():
