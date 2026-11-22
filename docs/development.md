@@ -199,7 +199,8 @@ an optional second argument selects the SPDX output path and a third scans one p
 for example `linux/arm64`. The script verifies its pinned Trivy download before use.
 `tools/check_release_image.sh` is what the release workflow runs per platform: it expects
 `IMAGE`, `VERSION`, `SBOM` and `PLATFORM` in the environment, runs the production probe on
-the pulled digest and then audits it.
+the pulled digest with the reviewed example parsers mounted read-only at `/parsers` and
+then audits it.
 
 The arm64 image is built under emulation and is first exercised in the release workflow;
 no arm64 host is available for local verification.
