@@ -1,0 +1,4 @@
+{% if parser_health.visible %}
+  <p class="notice"{% if parser_health.state == 'errors' %} role="alert"{% endif %} id="parser-health">{{ parser_health.message }}{% if user.is_staff and request.resolver_match.url_name != 'parsers' %} <a href="{% url 'bills:parsers' %}">Parser status</a>.{% endif %}</p>
+  <p class="parser-health-note">Parser health reflects this worker's loaded set; parser files changed on disk require a restart of every worker.</p>
+{% endif %}

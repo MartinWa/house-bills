@@ -11,6 +11,10 @@ review links and the correct PDF page.
 Multiple network readings must produce separate consecutive consumption periods,
 reconcile against repeated billed price quantities and pass review/approval.
 Review contains allocation totals and billing periods, with no itemized fee fields.
+Parser profile checks cover the **Extraction source** block on the document and review
+pages, the rejected-file notice, and the staff **Installed parsers** page with its load
+errors, vendor-format links and desktop/mobile layout. An anonymous request for the page
+is redirected.
 Invalid totals/dates must retain the entered values and show visible errors.
 Reports must reflect corrections and duplicates, keep costs independent of multiple
 readings, select network electricity with explicit supply fallbacks, preserve signed
@@ -71,9 +75,12 @@ docker compose -f compose.development.yaml run --rm browser python -m tools.run_
 
 `tools/run_browser.py` creates a new database, secret and originals directory under the
 browser state's temporary storage, migrates it, populates synthetic setup and starts
-the application on container loopback. It removes that instance after the check. The
-normal development database is never used. Setup additionally refuses any instance
-already containing users or billing records.
+the application on container loopback. It copies the reviewed examples from
+`HOUSE_BILLS_PARSER_PLUGINS` — the Compose bind mount or the CI `/parsers` mount, because
+the image excludes `docs/` — into a writable artifact directory, adds rejected files with
+a short and an 80-character name and points `HOUSE_BILLS_PARSER_PLUGINS` there. It removes
+that instance after the check. The normal development database is never used. Setup
+additionally refuses any instance already containing users or billing records.
 
 The image installs Playwright from `package-lock.json` and Chromium during its build.
 No host Node, browser or Playwright CLI installation is needed. `tests/browser/run.cjs`

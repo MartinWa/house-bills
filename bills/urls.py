@@ -8,6 +8,7 @@ urlpatterns = [
     path("release-status/", views.release_status, name="release-status"),
     path("upload/", views.upload, name="upload"),
     path("documents/", views.documents, name="documents"),
+    path("parsers/", views.parsers, name="parsers"),
     path("documents/<int:pk>/", views.document, name="document"),
     path("documents/<int:pk>/delete/", views.delete_document, name="delete_document"),
     path("documents/<int:pk>/cancel/", views.cancel_manual_entry, name="cancel_manual_entry"),

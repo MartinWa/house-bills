@@ -32,6 +32,7 @@ def parser_identity(parser):
         "revision": parser.REVISION,
         "fingerprint": parser_fingerprint(parser),
         "code_fingerprint": parser_code_fingerprint(parser),
+        "filename": getattr(parser, "PLUGIN_FILENAME", ""),
     }
 
 

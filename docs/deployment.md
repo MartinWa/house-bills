@@ -208,6 +208,20 @@ reports vendor formats that have no installed parser.
 references or an unreadable host implementation digest. Unset and empty directories pass
 when no configured vendor references an unavailable family.
 
+For diagnosis after a deploy or a parser change, staff open **Installed parsers** in the
+User menu: this worker's loaded profiles, rejected files and vendor formats with no
+installed parser. Every signed-in user sees the same load health on document and review
+pages, so a reviewer can tell an unsupported layout from a rejected parser directory. The
+page is diagnosis and cleanup help; `parsers --check` remains the deployment gate.
+
+This release records the plugin filename in each new attempt's routing metadata. That
+edits `bills/parsing/registry.py`, which is part of the host implementation digest, so the
+digest moves once. Every attempt retained before the upgrade fails the host check:
+retained waste-cost and electricity-demand corrections are refused until each approved
+document is re-parsed and its proposal re-reviewed, as the [correction
+policy](review.md#re-parsing-and-stale-forms) describes. The browser shows **The host
+implementation changed** on those documents; it is a re-parse instruction, not an alarm.
+
 A vendor selection whose parser is no longer installed stays listed with no versions and
 can still be unselected, so cleanup after removing code needs no admin workaround:
 selecting a format requires installed code, listing and unselecting do not.

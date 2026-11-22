@@ -43,6 +43,7 @@ def installed_identity(family, version):
         "revision": parser.REVISION,
         "fingerprint": parser.FINGERPRINT,
         "code_fingerprint": parser.CODE_FINGERPRINT,
+        "filename": parser.PLUGIN_FILENAME,
     }
 
 

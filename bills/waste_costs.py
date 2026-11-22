@@ -6,6 +6,17 @@ from datetime import date
 from django.conf import settings
 
 from .models import Property, PropertyService
+from .parser_profiles import (
+    CODE_CHANGED,
+    HOST_CHANGED,
+    MATCHES,
+    NOT_INSTALLED,
+    NOT_RECORDED,
+    NOT_ROUTED,
+    REVISION_CHANGED,
+    SOURCE_CHANGED,
+    profile_state,
+)
 from .parsing.api import API_VERSION, configure
 from .parsing.common import reconcile
 from .parsing.compatibility import cost_totals_candidate
@@ -22,6 +33,32 @@ from .parsing.validation import ContractError
 
 COST_OPERATION = "waste_cost_split"
 DEMAND_OPERATION = "electricity_demand_split"
+
+# Correction wording per shared profile code; the UI owns its own message table.
+PROFILE_REFUSALS = {
+    NOT_RECORDED: (
+        "The recorded parser source is unavailable; re-parse and review before correcting costs."
+    ),
+    NOT_ROUTED: (
+        "The recorded parser source is unavailable; re-parse and review before correcting costs."
+    ),
+    NOT_INSTALLED: "The recorded parser version is not installed; costs unchanged.",
+    REVISION_CHANGED: (
+        "The recorded parser revision differs from the installed code; re-parse and review "
+        "before correcting costs."
+    ),
+    SOURCE_CHANGED: (
+        "The recorded parser source is unavailable; re-parse and review before correcting costs."
+    ),
+    CODE_CHANGED: (
+        "The recorded parser shared code differs from the installed implementation; re-parse "
+        "and review before correcting costs."
+    ),
+    HOST_CHANGED: (
+        "The host parsing implementation differs from the recorded extraction; re-parse and "
+        "review before correcting costs."
+    ),
+}
 
 
 def configured_fraction_costs(property_ids):
@@ -120,14 +157,6 @@ def _approval_identity(review):
     )
 
 
-def _recorded_routing(extraction):
-    routing = extraction.candidate.get("routing")
-    if not isinstance(routing, dict):
-        return {}, {}
-    selected = routing.get("selected_parser")
-    return routing, selected if isinstance(selected, dict) else {}
-
-
 def _select_extraction(invoice, review):
     """Use the approval-linked extraction; never substitute a later proposal."""
     if review.extraction is not None:
@@ -161,33 +190,10 @@ def retained_source(invoice, review, operation):
     if not pages:
         return None, ["No retained source evidence for itemized costs."]
     if extraction.layout_family:
+        state = profile_state(extraction)[0]
+        if state != MATCHES:
+            return None, [PROFILE_REFUSALS[state]]
         parser = installed(extraction.layout_family, extraction.layout_version)
-        if parser is None:
-            return None, ["The recorded parser version is not installed; costs unchanged."]
-        if parser.REVISION != extraction.parser_revision:
-            return None, [
-                "The recorded parser revision differs from the installed code; re-parse and "
-                "review before correcting costs."
-            ]
-        routing, selected = _recorded_routing(extraction)
-        recorded = selected.get("fingerprint")
-        if not isinstance(recorded, str) or recorded != parser_fingerprint(parser):
-            return None, [
-                "The recorded parser source is unavailable; re-parse and review before "
-                "correcting costs."
-            ]
-        code = parser_code_fingerprint(parser)
-        if not code or selected.get("code_fingerprint") != code:
-            return None, [
-                "The recorded parser shared code differs from the installed implementation; "
-                "re-parse and review before correcting costs."
-            ]
-        host = host_implementation_digest()
-        if not host or routing.get("host_implementation") != host:
-            return None, [
-                "The host parsing implementation differs from the recorded extraction; "
-                "re-parse and review before correcting costs."
-            ]
     else:
         matches = match_layouts(pages, list(layouts()))
         if len(matches) != 1 or not hasattr(matches[0], "configure_sections"):

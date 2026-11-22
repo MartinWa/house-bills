@@ -78,8 +78,24 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   assert((await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link").allTextContents()).join(",") === "Invoices,Documents,Reports,Missing invoices", "Main navigation order is incorrect");
   await page.locator(".user-menu summary").click();
   assert(await page.getByRole("link", { name: "Administration", exact: true }).isVisible(), "Administration is missing from the User menu");
+  assert(await page.getByRole("link", { name: "Installed parsers", exact: true }).isVisible(), "Installed parsers is missing from the User menu");
   await page.keyboard.press("Escape");
   assert(!await page.locator(".user-menu").evaluate(element => element.open), "Escape did not close the User menu");
+  await page.goto(`${base}/parsers/`);
+  await text("Installed profiles");
+  assert((await page.locator("main").innerText()).includes("layout_01"), "Parser page lost an installed profile");
+  await text("2 parser files were rejected");
+  await text("broken.py: import_failed");
+  // Same fixture name as tools/run_browser.py; it is the longest reportable filename.
+  await text(`rejected_${"x".repeat(60)}.py: import_failed`);
+  await text("Every configured vendor format has an installed parser.");
+  assert(!(await page.locator("main").innerText()).includes("/app/docs/examples/parsers"), "Parser page exposed a filesystem path");
+  await page.screenshot({ path: `${artifacts}/parsers-desktop.png`, fullPage: true });
+  await page.setViewportSize({ width: 320, height: 844 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Parser page overflows on mobile");
+  await page.screenshot({ path: `${artifacts}/parsers-mobile.png`, fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${base}/invoices/`);
   for (const [name, slug] of [["Browser House One", "browser-house-one"], ["Browser House Two", "browser-house-two"]]) {
     await page.goto(`${base}/admin/bills/property/add/`);
     await page.getByLabel("Name:", { exact: true }).fill(name);
@@ -335,6 +351,15 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   await page.getByRole("link", { name: "Open document", exact: true }).click();
   const approvedSummary = page.getByRole("region", { name: "Approved invoice", exact: true });
   assert((await approvedSummary.innerText()).includes("141,125 kWh"), "Document does not show the approved consumption correction");
+  const extractionSource = page.locator("details.extraction-source");
+  assert(await extractionSource.count() === 1, "Document does not show the extraction source");
+  assert(!await extractionSource.evaluate(element => element.open), "Extraction source is expanded by default");
+  await extractionSource.locator("summary").click();
+  assert((await extractionSource.innerText()).includes("Matches the installed parser."), "Document source does not name the installed profile");
+  assert((await extractionSource.innerText()).includes("layout_02"), "Document source lost the parser family");
+  await extractionSource.locator("summary").click();
+  const healthNotice = page.locator("#parser-health");
+  assert((await healthNotice.innerText()).includes("broken.py: import_failed"), "Document does not show the rejected parser file");
   const extractionHistory = page.locator("details.extraction-history");
   assert(!await extractionHistory.evaluate(element => element.open), "Reviewed extraction history is expanded by default");
   assert(!(await page.locator("main").innerText()).includes("140,250 kWh"), "Old extracted consumption is visible as current values");
@@ -345,6 +370,10 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   assert(await page.getByRole("link", { name: "Review invoice", exact: true }).count() === 1, "Document has duplicate review entry points");
   await page.getByRole("link", { name: "Review invoice", exact: true }).click();
   assert(await page.getByRole("link", { name: "Load latest extraction", exact: true }).count() === 0, "Already reviewed extraction is offered again");
+  const reviewSource = page.locator("details.extraction-source");
+  assert(await reviewSource.count() === 1, "Review does not show the extraction source");
+  await reviewSource.locator("summary").click();
+  assert((await reviewSource.innerText()).includes("Matches the installed parser."), "Review source does not name the installed profile");
   await page.getByRole("link", { name: "Cancel", exact: true }).click();
   await submit("Re-parse document");
   assert(await page.getByRole("heading", { name: "Extracted proposal", exact: true }).isVisible(), "New extraction is hidden as reviewed history");
@@ -459,6 +488,7 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
   assert(download.suggestedFilename() === "unsupported.pdf", "Download filename changed");
   await download.saveAs(`${artifacts}/original.pdf`);
   await page.getByRole("link", { name: "Review invoice", exact: true }).click();
+  await page.waitForLoadState("load");
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "Review form overflows on mobile");
   await page.screenshot({ path: `${artifacts}/review-mobile.png` });
@@ -909,6 +939,8 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
     const visitor = await anonymous.newPage();
     await visitor.goto(`${manual.url}view/`);
     assert(visitor.url().includes("/login/"), "Private source did not redirect an anonymous browser");
+    const parserPage = await anonymous.request.get(`${base}/parsers/`, { maxRedirects: 0 });
+    assert(parserPage.status() === 302 && parserPage.headers().location.startsWith("/admin/login/"), "Anonymous access reached the parser page");
   } finally {
     await anonymous.close();
   }

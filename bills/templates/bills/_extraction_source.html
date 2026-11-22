@@ -1,0 +1,19 @@
+{% if extraction_source %}
+  <details class="extraction-source">
+    <summary>Extraction source</summary>
+    {% if extraction_source.family %}
+      <dl>
+        <dt>Parser</dt>
+        <dd>{{ extraction_source.family }} / {{ extraction_source.version }} / revision {{ extraction_source.revision }}{% if extraction_source.filename %} · <code>{{ extraction_source.filename }}</code>{% endif %}</dd>
+        {% if extraction_source.fingerprint %}<dt>Source fingerprint</dt><dd><code title="{{ extraction_source.fingerprint.full }}">{{ extraction_source.fingerprint.short }}</code></dd>{% endif %}
+        {% if extraction_source.code_fingerprint %}<dt>Code fingerprint</dt><dd><code title="{{ extraction_source.code_fingerprint.full }}">{{ extraction_source.code_fingerprint.short }}</code></dd>{% endif %}
+      </dl>
+    {% endif %}
+    <p>{{ extraction_source.reason }}</p>
+    {% if extraction_source.plugin_errors %}
+      <p>Parser directory errors recorded at extraction time:</p>
+      <ul>{% for error in extraction_source.plugin_errors %}<li>{{ error.filename|default:"directory" }}: {{ error.code }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if review and extraction_source.mismatch %}<p class="parser-health-note">Re-parsing may change this proposal; this review is not blocked.</p>{% endif %}
+  </details>
+{% endif %}

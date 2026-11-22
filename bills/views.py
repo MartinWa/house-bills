@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import permission_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
@@ -33,7 +34,18 @@ from .invoice_coverage import mark_invoice_not_sent, read_invoice_coverage
 from .invoice_folders import invoice_folders
 from .manual_entries import create_manual_entry
 from .models import BillingSection, Document, Invoice
-from .presentation import extraction_summary, proposal_differences, review_summary, warning_details
+from .parser_health import missing_vendor_formats
+from .parser_profiles import installed_profile, short_fingerprint
+from .parsing import registry
+from .parsing.api import API_VERSION
+from .presentation import (
+    extraction_source,
+    extraction_summary,
+    parser_health,
+    proposal_differences,
+    review_summary,
+    warning_details,
+)
 from .processing import parse_document
 from .releases import update_available
 from .reporting import read_report
@@ -261,6 +273,8 @@ def document(request, pk):
             ),
             "invoice": invoice,
             "differences": proposal_differences(invoice, attempt, pending_only=True),
+            "extraction_source": extraction_source(attempt),
+            "parser_health": parser_health(),
             "reparse_form": ReparseForm(
                 initial={"extraction_revision": source.extraction_revision}
             ),
@@ -623,10 +637,42 @@ def review(request, pk):
                 else pending_differences
             ),
             "has_latest_changes": bool(pending_differences),
+            "extraction_source": extraction_source(origin["extraction"]),
+            "parser_health": parser_health(),
             "show_errors": request.method == "POST" and (status != 200 or not data.get("add_row")),
             "stale": status == 409,
         },
         status=status,
+    )
+
+
+@never_cache
+@require_GET
+@staff_member_required
+def parsers(request):
+    return render(
+        request,
+        "bills/parsers.html",
+        {
+            "health": parser_health(),
+            "profiles": [installed_profile(parser) for parser in registry.parsers()],
+            "missing": [
+                {
+                    "family": row["family"],
+                    "vendors": [
+                        {
+                            "name": vendor.name,
+                            "url": reverse("admin:bills_vendor_change", args=[vendor.pk]),
+                        }
+                        for vendor in row["vendors"]
+                    ],
+                }
+                for row in missing_vendor_formats()
+            ],
+            "host_implementation": short_fingerprint(registry.host_implementation_digest()),
+            "api_version": API_VERSION,
+            "app_version": settings.APP_VERSION,
+        },
     )
 
 

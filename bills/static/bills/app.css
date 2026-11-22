@@ -18,8 +18,9 @@ legend { font-weight: 650; padding: 0 .35rem; }
 .field > input:not([type="checkbox"]), .field > select, .field > textarea { width: 100%; }
 .checkbox-field { display: flex; gap: .5rem; align-items: start; }
 .checkbox-field > input { flex: 0 0 auto; }
-.notice { border-left: 4px solid #b07512; background: #fff0c4; padding: .25rem 1rem; margin: 1rem 0; border-radius: 0 .5rem .5rem 0; }
-.errorlist { color: #9a2323; padding-left: 1.2rem; }
+.notice { border-left: 4px solid #b07512; background: #fff0c4; padding: .25rem 1rem; margin: 1rem 0; border-radius: 0 .5rem .5rem 0; overflow-wrap: anywhere; }
+.errorlist { color: #9a2323; padding-left: 1.2rem; overflow-wrap: anywhere; }
+.parser-errors { overflow-wrap: anywhere; }
 [aria-invalid="true"] { border-color: #9a2323; }
 table { width: 100%; border-collapse: collapse; background: #fffefb; }
 th, td { text-align: left; vertical-align: top; border-bottom: 1px solid #e9e1d0; padding: .85rem; }
@@ -31,6 +32,11 @@ td ul { padding-left: 1rem; margin: 0; }
 .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid #e1d8c3; border-radius: .65rem; }
 .extraction-history { margin-top: 2rem; padding: 1rem; border: 1px solid #e1d8c3; border-radius: .65rem; background: #fffaf0; }
 .extraction-history > summary { cursor: pointer; font-weight: 650; }
+.extraction-source { margin-top: 1rem; padding: 1rem; border: 1px solid #e1d8c3; border-radius: .65rem; background: #fffaf0; overflow-wrap: anywhere; }
+.extraction-source > summary { cursor: pointer; font-weight: 650; }
+.extraction-source dl { margin: .5rem 0; }
+.extraction-source dd { overflow-wrap: anywhere; }
+.parser-health-note { color: #60543d; font-size: .9rem; }
 .schedule-details { margin-top: 2rem; padding: 1rem; border: 1px solid #e1d8c3; border-radius: .65rem; background: #fffaf0; }
 .schedule-details > summary { cursor: pointer; font-weight: 650; }
 .waste-total { padding: 1rem; border: 1px solid #d1d9bd; border-radius: .65rem; background: #f0f4e5; }

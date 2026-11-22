@@ -183,6 +183,7 @@ def test_mounted_plugin_loads_matches_extracts_and_records_provenance(settings, 
         "revision": "1",
         "fingerprint": parser.FINGERPRINT,
         "code_fingerprint": parser.CODE_FINGERPRINT,
+        "filename": "synthetic_plugin.py",
     }
     assert parser.PLUGIN_DEPENDENCIES == ()
     assert attempt.candidate["routing"]["plugin_set_digest"]

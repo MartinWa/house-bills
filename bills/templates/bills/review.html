@@ -3,6 +3,7 @@
 {% block title %}Review invoice · House Bills{% endblock %}
 {% block content %}
   <h2>Review invoice</h2>
+  {% include "bills/_parser_health.html" %}
   <p><a href="{% url 'bills:document' document.pk %}">{{ document.display_name }}</a>{% if document.original_path %} · Original PDF: <a href="{% url 'bills:source_view' document.pk %}" target="_blank" rel="noopener">View</a> · <a href="{% url 'bills:source' document.pk %}">Download</a>{% endif %}</p>
   {% if can_discard_manual_entry %}<p>This manual entry has not been saved. Cancel removes the unfinished entry.</p>{% endif %}
   {% if invoice.review_revision %}<p><a href="{% url 'bills:invoice' invoice.pk %}">Approved revision {{ invoice.review_revision }}</a> is retained until you save this correction.</p>{% endif %}
@@ -20,6 +21,7 @@
     </section>
   {% endif %}
   {% if show_errors %}<div role="alert" class="notice"><p>The invoice was not saved. Your entries are retained below.</p>{{ review.header.non_field_errors }}{% if stale %}<p><a href="{% url 'bills:review' document.pk %}{% if from_proposal %}?proposal=latest{% endif %}">Reload the latest review</a> before applying your changes.</p>{% endif %}</div>{% endif %}
+  {% include "bills/_extraction_source.html" with review=True %}
   <form method="post" id="review-form" novalidate>
     {% csrf_token %}
     {% for field in review.header.hidden_fields %}{{ field }}{% if show_errors %}{{ field.errors }}{% endif %}{% endfor %}

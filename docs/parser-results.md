@@ -6,10 +6,10 @@ candidates. Installed layouts, versions and revisions are listed in
 persistence.
 
 Extraction attempts also record private routing metadata: matched parsers with their
-family/version/revision, source fingerprint and code fingerprint, the selected parser,
-`API_VERSION`, the host `APP_VERSION`, a digest over the installed directory, the host
-implementation digest, per-stage parser failures and parser-directory load errors. A parser
-fingerprint is a SHA-256
+family/version/revision, bounded plugin filename, source fingerprint and code fingerprint,
+the selected parser, `API_VERSION`, the host `APP_VERSION`, a digest over the installed
+directory, the host implementation digest, per-stage parser failures and parser-directory
+load errors. A parser fingerprint is a SHA-256
 over the exact compiled source snapshot that executed, including its declared
 family/version/revision; bytecode caches are never read. Its code fingerprint covers that
 snapshot plus the transitive sibling modules it imports, so changing a shared helper moves

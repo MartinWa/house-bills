@@ -2,6 +2,7 @@
 {% block title %}{{ document.display_name }} · House Bills{% endblock %}
 {% block content %}
   <h2>{{ document.display_name }}</h2>
+  {% include "bills/_parser_health.html" %}
   <p>Status: {{ document.get_state_display }}.{% if document.storage_needs_attention %} Storage: {{ document.get_storage_state_display }}.{% endif %}</p>
   {% if document.processing_message and document.source != 'manual' %}<p>{{ document.processing_message }}</p>{% endif %}
   {% if document.storage_error %}<p role="alert">{{ document.storage_error }}</p>{% endif %}
@@ -53,4 +54,5 @@
   {% elif document.source != 'manual' %}
     <p>No extraction has been recorded yet.</p>
   {% endif %}
+  {% include "bills/_extraction_source.html" %}
 {% endblock %}
