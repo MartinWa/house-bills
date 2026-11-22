@@ -7,7 +7,7 @@ from urllib.request import Request, build_opener
 import django
 from django.conf import settings
 
-from .check_http import NoRedirect, get
+from .check_http import NoRedirect, budget, get
 
 
 def main():
@@ -30,7 +30,7 @@ def main():
         "Cookie": cookie.output(header="", sep=";").strip(),
     }
     with build_opener(NoRedirect).open(
-        Request("http://127.0.0.1:8000/reports/", headers=headers), timeout=5
+        Request("http://127.0.0.1:8000/reports/", headers=headers), timeout=budget(5)
     ) as response:
         page = response.read()
         assert response.status == 200 and b"100 kWh" in page and b"-1 m" in page
@@ -39,7 +39,7 @@ def main():
         assert hashlib.sha256(payload).hexdigest() == document.sha256
         with build_opener(NoRedirect).open(
             Request(f"http://127.0.0.1:8000/documents/{document.pk}/source/", headers=headers),
-            timeout=5,
+            timeout=budget(5),
         ) as response:
             assert response.status == 200 and response.read() == payload
         with get(f"/documents/{document.pk}/source/", host="ci.invalid", secure=True) as response:

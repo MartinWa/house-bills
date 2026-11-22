@@ -67,6 +67,20 @@ def test_release_helpers_accept_a_platform():
     assert "HOUSE_BILLS_PARSER_PLUGINS=/parsers" in check
 
 
+def test_emulated_release_check_gets_a_larger_timeout_budget():
+    workflow = read(".github/workflows/release.yml")
+    check = read("tools/check_release_image.sh")
+    http = read("tools/check_http.py")
+
+    # QEMU runs startup, migrations and requests an order of magnitude slower.
+    assert 'TIMEOUT_SCALE: "20"' in workflow
+    assert "scale=${TIMEOUT_SCALE:-1}" in check
+    assert '--env TIMEOUT_SCALE="$scale"' in check
+    assert 'os.environ.get("TIMEOUT_SCALE", "1")' in http
+    for probe in ("tools/check_production.py", "tools/check_recovery.py"):
+        assert "budget(" in read(probe)
+
+
 def test_published_package_must_be_publicly_pullable():
     text = read(".github/workflows/release.yml")
 
