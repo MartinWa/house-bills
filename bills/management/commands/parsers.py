@@ -2,7 +2,7 @@
 
 from django.core.management.base import BaseCommand, CommandError
 
-from bills.models import VendorLayoutFamily
+from bills.parser_health import missing_vendor_formats
 from bills.parsing import registry
 
 
@@ -41,13 +41,10 @@ class Command(BaseCommand):
         self.stdout.write(f"host\t{host or 'unavailable'}")
         for error in discovery.errors:
             self.stdout.write(f"error\t{error.filename or 'directory'}\t{error.code}")
-        unavailable = sorted(
-            set(VendorLayoutFamily.objects.values_list("family", flat=True))
-            - set(registry.layouts())
-        )
-        for family in unavailable:
+        unavailable = missing_vendor_formats()
+        for row in unavailable:
             self.stdout.write(
-                f"missing\t{family}\tconfigured vendor references an unavailable format"
+                f"missing\t{row['family']}\tconfigured vendor references an unavailable format"
             )
         if not options["check"]:
             return

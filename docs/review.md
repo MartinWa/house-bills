@@ -187,6 +187,17 @@ installed parser with a hook may be used, and the reconstructed provenance is re
 Attempts recorded without the parser or host provenance described above require a
 new extraction.
 
+The same recorded-state checks appear in the browser as **Extraction source** on the
+document and review pages, worded for diagnosis: **This invoice format is not installed**,
+**A different parser revision is installed**, **The parser source changed**, **The shared
+parser code changed** or **The host implementation changed**, each ending in **Re-parse to
+refresh this proposal**. **Matches the installed parser** means the recorded profile still
+agrees with the loaded worker. Those lines never block approval or a correction; the
+commands above refuse a retained correction under the same conditions. Attempts recorded
+before parser identity show **Parser metadata was not recorded; re-parse to record it**,
+and unrouted attempts show **No installed parser matched at extraction time** with the
+parser-directory errors recorded at that moment.
+
 Each operation is scoped: a waste command splits only configured waste fractions for the
 selected property, and a demand command separates only printed demand charges and billed
 kW for the selected property; repeated calls are idempotent. New review snapshots record

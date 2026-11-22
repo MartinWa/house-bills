@@ -1,12 +1,16 @@
 """Run the synthetic Chromium scenario against a fresh, temporary Linux instance."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from .check_http import wait_for_server
+
+EXAMPLES = Path(__file__).resolve().parent.parent / "docs" / "examples" / "parsers"
+BROKEN_PARSER = "raise RuntimeError('synthetic browser parser')\n"
 
 
 def main():
@@ -16,9 +20,15 @@ def main():
     artifacts = state / "browser-artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
     run_artifacts = Path(tempfile.mkdtemp(prefix="run-", dir=artifacts))
+    # The browser service mounts the repository read-only, so the scenario installs
+    # its own writable parser directory: the reviewed examples plus one rejection.
+    parsers = run_artifacts / "parsers"
+    shutil.copytree(EXAMPLES, parsers)
+    (parsers / "broken.py").write_text(BROKEN_PARSER, encoding="utf-8")
     environment = {
         **os.environ,
         "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
+        "HOUSE_BILLS_PARSER_PLUGINS": str(parsers),
         # Synthetic release identity; the browser scenario intercepts status requests.
         "HOUSE_BILLS_VERSION": "0.0.1",
         "HOUSE_BILLS_UPDATE_CHECK": "true",

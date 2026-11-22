@@ -36,8 +36,11 @@ restrict those privileges. Review code and dependencies before mounting it,
 test against wholly synthetic documents in a disposable container with no real data or
 production secrets, and retain the reviewed source, version and digest for rollback.
 Fingerprints identify executed source; they provide no signature, author authentication
-or safety assurance. The examples in `docs/examples/parsers/` are reviewed in this
-repository but are no safer once copied: audit local changes too.
+or safety assurance. Distributable plugin packaging — metadata, signing and trust on
+upgrade — remains deliberate later work; today an install is a reviewed directory mounted
+read-only, replaced by redeploying the same reviewed files. The examples in
+`docs/examples/parsers/` are reviewed in this repository but are no safer once copied:
+audit local changes too.
 
 Parser installation is an operator deployment action: there is no
 web, admin or API code upload, source editor, caller-selected import path, runtime

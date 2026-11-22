@@ -31,6 +31,11 @@ td ul { padding-left: 1rem; margin: 0; }
 .table-scroll { overflow-x: auto; margin: 1rem 0; border: 1px solid #e1d8c3; border-radius: .65rem; }
 .extraction-history { margin-top: 2rem; padding: 1rem; border: 1px solid #e1d8c3; border-radius: .65rem; background: #fffaf0; }
 .extraction-history > summary { cursor: pointer; font-weight: 650; }
+.extraction-source { margin-top: 1rem; padding: 1rem; border: 1px solid #e1d8c3; border-radius: .65rem; background: #fffaf0; }
+.extraction-source > summary { cursor: pointer; font-weight: 650; }
+.extraction-source dl { margin: .5rem 0; }
+.extraction-source dd { overflow-wrap: anywhere; }
+.parser-health-note { color: #60543d; font-size: .9rem; }
 .schedule-details { margin-top: 2rem; padding: 1rem; border: 1px solid #e1d8c3; border-radius: .65rem; background: #fffaf0; }
 .schedule-details > summary { cursor: pointer; font-weight: 650; }
 .waste-total { padding: 1rem; border: 1px solid #d1d9bd; border-radius: .65rem; background: #f0f4e5; }

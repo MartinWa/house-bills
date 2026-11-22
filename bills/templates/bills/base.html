@@ -29,7 +29,7 @@
             <summary>{% include "bills/_icon.html" with name="user" %}<span>User</span>{% include "bills/_icon.html" with name="chevron" %}</summary>
             <div class="user-menu-panel">
               <p>Signed in as <strong>{{ user.get_username }}</strong></p>
-              {% if user.is_staff %}<a href="{% url 'admin:index' %}">Administration</a>{% endif %}
+              {% if user.is_staff %}<a href="{% url 'bills:parsers' %}">Installed parsers</a><a href="{% url 'admin:index' %}">Administration</a>{% endif %}
               <form method="post" action="{% url 'logout' %}">
                 {% csrf_token %}<button type="submit">Sign out</button>
               </form>

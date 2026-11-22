@@ -3,9 +3,75 @@
 import re
 from datetime import date, timedelta
 
+from . import parser_health as parser_health_state
+from . import parser_profiles
 from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Property, Service, Usage, Vendor
+from .parsing import registry
 from .parsing.compatibility import cost_totals_candidate
+
+PROFILE_REASONS = {
+    parser_profiles.NOT_INSTALLED: "This invoice format is not installed.",
+    parser_profiles.REVISION_CHANGED: "A different parser revision is installed.",
+    parser_profiles.SOURCE_CHANGED: "The parser source changed.",
+    parser_profiles.CODE_CHANGED: "The shared parser code changed.",
+    parser_profiles.HOST_CHANGED: "The host implementation changed.",
+}
+PROFILE_MATCHES = "Matches the installed parser."
+PROFILE_NOT_RECORDED = "Parser metadata was not recorded; re-parse to record it."
+PROFILE_NOT_ROUTED = "No installed parser matched at extraction time."
+PROFILE_REFRESH = "Re-parse to refresh this proposal."
+
+
+def extraction_source(attempt):
+    """Bounded parser profile for the latest attempt, with UI-owned wording."""
+    summary = parser_profiles.profile_summary(attempt)
+    if summary is None:
+        return None
+    state = summary["state"]
+    if state == parser_profiles.MATCHES:
+        reason, mismatch = PROFILE_MATCHES, False
+    elif state in PROFILE_REASONS:
+        reason, mismatch = f"{PROFILE_REASONS[state]} {PROFILE_REFRESH}", True
+    elif state == parser_profiles.NOT_RECORDED:
+        reason, mismatch = PROFILE_NOT_RECORDED, False
+    else:
+        reason, mismatch = PROFILE_NOT_ROUTED, False
+    return {**summary, "reason": reason, "mismatch": mismatch}
+
+
+def parser_health():
+    """Parser-directory notice shown where failures are read and repaired."""
+    state = parser_health_state.directory_state(registry.status())
+    rows = [f"{row['filename'] or 'directory'}: {row['code']}" for row in state["errors"]]
+    if state["state"] == parser_health_state.ERRORS:
+        if any(row["filename"] for row in state["errors"]):
+            count = len(rows)
+            rejected = "were" if count != 1 else "was"
+            files = "files" if count != 1 else "file"
+            message = (
+                f"{count} parser {files} {rejected} rejected ({', '.join(rows)}). "
+                "Unsupported uploads may be due to the parser directory."
+            )
+        else:
+            message = (
+                f"The parser directory could not be loaded ({', '.join(rows)}). "
+                "Unsupported uploads may be due to the parser directory."
+            )
+    elif state["state"] == parser_health_state.EMPTY:
+        files = "files" if state["files"] != 1 else "file"
+        message = (
+            "The configured parser directory contains no parsers "
+            f"({state['files']} Python {files} found)."
+        )
+    elif state["state"] == parser_health_state.UNCONFIGURED:
+        message = (
+            "No parser directory is configured. Install parsers, then configure each "
+            "vendor's invoice formats."
+        )
+    else:
+        message = ""
+    return {**state, "rows": rows, "message": message, "visible": bool(message)}
 
 
 def scaled_value(value, scale, precision):

@@ -1,0 +1,54 @@
+{% extends "bills/base.html" %}
+{% block title %}Installed parsers · House Bills{% endblock %}
+{% block content %}
+  <h2>Installed parsers</h2>
+  <p>Read-only view of the parser profiles this worker loaded, its load errors and vendor invoice formats with no installed parser.</p>
+  {% include "bills/_parser_health.html" with parser_health=health %}
+  <section aria-labelledby="profiles-heading">
+    <h3 id="profiles-heading">Installed profiles</h3>
+    {% if profiles %}
+      <div class="table-scroll"><table>
+        <thead><tr><th scope="col">File</th><th scope="col">Invoice format</th><th scope="col">Version</th><th scope="col">Revision</th><th scope="col">Source fingerprint</th><th scope="col">Code fingerprint</th><th scope="col">Shared siblings</th></tr></thead>
+        <tbody>{% for profile in profiles %}
+          <tr>
+            <td>{{ profile.filename|default:"—" }}</td>
+            <td>{{ profile.family }}</td>
+            <td>{{ profile.version }}</td>
+            <td>{{ profile.revision }}</td>
+            <td>{% if profile.fingerprint %}<code title="{{ profile.fingerprint.full }}">{{ profile.fingerprint.short }}</code>{% else %}—{% endif %}</td>
+            <td>{% if profile.code_fingerprint %}<code title="{{ profile.code_fingerprint.full }}">{{ profile.code_fingerprint.short }}</code>{% else %}—{% endif %}</td>
+            <td>{{ profile.dependencies }}</td>
+          </tr>
+        {% endfor %}</tbody>
+      </table></div>
+    {% else %}<p>No parsers are installed.</p>{% endif %}
+  </section>
+  <section aria-labelledby="load-errors-heading">
+    <h3 id="load-errors-heading">Load errors</h3>
+    {% if health.errors %}
+      <ul>{% for error in health.errors %}<li>{{ error.filename|default:"directory" }}: {{ error.code }}</li>{% endfor %}</ul>
+    {% else %}<p>No load errors.</p>{% endif %}
+  </section>
+  <section aria-labelledby="missing-formats-heading">
+    <h3 id="missing-formats-heading">Vendor formats without an installed parser</h3>
+    {% if missing %}
+      <div class="table-scroll"><table>
+        <thead><tr><th scope="col">Invoice format</th><th scope="col">Vendors</th></tr></thead>
+        <tbody>{% for row in missing %}
+          <tr><td>{{ row.family }}</td><td><ul>{% for vendor in row.vendors %}<li><a href="{{ vendor.url }}">{{ vendor.name }}</a></li>{% endfor %}</ul></td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      <p>Open a vendor to remove the unavailable format from its invoice formats.</p>
+    {% else %}<p>Every configured vendor format has an installed parser.</p>{% endif %}
+  </section>
+  <section aria-labelledby="versions-heading">
+    <h3 id="versions-heading">Versions</h3>
+    <dl>
+      <dt>Host implementation</dt>
+      <dd>{% if host_implementation %}<code title="{{ host_implementation.full }}">{{ host_implementation.short }}</code>{% else %}Unavailable; retained corrections are refused.{% endif %}</dd>
+      <dt>Parser API version</dt><dd>{{ api_version }}</dd>
+      <dt>Application version</dt><dd>{{ app_version }}</dd>
+    </dl>
+  </section>
+  <p>Changing parser files requires a container restart and an explicit re-parse; <code>manage.py parsers --check</code> is the deployment gate.</p>
+{% endblock %}

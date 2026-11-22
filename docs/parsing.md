@@ -228,7 +228,11 @@ because discovery also runs for management commands such as `migrate`.
 Vocabulary is closed: services must be `electricity`,
 `electricity_network`, `electricity_supply`, `water`, `waste` or `other`, and usage units
 `kWh`, `kW`, `m3` or `kg`. District heating, gas and new units are later work; an
-unsupported value fails validation rather than being silently accepted.
+unsupported value fails validation rather than being silently accepted. The shipped
+examples and the recognition helpers match Swedish labels, organisation/VAT identifiers
+and the F-skatt footer anchor; those anchors are hard-coded, so installing a plugin is
+not language or country support. Multi-country and multi-language recognition remains
+later work and needs its own reviewed code.
 
 ### Shared code
 
@@ -403,11 +407,12 @@ declares, so a parser that reuses shared code cannot keep its identity when that
 changes. Relative imports may appear in any filename order: the loader retries files that
 wait on a sibling and reports only the files that never resolve.
 
-The extraction attempt's `routing` payload records each matched parser's identity, source
-and code fingerprints, the selected parser, host `APP_VERSION`, `API_VERSION`, a digest
-over the installed directory and a digest over the host parsing implementation, plus the
-parser-directory load errors that explain a missing parser. The installed-directory digest
-covers every readable file through its identity or source snapshot and adds the directory
+The extraction attempt's `routing` payload records each matched parser's identity, plugin
+filename, source and code fingerprints, the selected parser, host `APP_VERSION`,
+`API_VERSION`, a digest over the installed directory and a digest over the host parsing
+implementation, plus the parser-directory load errors that explain a missing parser. The
+installed-directory digest covers every readable file through its identity or source
+snapshot and adds the directory
 and load error codes, so two different directories never share it. A retained
 correction requires the recorded source fingerprint, code fingerprint and host
 implementation digest, so changed parser code, shared code or hook implementation needs a
@@ -421,6 +426,52 @@ or local values. Detailed failures are investigated locally with synthetic docum
 A failing matcher is excluded; a failing selected parser keeps a safe partial proposal;
 a failing configuration hook restores the pre-hook candidate and property mapping.
 Process exits, hangs and resource exhaustion are outside these guards.
+
+### Parser profiles in the browser
+
+Parser code is installed by the operator, so the failure modes are invisible in the
+browser: a missing directory makes every upload unsupported, one rejected file removes
+its family from routing, and a vendor format whose parser was removed only fails the
+deployment check. Three read-only views close that gap; none of them uploads, edits,
+reloads or approves parser code.
+
+**Document** and **Review invoice** show a small **Extraction source** block for the
+latest attempt and for the approval-linked extraction respectively. It names the parser
+family, version, revision and plugin file, the first eight characters of the source and
+code fingerprints (the full value is the title), and the installed state: **Matches the
+installed parser** or the first failing check. A format that is no longer installed, a
+different revision, changed parser source, changed shared code or a changed host
+implementation each end with **Re-parse to refresh this proposal**. Re-parsing is the
+only way to refresh a recorded attempt; neither approve nor a correction is blocked.
+Attempts that never routed show **No installed parser matched at extraction time** with
+the parser-directory errors recorded at that moment. Attempts recorded before parser
+identity existed show their family/version/revision and **Parser metadata was not
+recorded; re-parse to record it**. Missing plugin filenames on older attempts are treated
+the same way.
+
+Documents, review and the parser page also show a **parser health** notice to every
+signed-in user: rejected files with their bounded names and codes, a configured directory
+with no parsers, or no configured directory at all. Load errors come first, then
+emptiness, then configuration, because a failed discovery produces neither parsers nor
+files. Recorded state says **at extraction time**; the notice describes the serving
+worker **now**. The registry is a one-shot per-process cache, so changing files on disk
+requires a restart of every worker before the notice or a re-parse sees them.
+
+**Installed parsers** (`/parsers/`, staff only, linked from the User menu next to
+Administration) lists every installed profile with its file, family/version/revision,
+short fingerprints and shared-sibling count; the load errors; each vendor format with no
+installed parser and a link to that vendor's admin page; and the host implementation
+digest with `API_VERSION` and `APP_VERSION`. Removing the selection on the vendor page is
+the cleanup action. The command line stays the deployment gate:
+`manage.py parsers --check` fails on the same conditions, and the page repeats that
+changing files requires a container restart and an explicit re-parse. A staff check
+redirects non-staff to the admin sign-in.
+
+The page never shows the parser directory, a filesystem path, exception text or invoice
+values. Display helpers live in `bills/parser_profiles.py` and `bills/parser_health.py`,
+outside `bills/parsing/`, because every source file there feeds the host implementation
+digest that retained corrections verify. The profile codes are shared with correction
+verification, but each caller owns its wording.
 
 ### Configuration hook
 
@@ -449,4 +500,6 @@ corrections use the approval's exact recorded parser.
 
 Parsers execute with application privileges. Read
 [security expectations](../SECURITY.md) before mounting code; [NOTICE](../NOTICE)
-states the licensing position for independently authored parsers.
+states the licensing position for independently authored parsers. Distributable plugin
+packaging — metadata, signing and trust on upgrade — is undecided later work; today an
+install is a reviewed directory mounted read-only.
