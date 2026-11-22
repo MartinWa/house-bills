@@ -125,6 +125,8 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           SBOM: ${{ runner.temp }}/sbom-arm64.spdx.json
           PLATFORM: linux/arm64
+          # QEMU runs Python an order of magnitude slower than the native builder.
+          TIMEOUT_SCALE: "20"
         run: bash tools/check_release_image.sh
       - name: Publish the tested index
         id: push

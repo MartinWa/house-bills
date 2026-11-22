@@ -200,7 +200,10 @@ for example `linux/arm64`. The script verifies its pinned Trivy download before 
 `tools/check_release_image.sh` is what the release workflow runs per platform: it expects
 `IMAGE`, `VERSION`, `SBOM` and `PLATFORM` in the environment, runs the production probe on
 the pulled digest with the reviewed example parsers mounted read-only at `/parsers` and
-then audits it.
+then audits it. The optional `TIMEOUT_SCALE` multiplies the probe's startup, request and
+subprocess budgets; the arm64 step sets it to 20 because QEMU's Python execution is about
+an order of magnitude slower than the native builder, which made a fixed 20-second
+startup budget fail during migrations.
 
 The arm64 image is built under emulation and is first exercised in the release workflow;
 no arm64 host is available for local verification.

@@ -19,7 +19,7 @@ import django
 from django.conf import settings
 from django.core.checks import run_checks
 
-from .check_http import NoRedirect, get, wait_for_server
+from .check_http import NoRedirect, budget, get, wait_for_server
 from .synthetic_pdf import invoice_pdf
 
 
@@ -117,7 +117,8 @@ def check_ingestion_http():
             headers["Origin"] = "https://ci.invalid"
         try:
             return build_opener(NoRedirect).open(
-                Request(f"http://127.0.0.1:8000{path}", data=data, headers=headers), timeout=5
+                Request(f"http://127.0.0.1:8000{path}", data=data, headers=headers),
+                timeout=budget(5),
             )
         except HTTPError as response:
             return response
@@ -391,7 +392,7 @@ def check_api_http(user, document, original, upload_body):
                 Request(
                     f"http://127.0.0.1:8000{path}", method=method, data=payload, headers=headers
                 ),
-                timeout=10,
+                timeout=budget(10),
             )
         except HTTPError as response:
             return response
@@ -476,7 +477,7 @@ def run_server(*, migrate, trust_proxy, restored_data=None):
                         [sys.executable, "-m", "tools.check_recovery"],
                         env=environment,
                         check=True,
-                        timeout=30,
+                        timeout=budget(30),
                     )
             else:
                 # An untrusted forwarding header cannot suppress the HTTPS redirect.
@@ -537,7 +538,7 @@ def check_parser_plugins():
             env={**os.environ, "HOUSE_BILLS_PARSER_PLUGINS": value},
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=budget(30),
         )
         assert result.returncode != 0, value
         assert "HOUSE_BILLS_PARSER_PLUGINS" in result.stderr, result.stderr
@@ -616,7 +617,7 @@ def main():
         env=environment,
         capture_output=True,
         text=True,
-        timeout=20,
+        timeout=budget(20),
     )
     assert result.returncode != 0 and "Database does not exist" in result.stderr, result
     assert not database.exists()
