@@ -186,6 +186,7 @@ def test_mounted_plugin_loads_matches_extracts_and_records_provenance(settings, 
     }
     assert parser.PLUGIN_DEPENDENCIES == ()
     assert attempt.candidate["routing"]["plugin_set_digest"]
+    assert attempt.candidate["routing"]["plugin_errors"] == []
     assert attempt.candidate["routing"]["host_implementation"] == (
         registry.host_implementation_digest()
     )
@@ -194,6 +195,18 @@ def test_mounted_plugin_loads_matches_extracts_and_records_provenance(settings, 
         not BillingSection.objects.exists()
         and not Invoice.objects.filter(status="approved").exists()
     )
+
+
+def test_attempt_records_plugin_directory_errors(settings, tmp_path):
+    directory = install(settings, tmp_path, plugin_source())
+    configure_vendor()
+    (directory / "broken.py").write_text("raise RuntimeError('synthetic')\n", encoding="utf-8")
+    registry.reset()
+    document, attempt, _ = upload(tmp_path, pages())
+    assert document.state == "review" and attempt.layout_family == "plugin_synthetic"
+    assert attempt.candidate["routing"]["plugin_errors"] == [
+        {"filename": "broken.py", "code": "import_failed"}
+    ]
 
 
 def test_vendor_only_routes_a_plugin_family_after_it_is_selected(settings, tmp_path):
@@ -533,6 +546,17 @@ def test_unavailable_vendor_family_fails_only_the_check(settings, tmp_path):
     call_command("parsers", stdout=open(os.devnull, "w"))
 
 
+def test_parsers_check_reports_an_unreadable_host_implementation(settings, monkeypatch):
+    settings.HOUSE_BILLS_PARSER_PLUGINS = str(EXAMPLES)
+    registry.reset()
+    output = io.StringIO()
+    call_command("parsers", check=True, stdout=output)
+    assert f"host\t{registry.host_implementation_digest()}\n" in output.getvalue()
+    monkeypatch.setattr(registry, "host_implementation_digest", lambda: "")
+    with pytest.raises(CommandError, match="host parser implementation sources"):
+        call_command("parsers", check=True, stdout=io.StringIO())
+
+
 def test_plugin_directory_inside_application_storage_is_rejected(tmp_path, monkeypatch):
     from house_bills.settings import base
 
@@ -665,6 +689,20 @@ def test_plugin_set_digest_and_fingerprint_change_with_source(settings, tmp_path
     assert registry.status().digest != first
     assert registry.installed("plugin_synthetic", "v1").FINGERPRINT != first_fingerprint
     assert plugin_set_digest(()) != first
+
+
+def test_installed_set_digest_covers_rejected_and_duplicate_files(settings, tmp_path):
+    directory = install(settings, tmp_path, plugin_source())
+    accepted = registry.status().digest
+    (directory / "broken.py").write_text("raise RuntimeError('synthetic')\n", encoding="utf-8")
+    registry.reset()
+    assert "import_failed" in {error.code for error in registry.status().errors}
+    assert registry.status().digest != accepted
+    (directory / "broken.py").unlink()
+    (directory / "duplicate.py").write_text(plugin_source(), encoding="utf-8")
+    registry.reset()
+    assert "duplicate_family_version" in {error.code for error in registry.status().errors}
+    assert registry.status().digest != accepted
 
 
 def test_api_surface_names_resolve_without_django():

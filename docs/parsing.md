@@ -116,7 +116,8 @@ current mappings or explicit reviewed assignments again.
 page lines and private `routing` metadata: vendor, issuer evidence, layout matches with
 source and code fingerprints, the selected parser, `API_VERSION`, host `APP_VERSION`, the
 loaded installed-set digest, the host implementation digest, per-stage parser failures,
-invoice kind and proposed section properties. Missing values are null. Independent
+parser-directory load errors, invoice kind and proposed section properties. Missing values
+are null. Independent
 headers and previously extracted sections survive invalid fields or parser errors.
 Parsers retain service cost totals and overall billing periods. Layout 01 separates
 printed Effektavgift and configured waste fraction charges, balancing their VAT to
@@ -211,7 +212,9 @@ python manage.py parse_documents 12 19
 
 Install the parser directory before configuring a vendor's invoice formats: the format
 choices come from the installed set, so an empty registry offers no choice and a
-configured family with no installed parser fails `parsers --check`.
+configured family with no installed parser fails `parsers --check`. A selection whose
+parser is no longer installed stays listed with no versions and can still be unselected,
+so removing code does not require the admin.
 
 The loader reads only top-level files whose names are Python identifiers. It accepts
 regular files only (no symlinks, subpackages, FIFOs or devices), at most 64 files and
@@ -379,8 +382,10 @@ docker compose -f compose.yaml -f compose.parser-plugins.yaml run --rm app \
 ```
 
 `parsers` lists every installed parser with its file, family/version/revision and
-fingerprint, plus load errors. `--check` exits non-zero for directory load errors, rejected
-files or a configured vendor format with no installed parser. An unset or empty directory
+fingerprint, prints the host implementation digest, plus load errors. `--check` exits
+non-zero for directory load errors, rejected files, a configured vendor format with no
+installed parser or an unreadable host implementation digest, because retained corrections
+cannot verify their host code without it. An unset or empty directory
 passes when no vendor references an unavailable family, and stores uploads as manual
 review work. A missing or unreadable configured directory leaves startup running with no
 parsers and reports the load error; it does not raise a settings exception. Invalid path
@@ -400,7 +405,10 @@ wait on a sibling and reports only the files that never resolve.
 
 The extraction attempt's `routing` payload records each matched parser's identity, source
 and code fingerprints, the selected parser, host `APP_VERSION`, `API_VERSION`, a digest
-over the installed set and a digest over the host parsing implementation. A retained
+over the installed directory and a digest over the host parsing implementation, plus the
+parser-directory load errors that explain a missing parser. The installed-directory digest
+covers every readable file through its identity or source snapshot and adds the directory
+and load error codes, so two different directories never share it. A retained
 correction requires the recorded source fingerprint, code fingerprint and host
 implementation digest, so changed parser code, shared code or hook implementation needs a
 re-parse and review first. Re-parsing after such a change legitimately produces new

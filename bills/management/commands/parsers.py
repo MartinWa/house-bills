@@ -13,7 +13,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--check",
             action="store_true",
-            help="Fail on plugin load errors or vendor formats with no installed parser.",
+            help=(
+                "Fail on plugin load errors, vendor formats with no installed parser or an "
+                "unavailable host implementation digest."
+            ),
         )
 
     def handle(self, *args, **options):
@@ -34,6 +37,8 @@ class Command(BaseCommand):
                     ]
                 )
             )
+        host = registry.host_implementation_digest()
+        self.stdout.write(f"host\t{host or 'unavailable'}")
         for error in discovery.errors:
             self.stdout.write(f"error\t{error.filename or 'directory'}\t{error.code}")
         unavailable = sorted(
@@ -46,6 +51,11 @@ class Command(BaseCommand):
             )
         if not options["check"]:
             return
+        if not host:
+            raise CommandError(
+                "The host parser implementation sources are unreadable, so retained "
+                "corrections are disabled. Deploy the application with its Python sources."
+            )
         if discovery.errors:
             raise CommandError("Parser plugin directory load errors reported above.")
         if unavailable:

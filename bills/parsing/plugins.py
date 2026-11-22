@@ -78,13 +78,19 @@ def code_fingerprint(module, dependencies):
     return digest.hexdigest()
 
 
-def plugin_set_digest(entries):
-    """Canonical digest over the accepted plugin set, independent of import caches."""
+def plugin_set_digest(entries, errors=()):
+    """Canonical digest over the installed directory, independent of import caches.
+
+    Accepted modules carry their declared identity; every other file contributes its
+    source snapshot and the directory and load errors contribute their codes, so two
+    different installed directories never share a digest.
+    """
     payload = "".join(
         f"{name}\0{family}\0{version}\0{revision}\0{digest}\n"
         for name, family, version, revision, digest in sorted(entries)
     )
-    return hashlib.sha256(b"house-bills-plugin-set-v1\n" + payload.encode()).hexdigest()
+    payload += "".join(f"error\0{filename}\0{code}\n" for filename, code in sorted(errors))
+    return hashlib.sha256(b"house-bills-plugin-set-v2\n" + payload.encode()).hexdigest()
 
 
 def _read_source(directory, name):
@@ -319,19 +325,19 @@ def _code_identities(modules, dependencies):
         module.CODE_FINGERPRINT = code_fingerprint(module, shared)
 
 
-def _namespace_entries():
+def _namespace_entries(modules):
     """Digest entries for every executed module, parsers and shared helpers."""
-    prefix = f"{PLUGIN_NAMESPACE}."
-    entries = []
-    for fullname, module in sorted(sys.modules.items()):
-        if not fullname.startswith(prefix) or "." in fullname[len(prefix) :]:
-            continue
-        identity = getattr(module, "PLUGIN_IDENTITY", None)
-        digest = getattr(module, "FINGERPRINT", None)
-        if identity is None or digest is None:
-            continue
-        entries.append((fullname[len(prefix) :], *identity, digest))
-    return entries
+    return [
+        (stem, *module.PLUGIN_IDENTITY, module.FINGERPRINT)
+        for stem, module in sorted(modules.items())
+        if getattr(module, "PLUGIN_IDENTITY", None) is not None
+        and getattr(module, "FINGERPRINT", None) is not None
+    ]
+
+
+def _error_pairs(status):
+    """Stable error entries so the digest also describes rejected files."""
+    return [(error.filename, error.code) for error in status.errors]
 
 
 def discover(directory):
@@ -349,20 +355,20 @@ def discover(directory):
         names = sorted(os.listdir(resolved))
     except FileNotFoundError:
         status.errors.append(PluginError("", "directory_missing"))
-        status.digest = plugin_set_digest(())
+        status.digest = plugin_set_digest((), _error_pairs(status))
         return status
     except NotADirectoryError:
         status.errors.append(PluginError("", "directory_not_a_directory"))
-        status.digest = plugin_set_digest(())
+        status.digest = plugin_set_digest((), _error_pairs(status))
         return status
     except OSError:
         status.errors.append(PluginError("", "directory_unreadable"))
-        status.digest = plugin_set_digest(())
+        status.digest = plugin_set_digest((), _error_pairs(status))
         return status
     sources = [name for name in names if name.endswith(".py")]
     if len(sources) > MAX_PLUGIN_FILES:
         status.errors.append(PluginError("", "too_many_files"))
-        status.digest = plugin_set_digest(())
+        status.digest = plugin_set_digest((), _error_pairs(status))
         return status
     status.files = len(sources)
     _register_namespace(resolved)
@@ -378,7 +384,9 @@ def discover(directory):
             status.errors.append(PluginError(filename, exc.code))
         except OSError:
             status.errors.append(PluginError(filename, "unreadable"))
-    status.errors.extend(PluginError(name, code) for name, code in _load(resolved, snapshots))
+    status.errors.extend(
+        PluginError(safe_filename(f"{stem}.py"), code) for stem, code in _load(resolved, snapshots)
+    )
     loaded = {
         stem: module
         for stem in snapshots
@@ -400,5 +408,16 @@ def discover(directory):
         seen.add((family, version))
         module.PLUGIN_FILENAME = safe_filename(f"{stem}.py")
         status.parsers.append(module)
-    status.digest = plugin_set_digest(_namespace_entries())
+    accepted = {
+        stem: sys.modules[f"{PLUGIN_NAMESPACE}.{stem}"]
+        for stem in snapshots
+        if f"{PLUGIN_NAMESPACE}.{stem}" in sys.modules
+    }
+    entries = _namespace_entries(accepted)
+    entries.extend(
+        (stem, "", "", "", fingerprint(source, "", "", ""))
+        for stem, source in sorted(snapshots.items())
+        if stem not in accepted
+    )
+    status.digest = plugin_set_digest(entries, _error_pairs(status))
     return status

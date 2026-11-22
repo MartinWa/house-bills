@@ -22,6 +22,7 @@ from .parsing.registry import (
     parser_identity,
     parser_set_digest,
     record_failure,
+    status,
     take_failures,
 )
 from .parsing.validation import ContractError, safe_candidate, validate_candidate
@@ -31,6 +32,11 @@ from .waste_costs import configured_section_configuration
 
 EXTRACTION_FAILED = "Invoice extraction failed. Review the retained source and candidate values."
 AMBIGUOUS = "Invoice layout is ambiguous."
+
+
+def _copied(pages):
+    """Give a parser its own page lists; the evidence lines themselves are frozen."""
+    return [list(page) for page in pages]
 
 
 def _identity_agrees(candidate, parser):
@@ -173,7 +179,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             read_error = "Original is unavailable or its checksum does not match. Retry storage."
 
         # Parser entry points receive copies; the reader's snapshot stays immutable.
-        evidence_pages = copy.deepcopy(pages)
+        evidence_pages = _copied(pages)
         begin_document()
         recognition = recognize_vendor(evidence_pages)
         families = (
@@ -181,7 +187,7 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             if recognition.vendor
             else list(layouts())
         )
-        matches = match_layouts(copy.deepcopy(evidence_pages), families)
+        matches = match_layouts(_copied(evidence_pages), families)
         parser = matches[0] if len(matches) == 1 and not read_error else None
         routing = {
             "vendor_id": recognition.vendor.pk if recognition.vendor else None,
@@ -192,6 +198,9 @@ def parse_document(document_id, *, force=False, expected_revision=None):
             "host_implementation": host_implementation_digest(),
             "api_version": API_VERSION,
             "app_version": settings.APP_VERSION,
+            "plugin_errors": [
+                {"filename": error.filename, "code": error.code} for error in status().errors
+            ],
             "failures": [],
             "section_properties": {},
         }
@@ -208,13 +217,13 @@ def parse_document(document_id, *, force=False, expected_revision=None):
         if not read_error and not any(line for page in evidence_pages for line in page):
             error = "PDF has no readable text. Manual review is required."
         if parser:
-            candidate, header_failed = _read_header(parser, copy.deepcopy(evidence_pages), fallback)
-            candidate, parse_failed = _parse(parser, copy.deepcopy(evidence_pages), candidate)
+            candidate, header_failed = _read_header(parser, _copied(evidence_pages), fallback)
+            candidate, parse_failed = _parse(parser, _copied(evidence_pages), candidate)
             if header_failed or parse_failed:
                 # Retain in-progress fields even for an unexpected parser bug.
                 error = EXTRACTION_FAILED
             _property_mapping(candidate, routing, recognition.vendor)
-            _configured_split(parser, candidate, copy.deepcopy(evidence_pages), routing)
+            _configured_split(parser, candidate, _copied(evidence_pages), routing)
         electricity = []
         for section in candidate.sections:
             house_id = routing["section_properties"].get(section.section_id)

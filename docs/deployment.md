@@ -60,6 +60,7 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `HOUSE_BILLS_PARSER_PLUGINS_FILE` | Read the parser directory from a Docker or Podman secret file instead of the value above. |
 | `APP_UID`, `APP_GID` | Non-root numeric container process IDs. |
 | `APP_DATA_PATH` | Absolute private host-local data directory. |
+| `APP_PARSER_PATH` | Existing operator-owned host directory bound read-only at `/parsers` by `compose.parser-plugins.yaml`. |
 | `HOUSE_BILLS_NETWORK` | Private network name the base file creates; defaults to `house-bills`. |
 | `HOUSE_BILLS_HOST_PORT` | Loopback port for `compose.host-port.yaml`; defaults to 8000. |
 | `PROXY_NETWORK` | Existing private Docker network joined by `compose.proxy-network.yaml`. |
@@ -187,7 +188,7 @@ cp docs/examples/parsers/*.py "$APP_PARSER_PATH"/
 `compose.parser-plugins.yaml` binds `APP_PARSER_PATH` read-only at `/parsers` with
 `bind.create_host_path: false`; it keeps the base capability drops, `no-new-privileges`,
 private exposure and read-only image filesystem. The host directory must already exist,
-ownered by the installation operator, readable but not writable by the application UID,
+owned by the installation operator, readable but not writable by the application UID,
 and have no writable alias elsewhere in the container. A missing bind source stops
 container creation; that is a Compose error, distinct from a configured directory that is
 missing inside a running container.
@@ -201,10 +202,15 @@ a load error. Rejected files are reported with bounded filenames and error codes
 paths or exception text.
 
 `parsers` lists each installed parser with its file, family/version/revision and
-fingerprint, and reports vendor formats that have no installed parser.
-`--check` exits non-zero on directory load errors, rejected files or such missing
-references. Unset and empty directories pass when no configured vendor references an
-unavailable family.
+fingerprint, prints the host implementation digest that retained corrections require, and
+reports vendor formats that have no installed parser.
+`--check` exits non-zero on directory load errors, rejected files, such missing
+references or an unreadable host implementation digest. Unset and empty directories pass
+when no configured vendor references an unavailable family.
+
+A vendor selection whose parser is no longer installed stays listed with no versions and
+can still be unselected, so cleanup after removing code needs no admin workaround:
+selecting a format requires installed code, listing and unselecting do not.
 
 Configure a vendor's **Invoice formats** after installing the directory: the choices come
 from the installed set, so an empty registry offers none.
@@ -274,7 +280,8 @@ records the effective settings either way.
 
 The probe verifies parsed/manual upload and review, correction history, reporting, duplicates,
 private source access, migration guards and static/HTTPS behavior. It also checks parser
-directory path policy, load status, fingerprints and the read-only mount, that
+directory path policy, load status, fingerprints, the host implementation digest the
+corrections require and the read-only mount, that
 `parsers --check` rejects a configured vendor format with no installed parser even for an
 empty or missing directory, and that a single-file parser loads when mounted. The strict
 `docker run` check and the Chromium job mount the same reviewed directory read-only,

@@ -1,6 +1,7 @@
 """Exercise real Waitress startup on disposable storage in the production image."""
 
 import importlib.util
+import io
 import json
 import os
 import sqlite3
@@ -515,7 +516,7 @@ def check_rejects():
     from django.core.management.base import CommandError
 
     try:
-        call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+        call_command("parsers", check=True, stdout=io.StringIO())
     except CommandError:
         return True
     return False
@@ -547,9 +548,12 @@ def check_parser_plugins():
     assert storage_root not in mounted.resolve().parents
     settings.HOUSE_BILLS_PARSER_PLUGINS = str(mounted)
     registry.reset()
-    call_command("parsers", check=True, stdout=open(os.devnull, "w"))
+    call_command("parsers", check=True, stdout=io.StringIO())
     parsers = registry.parsers()
     assert parsers and all(len(parser.FINGERPRINT) == 64 for parser in parsers)
+    assert registry.host_implementation_digest(), (
+        "Retained corrections need readable host parser sources in the image."
+    )
     assert not os.access(mounted, os.W_OK), "The plugin mount must be read-only."
     try:
         (mounted / "tamper.py").write_text("tamper", encoding="utf-8")
