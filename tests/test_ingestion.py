@@ -19,7 +19,6 @@ from django.test import Client
 
 from bills import storage
 from bills.models import BillingSection, Document, Invoice, Property, Usage, Vendor
-from bills.parsing import layout_02
 from bills.parsing.reader import read_pdf
 from bills.services import (
     approve_review,
@@ -27,6 +26,7 @@ from bills.services import (
     record_extraction,
     register_invoice_identity,
 )
+from tests.examples import layout_02
 
 from .synthetic import shared_supply, write_pdf
 

@@ -65,10 +65,14 @@ clean-start probe. Avoid deleting the normal volume when it contains work to ret
 
 Build the development target before running the same application checks as CI:
 
+The development Compose service installs `docs/examples/parsers` as its parser directory,
+so a local upload parses without extra setup. The image targets themselves contain no
+parser code.
+
 ```sh
 docker compose -f compose.development.yaml build app
-docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py manage.py
-docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py manage.py
+docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
+docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
 docker compose -f compose.development.yaml run --rm app python manage.py check --database default
 docker compose -f compose.development.yaml run --rm app python manage.py makemigrations --check --dry-run
 docker compose -f compose.development.yaml run --rm app python manage.py export_api_schema --check

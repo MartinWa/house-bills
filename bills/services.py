@@ -1,5 +1,6 @@
 """Short validated writes, separate from PDF reading and file publication."""
 
+import json
 from dataclasses import asdict
 
 from django.core.exceptions import ValidationError
@@ -24,6 +25,49 @@ from .validators import normalize_identifier
 
 class StaleReviewError(ValidationError):
     pass
+
+
+PROVENANCE_KEYS = {
+    "extraction_id",
+    "parser",
+    "host_implementation",
+    "api_version",
+    "app_version",
+    "operation",
+    "section_ids",
+    "limitation",
+}
+PARSER_PROVENANCE_KEYS = {
+    "family",
+    "version",
+    "revision",
+    "source",
+    "fingerprint",
+    "code_fingerprint",
+}
+MAX_PROVENANCE_BYTES = 4096
+
+
+def validated_provenance(value):
+    """Bound optional correction provenance before it enters immutable history."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) - PROVENANCE_KEYS:
+        raise ValidationError("Invalid correction provenance.")
+    parser = value.get("parser")
+    if not isinstance(parser, dict) or set(parser) - PARSER_PROVENANCE_KEYS:
+        raise ValidationError("Invalid correction provenance.")
+    if not isinstance(value.get("section_ids"), list) or not all(
+        isinstance(item, str) and len(item) <= 80 for item in value["section_ids"]
+    ):
+        raise ValidationError("Invalid correction provenance.")
+    try:
+        payload = json.dumps(value, sort_keys=True, allow_nan=False)
+    except TypeError, ValueError:
+        raise ValidationError("Invalid correction provenance.") from None
+    if len(payload) > MAX_PROVENANCE_BYTES:
+        raise ValidationError("Invalid correction provenance.")
+    return value
 
 
 def resolve_section_property(vendor, identifiers):
@@ -275,6 +319,7 @@ def approve_review(
     kind=Invoice.Kind.INVOICE,
     note="",
     amount_due_confirmed=False,
+    provenance=None,
 ):
     """Promote an explicitly reviewed proposal, retaining earlier approved revisions.
 
@@ -365,12 +410,15 @@ def approve_review(
     invoice.approved_by = actor
     invoice.approved_at = timezone.now()
     validate_allocations(invoice)
+    provenance = validated_provenance(provenance)
     snapshot = {
         "values": payload,
         "vendor_id": vendor.pk,
         "kind": kind,
         "properties": dict(invoice.sections.values_list("section_id", "property_id")),
     }
+    if provenance is not None:
+        snapshot["provenance"] = provenance
     ReviewRevision.objects.create(
         invoice=invoice,
         revision=invoice.review_revision,

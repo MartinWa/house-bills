@@ -29,7 +29,7 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing.registry import LAYOUTS, layout_family_choices
+from bills.parsing.registry import layout_family_choices, layouts
 
 from . import schemas as s
 from .audit import log_change
@@ -807,9 +807,15 @@ def replace_cost_schedule(
     return replace_period(request, response, ServiceCostSchedule, cost_schedule_id, payload)
 
 
-def format_representation(key, vendor_id=None):
+def format_representation(key, vendor_id=None, *, require_installed=True):
+    """Represent one format key; a stored vendor selection may outlive its parser.
+
+    Listing and unselecting a vendor's formats must keep working after the parser that
+    supplied the family is gone, because `parsers --check` reports exactly that state as
+    a deployment failure to clean up. Selecting a format still requires installed code.
+    """
     choices = dict(layout_family_choices())
-    if key not in choices:
+    if require_installed and key not in choices:
         raise ApiError(404, "not_found", "Invoice format not found.")
     path = (
         f"{PREFIX}/invoice-formats/{key}"
@@ -825,9 +831,9 @@ def format_representation(key, vendor_id=None):
         )
     return {
         "format_key": key,
-        "name": choices[key],
+        "name": choices.get(key, key),
         "vendor_id": vendor_id,
-        "versions": sorted(LAYOUTS[key]),
+        "versions": sorted(layouts().get(key, ())),
         "links": links,
     }
 
@@ -875,7 +881,7 @@ def category(request, key: str):
 def formats(request):
     return catalogue_page(
         request,
-        [format_representation(key) for key in LAYOUTS],
+        [format_representation(key) for key in layouts()],
         sort_keys={"format_key"},
         default="format_key",
     )
@@ -895,7 +901,7 @@ def vendor_formats(request, vendor_id: int):
     return catalogue_page(
         request,
         [
-            format_representation(key, vendor_id)
+            format_representation(key, vendor_id, require_installed=False)
             for key in vendor.layout_families.values_list("family", flat=True)
         ],
         sort_keys={"format_key"},
@@ -910,7 +916,7 @@ def vendor_format(request, vendor_id: int, format_key: str):
     get_record(Vendor, vendor_id)
     if not VendorLayoutFamily.objects.filter(vendor_id=vendor_id, family=format_key).exists():
         raise ApiError(404, "not_found", "Format selection not found.")
-    return format_representation(format_key, vendor_id)
+    return format_representation(format_key, vendor_id, require_installed=False)
 
 
 @router.put(
@@ -945,7 +951,7 @@ def select_format(request, response: HttpResponse, vendor_id: int, format_key: s
 def unselect_format(request, vendor_id: int, format_key: str):
     preview = dry_run(request)
     require_model(request, VendorLayoutFamily, "delete")
-    result = format_representation(format_key, vendor_id)
+    result = format_representation(format_key, vendor_id, require_installed=False)
     with transaction.atomic():
         get_record(Vendor, vendor_id)
         obj = VendorLayoutFamily.objects.filter(vendor_id=vendor_id, family=format_key).first()

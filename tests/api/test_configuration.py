@@ -510,3 +510,29 @@ def test_annotation_retries_reason_maintenance_and_history(api_client):
         ).json()["as_of"]
         == "2026-02-15"
     )
+
+
+def test_vendor_formats_keep_a_selection_whose_parser_is_not_installed(api_client, settings):
+    """A removed parser leaves a stale selection that must stay visible and removable."""
+    from bills.parsing import registry
+
+    client, _, _, _ = api_client
+    _, vendor = setup(client)
+    format_url = f"/vendors/{vendor['id']}/invoice-formats/layout_01"
+    assert send(client, "put", format_url).status_code == 201
+    settings.HOUSE_BILLS_PARSER_PLUGINS = ""
+    registry.reset()
+    listed = client.get(BASE + f"/vendors/{vendor['id']}/invoice-formats")
+    assert listed.status_code == 200
+    assert [(item["format_key"], item["versions"]) for item in listed.json()["items"]] == [
+        ("layout_01", [])
+    ]
+    detail = client.get(BASE + format_url)
+    assert detail.status_code == 200 and detail.json()["versions"] == []
+    assert client.get(BASE + "/invoice-formats/layout_01").status_code == 404
+    other = created(client, "/vendors", {"name": "Other utility", "slug": "other-utility"})
+    assert (
+        send(client, "put", f"/vendors/{other['id']}/invoice-formats/layout_01").status_code == 404
+    )
+    assert send(client, "delete", format_url).status_code == 204
+    assert client.get(BASE + f"/vendors/{vendor['id']}/invoice-formats").json()["items"] == []

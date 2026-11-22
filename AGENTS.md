@@ -20,8 +20,8 @@ docker compose -f compose.development.yaml up --build -d app
 # Create login account
 docker compose -f compose.development.yaml exec app python manage.py createsuperuser
 # Lint and formatting
-docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py manage.py
-docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py manage.py
+docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
+docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
 # Python tests
 docker compose -f compose.development.yaml run --rm app pytest -q
 # Build/run isolated Chromium checks
@@ -37,7 +37,7 @@ Use English identifiers, comments, and documentation. Follow existing convention
 
 Follow the [data model](docs/data-model.md): money uses signed integer minor units; quantities use signed integer thousandths. Route approved changes through review services; preserve immutable extraction evidence and review history. Keep PDF processing and filesystem operations outside database write transactions.
 
-Follow [parser maintenance](docs/parsing.md) and the [candidate contract](docs/parser-results.md). Register layouts in `bills/parsing/registry.py`; extraction must never approve records.
+Follow [parser maintenance](docs/parsing.md) and the [candidate contract](docs/parser-results.md). Layouts live as example plugins in `docs/examples/parsers/` and are installed from a directory, never compiled into the image; extraction must never approve records.
 
 ## Tests
 

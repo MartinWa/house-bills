@@ -131,6 +131,8 @@ def test_startup_migration_lock_timeout_prevents_serving(monkeypatch, tmp_path, 
 def test_production_refuses_invalid_installation_configuration(
     monkeypatch, tmp_path, name, value, message
 ):
+    monkeypatch.delenv("HOUSE_BILLS_PARSER_PLUGINS", raising=False)
+    monkeypatch.delenv("HOUSE_BILLS_PARSER_PLUGINS_FILE", raising=False)
     monkeypatch.setenv("HOUSE_BILLS_SECRET_KEY", "synthetic-production-test-key-" * 3)
     monkeypatch.setenv("HOUSE_BILLS_ALLOWED_HOSTS", "bills.invalid")
     monkeypatch.setenv("HOUSE_BILLS_DATA_DIR", str(tmp_path))
@@ -148,6 +150,8 @@ def test_production_refuses_invalid_installation_configuration(
 
 
 def production_environment(monkeypatch, tmp_path):
+    monkeypatch.delenv("HOUSE_BILLS_PARSER_PLUGINS", raising=False)
+    monkeypatch.delenv("HOUSE_BILLS_PARSER_PLUGINS_FILE", raising=False)
     monkeypatch.delenv("HOUSE_BILLS_SECRET_KEY", raising=False)
     monkeypatch.delenv("HOUSE_BILLS_SECRET_KEY_FILE", raising=False)
     monkeypatch.setenv("HOUSE_BILLS_ALLOWED_HOSTS", "bills.invalid")

@@ -1,11 +1,12 @@
 """Private HTTPS deployment; require explicit installation configuration."""
 
 import os
+from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F403
-from .base import DATA_DIR, env_bool, env_list, env_text
+from .base import DATA_DIR, PARSER_PLUGINS_VALUE, env_bool, env_list, env_text
 
 SECRET_KEY = env_text("HOUSE_BILLS_SECRET_KEY")
 ALLOWED_HOSTS = env_list("HOUSE_BILLS_ALLOWED_HOSTS")
@@ -21,6 +22,8 @@ if not ALLOWED_HOSTS or any("*" in host or "://" in host for host in ALLOWED_HOS
     )
 if not os.environ.get("HOUSE_BILLS_DATA_DIR") or not DATA_DIR.is_absolute():
     raise ImproperlyConfigured("Set HOUSE_BILLS_DATA_DIR to absolute, private host-local storage.")
+if PARSER_PLUGINS_VALUE and not Path(PARSER_PLUGINS_VALUE).is_absolute():
+    raise ImproperlyConfigured("Set HOUSE_BILLS_PARSER_PLUGINS to an absolute host path.")
 if any(not origin.startswith("https://") or "*" in origin for origin in CSRF_TRUSTED_ORIGINS):
     raise ImproperlyConfigured("HOUSE_BILLS_CSRF_TRUSTED_ORIGINS must contain exact HTTPS origins.")
 DEBUG = False

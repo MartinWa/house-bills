@@ -380,9 +380,9 @@ def test_legacy_waste_classification_is_scoped_to_each_allocation(coverage):
 
 def test_multi_service_pdf_matches_waste_collection_before_and_after_approval(coverage, tmp_path):
     from bills.models import VendorIssuerIdentifier, VendorLayoutFamily
-    from bills.parsing import layout_01
     from bills.parsing.reader import read_pdf
     from bills.storage import ingest_pdf
+    from tests.examples import layout_01
 
     from .synthetic import multi_service
 

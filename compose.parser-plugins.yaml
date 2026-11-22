@@ -1,0 +1,14 @@
+# Read-only parser code mount. The image ships no parsers, so parsing requires an
+# installed directory such as a copy of docs/examples/parsers. It requires an existing
+# operator-owned host directory outside APP_DATA_PATH; it is never created automatically.
+services:
+  app:
+    environment:
+      HOUSE_BILLS_PARSER_PLUGINS: /parsers
+    volumes:
+      - type: bind
+        source: "${APP_PARSER_PATH:?Set an existing operator-owned parser code directory}"
+        target: /parsers
+        read_only: true
+        bind:
+          create_host_path: false

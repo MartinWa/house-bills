@@ -1,8 +1,14 @@
-"""Network/tax specification with exclusive VAT prices and dated tax-rate rows."""
+"""Example plugin: deterministic extraction for the layout_06_v2 invoice structure."""
+
+from bills.parsing import api
 
 from . import layout_06
-from .layout_helpers import QUANTITY
-from .normalization import quantity, source_date
+
+API_VERSION = 1
+
+QUANTITY = api.QUANTITY
+quantity = api.quantity
+source_date = api.source_date
 
 FAMILY, VERSION, REVISION = "layout_06", "v2", "3"
 

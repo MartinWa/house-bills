@@ -12,11 +12,11 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing import layout_07
 from bills.parsing.reader import read_pdf
 from bills.parsing.registry import match_layouts
 from bills.services import approve_review
 from bills.storage import ingest_pdf
+from tests.examples import layout_07
 
 from .synthetic import write_pdf
 
@@ -66,7 +66,9 @@ def area_supply(billed="786"):
 )
 def test_area_label_is_separate_from_consumption_and_preserves_evidence(tmp_path, billed, expected):
     pages = read_pdf(write_pdf(tmp_path / "synthetic.pdf", area_supply(billed)))
-    assert match_layouts(pages, [layout_07.FAMILY]) == [layout_07]
+    assert [(p.FAMILY, p.VERSION) for p in match_layouts(pages, [layout_07.FAMILY])] == [
+        (layout_07.FAMILY, layout_07.VERSION)
+    ]
     candidate = layout_07.parse(pages)
     assert candidate.issues == []
     (section,) = candidate.sections

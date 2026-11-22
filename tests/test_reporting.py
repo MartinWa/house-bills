@@ -29,13 +29,13 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing import layout_02
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Candidate, Evidence, Section
 from bills.parsing.types import Usage as ProposedUsage
 from bills.reporting import read_report, reporting_reader
 from bills.services import approve_review, record_extraction
 from bills.storage import ingest_pdf
+from tests.examples import layout_02
 
 from .synthetic import shared_supply, write_pdf
 

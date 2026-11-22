@@ -5,21 +5,35 @@ candidates. Installed layouts, versions and revisions are listed in
 [deterministic parsing](parsing.md); that guide also covers routing and proposal
 persistence.
 
+Extraction attempts also record private routing metadata: matched parsers with their
+family/version/revision, source fingerprint and code fingerprint, the selected parser,
+`API_VERSION`, the host `APP_VERSION`, a digest over the installed directory, the host
+implementation digest, per-stage parser failures and parser-directory load errors. A parser
+fingerprint is a SHA-256
+over the exact compiled source snapshot that executed, including its declared
+family/version/revision; bytecode caches are never read. Its code fingerprint covers that
+snapshot plus the transitive sibling modules it imports, so changing a shared helper moves
+the parser's identity even though its own file is unchanged. The host implementation
+digest covers the parsing package and classification code that executes hooks. It is not
+part of the immutable original, and re-parsing after a parser or shared-code change
+legitimately yields new fingerprints on a new attempt.
+
 `reader.read_pdf()` returns text lines with one-based page numbers and PDF-point
 bounding boxes `(x0, top, x1, bottom)`. A four-point vertical tolerance keeps totals
 together when labels and amounts have slightly different baselines. Reading does not
 recognize vendors or assign properties. Call an installed parser explicitly:
 
 ```python
-from bills.parsing import layout_01
+from bills.parsing import registry
 from bills.parsing.reader import read_pdf
 
-candidate = layout_01.parse(read_pdf("private/example.pdf"))
+parser = registry.installed("layout_01", "v1")  # installed from the parser directory
+candidate = parser.parse(read_pdf("private/example.pdf"))
 private_result = candidate.to_dict()
 ```
 
-Neither module contains vendor names or private identifiers. The registry selects by
-structure and keeps earlier versions available for older invoices. Historical
+Parser files contain no vendor identities beyond the printed labels they match. The
+registry selects by structure and keeps earlier versions available for older invoices. Historical
 `Avfall prodnr ... Kärl ...` headings identify their named waste fraction from each
 section's printed net and VAT totals.
 
@@ -30,7 +44,7 @@ section's printed net and VAT totals.
 | Header | Invoice reference, invoice/due dates, SEK, net, VAT, rounding, invoice total and amount due, with field evidence. |
 | Identifiers | Customer account is supporting evidence only. Each section retains its contract, product-number or installation keys; network sections also retain installation keys. Proposed property mapping is separate routing metadata. |
 | Section | One service and contract/product/installation allocation, with optional waste cost `subcategory`, explicit signed net, VAT and gross totals, an overall billing period and period/tax/total evidence. Shared invoices retain multiple sections in one candidate. |
-| Usage | Signed integer thousandths, unit, utility, period and basis: `measured`, `estimated`, `reversal`, `billed` or `billed_weight`. |
+| Usage | Signed integer thousandths, unit, utility, a complete start and end period and basis: `measured`, `estimated`, `reversal`, `billed` or `billed_weight`. A missing period is a contract failure. |
 | Evidence | Original extracted text, page and bounding box. Treat the complete serialized result as private. |
 | Review | `requires_review=True` for every result, including financially reconciled results. `issues` contains consistency failures. |
 

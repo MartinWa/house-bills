@@ -16,6 +16,7 @@ Required Notice: Copyright 2026 GrowBook contributors
 
 Separately licensed dependencies retain their own terms and license notices,
 including those shipped with installed Python distributions and container inputs.
-Independently authored parser plugins retain their authors' chosen licenses;
-the project license does not automatically extend to them. Code copied or derived
-from this project remains subject to LICENSE.
+Independently authored parsers installed alongside the application retain their
+authors' chosen licenses; the project license does not automatically extend to them.
+Code copied or derived from this project, including the examples in docs/examples/parsers,
+remains subject to LICENSE.

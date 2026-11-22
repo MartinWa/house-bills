@@ -1,25 +1,35 @@
-"""Contract-based multi-service v1, including water reversals and continuations."""
+"""Example plugin: deterministic extraction for the layout_01 invoice structure."""
 
 import re
 
-from bills.categories import waste_cost_subcategory, waste_subcategory
+from bills.parsing import api
 
-from .common import AMOUNT, header, last_money, reconcile
-from .electricity_demand import split_electricity_demand
-from .layout_helpers import capture, cost_period
-from .normalization import (
-    DATE,
-    NUMBER,
-    PERIOD,
-    money,
-    quantity,
-    source_date,
-    source_period,
-    starts,
-    text,
-)
-from .normalization import unit as normalize_unit
-from .types import Evidence, Identifier, Section, Usage
+API_VERSION = 1
+
+AMOUNT = api.AMOUNT
+DATE = api.DATE
+Evidence = api.Evidence
+Identifier = api.Identifier
+NUMBER = api.NUMBER
+PERIOD = api.PERIOD
+Section = api.Section
+Usage = api.Usage
+capture = api.capture
+cost_period = api.cost_period
+header = api.header
+last_money = api.last_money
+money = api.money
+normalize_unit = api.unit
+quantity = api.quantity
+reconcile = api.reconcile
+source_date = api.source_date
+source_period = api.source_period
+split_electricity_demand = api.split_electricity_demand
+split_waste_costs = api.split_waste_costs
+starts = api.starts
+text = api.text
+waste_cost_subcategory = api.waste_cost_subcategory
+waste_subcategory = api.waste_subcategory
 
 FAMILY, VERSION, REVISION = "layout_01", "v1", "12"
 SERVICE = {
@@ -333,6 +343,34 @@ def _extract_section(candidate, section, lines, all_lines, waste_totals, *, lega
                 candidate.issues.append(
                     f"Missing billed electricity consumption in {section.section_id}"
                 )
+
+
+def _inherited_properties(candidate, section_properties, sources):
+    return {
+        section.section_id: section_properties.get(
+            sources.get(section.section_id, section.section_id)
+        )
+        for section in candidate.sections
+    }
+
+
+def configure_sections(
+    candidate, pages, section_properties, *, operation, section_ids, configuration
+):
+    """Optional host-mediated cost split; the same hook runs for plugins."""
+    if operation == "waste_cost_split":
+        tracked = {
+            section_id: set(
+                (configuration.get(section_id) or {}).get("enabled_waste_fractions", ())
+            )
+            for section_id in section_ids
+        }
+        sources, warnings = split_waste_costs(candidate, pages, tracked)
+        return _inherited_properties(candidate, section_properties, sources), warnings
+    if operation == "electricity_demand_split":
+        sources, warnings = split_electricity_demand(candidate, pages, set(section_ids))
+        return _inherited_properties(candidate, section_properties, sources), warnings
+    return dict(section_properties), [f"Unsupported parser operation: {operation}"]
 
 
 def parse(pages: list[list[Evidence]], *, candidate=None):

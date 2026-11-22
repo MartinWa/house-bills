@@ -28,9 +28,9 @@ changing extraction code; the summary below is a routing aid, not a replacement.
 
 ## Parser module contract
 
-Built-in modules under `bills/parsing/`:
+Example parser files under `docs/examples/parsers/`; the image ships no parser code:
 
-- Declare `FAMILY`, `VERSION` and `REVISION`.
+- Declare `API_VERSION`, `FAMILY`, `VERSION` and `REVISION`.
 - Implement structural `matches(pages)` — selection is by structure
   (product-number, meter-table or price-table signatures), never by dates or
   filenames.
@@ -39,10 +39,11 @@ Built-in modules under `bills/parsing/`:
   later section-parser failure.
 - Use the existing candidate, section, identifier, usage and evidence types
   from the result contract; do not invent parallel types.
-- Register the version in `bills/parsing/registry.py`; keep earlier versions
-  registered alongside their replacements.
-- Loading modules from a mounted directory is not implemented; reparse through
-  the service (see below).
+- Add or change the file in `docs/examples/parsers/`; keep earlier versions
+  alongside their replacements. Parsers import only `bills.parsing.api` or a
+  sibling file in the same installed directory (`_support.py` for shared code).
+- Operators install the directory read-only and configure formats afterwards; run
+  `python manage.py parsers --check` and reparse through the service (see below).
 
 ## Workflow for a change
 

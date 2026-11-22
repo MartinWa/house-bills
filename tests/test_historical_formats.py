@@ -2,7 +2,11 @@ from datetime import date
 
 import pytest
 
-from bills.parsing import (
+from bills.parsing.reader import read_pdf
+from bills.parsing.recognition import recognize_vendor
+from bills.parsing.registry import match_layouts
+from bills.parsing.types import Evidence
+from tests.examples import (
     layout_01,
     layout_01_v2,
     layout_05,
@@ -10,10 +14,6 @@ from bills.parsing import (
     layout_06_v2,
     layout_08,
 )
-from bills.parsing.reader import read_pdf
-from bills.parsing.recognition import recognize_vendor
-from bills.parsing.registry import match_layouts
-from bills.parsing.types import Evidence
 
 from .current_formats import chart_supply, monthly_network, quarterly_waste
 from .synthetic import multi_service, write_pdf
@@ -21,7 +21,8 @@ from .synthetic import multi_service, write_pdf
 
 def parse(tmp_path, pages, parser):
     source = read_pdf(write_pdf(tmp_path / "synthetic.pdf", pages))
-    assert match_layouts(source, [parser.FAMILY]) == [parser]
+    matched = match_layouts(source, [parser.FAMILY])
+    assert [(p.FAMILY, p.VERSION) for p in matched] == [(parser.FAMILY, parser.VERSION)]
     return parser.parse(source)
 
 
@@ -203,7 +204,7 @@ def test_waste_emptying_is_one_day_cost_without_container_volume_usage(tmp_path)
     pages[0].append(
         "Slamavskiljare 1.1-2 m³ ordinarie tömning 2024-10-08 - 2024-10-08 1 ST 104,05 kr"
     )
-    from bills.parsing import layout_03
+    from tests.examples import layout_03
 
     candidate = parse(tmp_path, pages, layout_03)
     assert not candidate.issues
@@ -608,7 +609,8 @@ def test_compact_supply_recovers_split_detail_total_with_sidebar_and_different_f
             Evidence(2, label, (40, 400, 520 if sidebar else 130, 410)),
         ]
     )
-    assert match_layouts(pages, [layout_08.FAMILY]) == [layout_08]
+    matched = match_layouts(pages, [layout_08.FAMILY])
+    assert [(p.FAMILY, p.VERSION) for p in matched] == [(layout_08.FAMILY, layout_08.VERSION)]
     candidate = layout_08.parse(pages)
     assert not candidate.issues
     assert (candidate.net_minor, candidate.invoice_total_minor) == (8000, 10015)

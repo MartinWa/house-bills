@@ -56,8 +56,11 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `HOUSE_BILLS_MIGRATE_ON_START` | Apply migrations before serving; defaults to `true`. |
 | `HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES` | Original PDF limit; defaults to 20971520 (20 MiB), with 64 KiB extra request allowance. |
 | `HOUSE_BILLS_TRUST_PROXY` | Trust only `X-Forwarded-Proto`; defaults to `false`. |
+| `HOUSE_BILLS_PARSER_PLUGINS` | Absolute path to the operator-managed parser directory mounted read-only (recommended `/parsers`). Empty by default; without it nothing is parsed. |
+| `HOUSE_BILLS_PARSER_PLUGINS_FILE` | Read the parser directory from a Docker or Podman secret file instead of the value above. |
 | `APP_UID`, `APP_GID` | Non-root numeric container process IDs. |
 | `APP_DATA_PATH` | Absolute private host-local data directory. |
+| `APP_PARSER_PATH` | Existing operator-owned host directory bound read-only at `/parsers` by `compose.parser-plugins.yaml`. |
 | `HOUSE_BILLS_NETWORK` | Private network name the base file creates; defaults to `house-bills`. |
 | `HOUSE_BILLS_HOST_PORT` | Loopback port for `compose.host-port.yaml`; defaults to 8000. |
 | `PROXY_NETWORK` | Existing private Docker network joined by `compose.proxy-network.yaml`. |
@@ -155,6 +158,80 @@ Originals live in `/data/invoices`, with authenticated downloads and resumable s
 and publication. See [uploads and private originals](ingestion.md) for recovery and
 the shared-lock contract used by operational backups.
 
+## Parser directory
+
+The image contains no parser code. Every layout, including the examples in
+`docs/examples/parsers/`, is installed as single-file Python parsers from an
+operator-managed directory, so a new vendor format or a fix never needs an image rebuild.
+This is an operator deployment action with the trust model in
+[SECURITY.md](../SECURITY.md): parser code runs with application privileges. There is no
+upload, source editor or automatic update path. Without a parser directory the
+application still runs and stores every upload as an unsupported review proposal.
+
+Add the override and point it at an existing host directory outside `APP_DATA_PATH`,
+after copying the reviewed files you want to install:
+
+```sh
+# Private .env
+APP_PARSER_PATH=/srv/house-bills/parsers
+HOUSE_BILLS_PARSER_PLUGINS=/parsers
+
+docker compose -f compose.yaml -f compose.parser-plugins.yaml up -d app
+docker compose -f compose.yaml -f compose.parser-plugins.yaml run --rm app \
+  python manage.py parsers --check
+```
+
+```sh
+cp docs/examples/parsers/*.py "$APP_PARSER_PATH"/
+```
+
+`compose.parser-plugins.yaml` binds `APP_PARSER_PATH` read-only at `/parsers` with
+`bind.create_host_path: false`; it keeps the base capability drops, `no-new-privileges`,
+private exposure and read-only image filesystem. The host directory must already exist,
+owned by the installation operator, readable but not writable by the application UID,
+and have no writable alias elsewhere in the container. A missing bind source stops
+container creation; that is a Compose error, distinct from a configured directory that is
+missing inside a running container.
+
+Use `HOUSE_BILLS_PARSER_PLUGINS_FILE` instead when the path comes from a secret file. A
+relative production path, or a path equal to or beneath `DATA_DIR` or `MEDIA_ROOT`
+(including symlink aliases), rejects configuration. An unset or empty directory is a clean
+state that parses nothing. A configured directory that is missing, unreadable or not a
+directory does not stop startup: no parser is registered and `parsers --check` fails with
+a load error. Rejected files are reported with bounded filenames and error codes, without
+paths or exception text.
+
+`parsers` lists each installed parser with its file, family/version/revision and
+fingerprint, prints the host implementation digest that retained corrections require, and
+reports vendor formats that have no installed parser.
+`--check` exits non-zero on directory load errors, rejected files, such missing
+references or an unreadable host implementation digest. Unset and empty directories pass
+when no configured vendor references an unavailable family.
+
+A vendor selection whose parser is no longer installed stays listed with no versions and
+can still be unselected, so cleanup after removing code needs no admin workaround:
+selecting a format requires installed code, listing and unselecting do not.
+
+Configure a vendor's **Invoice formats** after installing the directory: the choices come
+from the installed set, so an empty registry offers none.
+
+The loader reads top-level regular `*.py` files only and accepts at most 64 files of
+1 MiB each. Names starting with `_` are support modules shared through sibling imports; a
+file without that prefix must declare layout metadata. Bytecode caches are neither read nor
+written, so the read-only image filesystem is unaffected. A family routes only after it is
+added to that vendor's invoice formats; existing vendor records are not changed by
+loading code. Adding, changing or removing a parser requires restarting the container and
+explicitly re-parsing the affected documents with `manage.py parse_documents` (or the
+document page). Approved values, review history and published originals stay unchanged
+until a reviewed correction accepts different values.
+
+Parser code is deliberately outside the backup and restore set: backups archive the
+database and `MEDIA_ROOT`. Restoring an installation requires redeploying the same
+reviewed directory; otherwise its extractions lose reproducibility. Review the source and
+dependencies, test against wholly synthetic documents in a disposable container, and keep
+the reviewed version and digest for rollback. See [deterministic parsing](parsing.md) for
+the API, contract and a worked example.
+
 ## Manual upgrades
 
 Create and verify a coordinated backup including the private environment and
@@ -191,15 +268,27 @@ This invokes the same production checks as CI. The temporary data disappears whe
 the container exits; no installation configuration or real invoice data is used.
 
 ```sh
-docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /data:mode=1777 --tmpfs /tmp --env HOUSE_BILLS_SECRET_KEY=synthetic-container-check-key-never-for-runtime-000000000000000000 --env HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid house-bills:local python -m tools.check_production
+docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /data:mode=1777 --tmpfs /tmp --mount type=bind,source="$(pwd)/docs/examples/parsers",target=/parsers,readonly --env HOUSE_BILLS_PARSER_PLUGINS=/parsers --env HOUSE_BILLS_SECRET_KEY=synthetic-container-check-key-never-for-runtime-000000000000000000 --env HOUSE_BILLS_ALLOWED_HOSTS=ci.invalid house-bills:local python -m tools.check_production
 ```
+
+The probe requires an installed parser directory: a parsed synthetic upload is part of
+what it verifies, and the image ships none.
 
 Mount a secret file and set `HOUSE_BILLS_SECRET_KEY_FILE` instead of
 `HOUSE_BILLS_SECRET_KEY` to probe that path. The recovery configuration inside the probe
 records the effective settings either way.
 
-The probe verifies parsed/manual upload and review, correction history, reporting,
-duplicates, private source access, migration guards and static/HTTPS behavior. It creates
+The probe verifies parsed/manual upload and review, correction history, reporting, duplicates,
+private source access, migration guards and static/HTTPS behavior. It also checks parser
+directory path policy, load status, fingerprints, the host implementation digest the
+corrections require and the read-only mount, that
+`parsers --check` rejects a configured vendor format with no installed parser even for an
+empty or missing directory, and that a single-file parser loads when mounted. The strict
+`docker run` check and the Chromium job mount the same reviewed directory read-only,
+because neither build context contains parser code. CI also copies
+`docs/examples/parsers/` into an operator-owned directory and runs the probe through
+`compose.parser-plugins.yaml`, so the override, effective non-root UID, read-only mount,
+denied writes and storage-path rejection are exercised together. It creates
 a checksum-verified backup, restores all database rows and originals into a new directory,
 then starts that instance with migrations disabled and checks authenticated HTTP reports
 and original downloads. This establishes local image behavior, not NAS deployment.

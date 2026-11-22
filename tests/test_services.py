@@ -23,7 +23,6 @@ from bills.models import (
     VendorIssuerIdentifier,
     VendorLayoutFamily,
 )
-from bills.parsing import layout_01, layout_02
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Evidence, Identifier
 from bills.services import (
@@ -32,6 +31,7 @@ from bills.services import (
     record_extraction,
     resolve_section_property,
 )
+from tests.examples import layout_01, layout_02
 
 from .synthetic import multi_service, shared_supply, write_pdf
 
