@@ -31,7 +31,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Enable auto-merge for patch updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        # Only dependency ecosystems whose patches cannot reach a workflow or
+        # image build: github-actions and docker patches stay manual.
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
+          contains(fromJSON('["uv","npm"]'), steps.metadata.outputs.ecosystem)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}

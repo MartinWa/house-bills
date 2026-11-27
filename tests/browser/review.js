@@ -470,6 +470,7 @@ async (page, artifacts = ".playwright-cli", readFixture = null) => {
 
   const source = await page.context().request.get(`${manual.url}view/`);
   assert(source.status() === 200 && source.headers()["content-disposition"].startsWith("inline"), "Private viewer failed");
+  assert(source.headers()["content-security-policy"] === "default-src 'none'; sandbox", "Private viewer is not sandboxed by CSP");
   assert((await source.body()).equals(Buffer.from(manual.bytes)), "Manual source bytes changed after publication");
   await page.screenshot({ path: `${artifacts}/invoice.png`, fullPage: true });
   await page.getByRole("link", { name: "Open document", exact: true }).click();

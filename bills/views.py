@@ -733,4 +733,6 @@ def source(request, pk, download=True):
         handle, as_attachment=download, filename=filename, content_type="application/pdf"
     )
     response["Cache-Control"] = "private, no-store"
+    # Inline viewing stays at the app origin; sandbox it so a hostile PDF cannot script or embed.
+    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
     return response
