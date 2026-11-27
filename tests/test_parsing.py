@@ -526,13 +526,29 @@ def test_amounts_do_not_absorb_unit_or_identifier_digits(text, expected):
 
 
 def test_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
-    with pytest.raises(ValueError, match="Missing monetary amount"):
+    with pytest.raises(ValueError, match="Invalid monetary amount"):
         last_money(Evidence(1, "Summa 1234 567,89 kr", (0, 0, 500, 20)))
 
 
-def test_two_digit_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
-    with pytest.raises(ValueError, match="Missing monetary amount"):
-        last_money(Evidence(1, "Summa 12 34 567,89 kr", (0, 0, 500, 20)))
+def test_malformed_negative_run_does_not_yield_a_positive_amount():
+    # The sign of a negative value must not read as the separator of a date component.
+    with pytest.raises(ValueError, match="Invalid monetary amount"):
+        last_money(Evidence(1, "Summa -1234 567,89 kr", (0, 0, 500, 20)))
+
+
+def test_negative_amounts_keep_their_sign():
+    assert last_money(Evidence(1, "Summa -1 234,56 kr", (0, 0, 500, 20))) == -123456
+
+
+def test_malformed_final_amount_does_not_fall_back_to_an_earlier_match():
+    # A rejected final match reports the line as invalid instead of returning the base.
+    with pytest.raises(ValueError, match="Invalid monetary amount"):
+        last_money(Evidence(1, "Moms 25 % på 500,00 kr 1234 567,89 kr", (0, 0, 500, 20)))
+
+
+def test_date_component_does_not_excuse_a_longer_digit_chain():
+    with pytest.raises(ValueError, match="Invalid monetary amount"):
+        last_money(Evidence(1, "Summa 2024-01-01-2024 567,89 kr", (0, 0, 500, 20)))
 
 
 @pytest.mark.parametrize(
@@ -556,7 +572,12 @@ def test_iso_date_adjacent_amount_is_still_read():
     [
         ("Summa exkl moms 1 080,06 1 350,00 kr", 135000),
         ("Tidigare saldo 0,00 1 350,00 kr", 135000),
+        ("Antal 12 1 080,06 kr", 108006),
         ("Antal 130 1 080,06 kr", 108006),
+        ("Sida 12 av 20 1 080,06 kr", 108006),
+        ("05-03-2024 1 080,06 kr", 108006),
+        ("Mätarnummer:400041 1 080,06 kr", 108006),
+        ("Andel 1/2024 1 080,06 kr", 108006),
     ],
 )
 def test_amounts_keep_neighbouring_cell_values(text, expected):
@@ -576,6 +597,22 @@ def _header_pages(totals_row):
 def test_misgrouped_header_totals_row_is_flagged_as_invalid():
     candidate = header(_header_pages("1 000,00 kr 250,00 kr 0,00 kr 1234 567,89 kr"), "synthetic")
     assert candidate.amount_due_minor is None
+    assert "Missing or invalid header totals row" in candidate.issues
+
+
+def test_misgrouped_cover_totals_row_is_not_recovered_by_the_layout(tmp_path):
+    # The cover recovery reads the printed row again; a rejected amount must not return
+    # as the amount due with the row-level issue cleared.
+    pages = [
+        [
+            line.replace("1 350,00 kr", "1234 567,89 kr") if isinstance(line, str) else line
+            for line in page
+        ]
+        for page in multi_service(correction=True)
+    ]
+    candidate = parse_synthetic(tmp_path, pages)
+    assert candidate.amount_due_minor is None
+    assert candidate.invoice_total_minor is None
     assert "Missing or invalid header totals row" in candidate.issues
 
 

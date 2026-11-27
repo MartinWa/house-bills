@@ -8,18 +8,20 @@ from .normalization import DATE, NUMBER, money, source_date, text
 from .types import Candidate, Evidence, Identifier
 
 AMOUNT = re.compile(rf"(?<![\w,.])(?P<amount>{NUMBER})\s+kr\b", re.I)
-# A digit run directly before a match is an invalid grouping tail when it continues a
-# number that was split at a wrong boundary: four or more digits ("1234 567,89") or a
-# two-digit run, which a three-digit group cannot complete ("12 34 567,89"). A complete
-# three-digit group is a neighbouring value in its own right ("Antal 130 1 080,06").
-# Digits attached to an identifier ("SE000000000001 473,08") or to a decimal fraction
-# ("Tidigare saldo 0,00 1 350,00"), a date or clock component ("2024-03-05 1 080,06")
-# and a year after a month name ("29 mars 2024 1 080,06") are separate tokens and stay
-# valid; month names mirror source_date(), so the first three letters are enough.
-MISGROUPED = re.compile(r"(?<![\w,.:/-])\d+$")
+# A run of four or more digits directly before a match cannot start a group, so it is
+# the tail of a number split at a wrong boundary ("1234 567,89", "Summa -1234 567,89")
+# and must not be read as a number of its own. Shorter runs are neighbouring values
+# ("Antal 12 1 080,06", "Tidigare saldo 0,00 1 350,00"). Digits attached to a word or to
+# ":" and "/" belong to an identifier ("SE000000000001 473,08", "Mätarnummer:400041",
+# "Andel 1/2024"), and a date or clock component stays valid ("2024-03-05 1 080,06",
+# "05-03-2024 1 080,06"), as does a year after a month name ("29 mars 2024 1 080,06").
+# Month names mirror source_date(), so the first three letters are enough. A minus sign
+# is deliberately not an attachment: it belongs to the value, never to a date part.
+MISGROUPED = re.compile(r"(?<![\w,.:/])\d{4,}$")
 MONTH_TOKEN = re.compile(
     r"(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\w*[ \u00a0\u202f]$", re.I
 )
+DATE_COMPONENT = re.compile(r"(?<![\w.:/-])\d{1,4}[-.:/]\d{1,2}(?:[-.:/]\d{1,4})?$")
 SEPARATORS = " \u00a0\u202f"
 
 
@@ -27,9 +29,11 @@ def valid_number(value: str, match: re.Match) -> bool:
     """Reject a match that only continues a mis-grouped run of digits."""
     prefix = value[: match.start()].rstrip(SEPARATORS)
     run = MISGROUPED.search(prefix)
-    if run is None or len(run.group()) == 3:
+    if run is None:
         return True
-    return MONTH_TOKEN.search(prefix[: run.start()]) is not None
+    if MONTH_TOKEN.search(prefix[: run.start()]) is not None:
+        return True
+    return DATE_COMPONENT.search(prefix) is not None
 
 
 def find_number(value: str, pattern: re.Pattern) -> re.Match | None:
@@ -38,10 +42,13 @@ def find_number(value: str, pattern: re.Pattern) -> re.Match | None:
 
 
 def last_money(line: Evidence) -> int:
+    """Read the final amount; a malformed final match is an error, not a fallback."""
     value = text(line)
-    matches = [match for match in AMOUNT.finditer(value) if valid_number(value, match)]
+    matches = list(AMOUNT.finditer(value))
     if not matches:
         raise ValueError("Missing monetary amount")
+    if not valid_number(value, matches[-1]):
+        raise ValueError("Invalid monetary amount")
     return money(matches[-1]["amount"])
 
 

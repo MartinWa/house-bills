@@ -8,7 +8,7 @@ sized to the shipped example layouts: a plugin can express them with no other im
 
 from bills.categories import waste_cost_subcategory, waste_subcategory
 
-from .common import AMOUNT, find, header, last_money, reconcile
+from .common import AMOUNT, find, header, last_money, reconcile, valid_number
 from .configuration import configure
 from .electricity_demand import split_electricity_demand
 from .layout_helpers import (
@@ -77,6 +77,7 @@ __all__ = [
     "tax_basis",
     "text",
     "unit",
+    "valid_number",
     "waste_cost_subcategory",
     "waste_subcategory",
 ]
