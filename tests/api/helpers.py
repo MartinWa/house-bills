@@ -105,10 +105,11 @@ def approve_manual(client, house, vendor):
 def editable_allocations(*invoices):
     """Let a test edit allocation rows of approved invoices directly.
 
-    Migration 0029 blocks UPDATE/DELETE on billing sections and usages while the
-    parent invoice is approved; the review service rewrites rows only after
-    demoting the invoice to review. Demote the given invoices, yield, then
-    restore each invoice's original approval state.
+    Migration 0029 blocks UPDATE on billing sections and usages while the parent
+    invoice is approved; the review service rewrites rows only after demoting the
+    invoice to review. Deletion stays unguarded for cascades and flush, and is
+    checked at the model layer. Demote the given invoices, yield, then restore each
+    invoice's original approval state.
     """
     previous = {
         row.pk: (row.status, row.approved_at, row.approved_by_id)
