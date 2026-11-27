@@ -8,19 +8,28 @@ from .normalization import DATE, NUMBER, money, source_date, text
 from .types import Candidate, Evidence, Identifier
 
 AMOUNT = re.compile(rf"(?<![\w,.])(?P<amount>{NUMBER})\s+kr\b", re.I)
-# A standalone run of four or more digits directly before a match is an invalid
-# digit grouping whose tail must not be read as a number of its own ("1234 567,89").
-# Digits attached to an identifier ("SE000000000001 473,08") and a year following
-# a month name ("1 mar 2024 321,125") are separate tokens and stay valid.
-MISGROUPED = re.compile(
-    r"(?<!\w)(?<!(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec) )\d{4,}[ \u00a0\u202f]$",
-    re.I,
+# A digit run directly before a match is an invalid grouping tail when it continues a
+# number that was split at a wrong boundary: four or more digits ("1234 567,89") or a
+# two-digit run, which a three-digit group cannot complete ("12 34 567,89"). A complete
+# three-digit group is a neighbouring value in its own right ("Antal 130 1 080,06").
+# Digits attached to an identifier ("SE000000000001 473,08") or to a decimal fraction
+# ("Tidigare saldo 0,00 1 350,00"), a date or clock component ("2024-03-05 1 080,06")
+# and a year after a month name ("29 mars 2024 1 080,06") are separate tokens and stay
+# valid; month names mirror source_date(), so the first three letters are enough.
+MISGROUPED = re.compile(r"(?<![\w,.:/-])\d+$")
+MONTH_TOKEN = re.compile(
+    r"(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\w*[ \u00a0\u202f]$", re.I
 )
+SEPARATORS = " \u00a0\u202f"
 
 
 def valid_number(value: str, match: re.Match) -> bool:
     """Reject a match that only continues a mis-grouped run of digits."""
-    return MISGROUPED.search(value[: match.start()]) is None
+    prefix = value[: match.start()].rstrip(SEPARATORS)
+    run = MISGROUPED.search(prefix)
+    if run is None or len(run.group()) == 3:
+        return True
+    return MONTH_TOKEN.search(prefix[: run.start()]) is not None
 
 
 def find_number(value: str, pattern: re.Pattern) -> re.Match | None:

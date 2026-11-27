@@ -530,6 +530,11 @@ def test_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
         last_money(Evidence(1, "Summa 1234 567,89 kr", (0, 0, 500, 20)))
 
 
+def test_two_digit_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
+    with pytest.raises(ValueError, match="Missing monetary amount"):
+        last_money(Evidence(1, "Summa 12 34 567,89 kr", (0, 0, 500, 20)))
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [
@@ -538,6 +543,23 @@ def test_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
     ],
 )
 def test_last_money_keeps_grouped_and_date_adjacent_amounts(text, expected):
+    assert last_money(Evidence(1, text, (0, 0, 500, 20))) == expected
+
+
+def test_iso_date_adjacent_amount_is_still_read():
+    evidence = Evidence(1, "Fakturadatum 2024-03-05 1 080,06 kr", (0, 0, 500, 20))
+    assert last_money(evidence) == 108006
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Summa exkl moms 1 080,06 1 350,00 kr", 135000),
+        ("Tidigare saldo 0,00 1 350,00 kr", 135000),
+        ("Antal 130 1 080,06 kr", 108006),
+    ],
+)
+def test_amounts_keep_neighbouring_cell_values(text, expected):
     assert last_money(Evidence(1, text, (0, 0, 500, 20))) == expected
 
 
@@ -560,6 +582,18 @@ def test_misgrouped_header_totals_row_is_flagged_as_invalid():
 def test_header_totals_row_after_a_printed_date_is_still_read():
     candidate = header(
         _header_pages("29 mar 2024 1 080,06 kr 270,02 kr -0,08 kr 1 350,00 kr"), "synthetic"
+    )
+    assert (
+        candidate.net_minor,
+        candidate.vat_minor,
+        candidate.rounding_minor,
+        candidate.amount_due_minor,
+    ) == (108006, 27002, -8, 135000)
+
+
+def test_header_totals_row_after_a_full_month_name_is_still_read():
+    candidate = header(
+        _header_pages("29 mars 2024 1 080,06 kr 270,02 kr -0,08 kr 1 350,00 kr"), "synthetic"
     )
     assert (
         candidate.net_minor,
