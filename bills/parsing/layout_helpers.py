@@ -132,7 +132,7 @@ def due_amount(candidate, lines, *, decode=text):
         value = decode(line)
         match = re.search(rf"Belopp att betala\s*:?\s*({NUMBER})\s*kr\b", value, re.I)
         match = match or re.search(rf"({NUMBER})\s*kr\s*Belopp att betala\s*:?$", value, re.I)
-        if match and not valid_number(value, match):
+        if match and not valid_number(value, match, match[1]):
             match = None
         if match:
             values.append((match[1], line))

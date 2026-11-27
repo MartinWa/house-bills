@@ -272,12 +272,15 @@ Parsers import only `bills.parsing.api`, which re-exports the candidate types
 those names, signatures and value conventions stable; breaking changes require a new
 version. Everything else under `bills.parsing` is internal.
 
-Amounts read through `last_money` and `header` reject a run of four or more digits that
-cannot start a group, so the tail of a mis-grouped number is never read as a value of its
-own; `valid_number` exposes that check to a parser that iterates `AMOUNT` itself.
-`last_money` raises `Missing monetary amount` when a line carries no amount and
-`Invalid monetary amount` when its final amount is such a tail, instead of falling back
-to an earlier match on the line.
+Amounts read through `last_money` and `header` reject a match that starts inside a digit
+run, and reject a preceding run of digits that would overfill a group, so the tail of a
+mis-grouped number is never read as a value of its own. Three-digit groups, neighbouring
+counts, ungrouped amounts, identifiers, dates and month names stay valid. `valid_number`
+exposes that check to a parser that iterates `AMOUNT` itself; its optional third argument
+is the matched amount, for patterns whose match starts at a label. `last_money` raises
+`Missing monetary amount` when a line carries no amount and `Invalid monetary amount`
+when its final amount is such a tail, instead of falling back to an earlier match on the
+line.
 
 A module declares the version it targets and the loader rejects a mismatch before the
 module reaches the registry:

@@ -8,32 +8,52 @@ from .normalization import DATE, NUMBER, money, source_date, text
 from .types import Candidate, Evidence, Identifier
 
 AMOUNT = re.compile(rf"(?<![\w,.])(?P<amount>{NUMBER})\s+kr\b", re.I)
-# A run of four or more digits directly before a match cannot start a group, so it is
-# the tail of a number split at a wrong boundary ("1234 567,89", "Summa -1234 567,89")
-# and must not be read as a number of its own. Shorter runs are neighbouring values
-# ("Antal 12 1 080,06", "Tidigare saldo 0,00 1 350,00"). Digits attached to a word or to
-# ":" and "/" belong to an identifier ("SE000000000001 473,08", "Mätarnummer:400041",
-# "Andel 1/2024"), and a date or clock component stays valid ("2024-03-05 1 080,06",
-# "05-03-2024 1 080,06"), as does a year after a month name ("29 mars 2024 1 080,06").
-# Month names mirror source_date(), so the first three letters are enough. A minus sign
-# is deliberately not an attachment: it belongs to the value, never to a date part.
-MISGROUPED = re.compile(r"(?<![\w,.:/])\d{4,}$")
+# A match that begins inside a digit run is the middle of the printed value, not a value
+# of its own ("1234 567,89" read from "234"); patterns with their own left boundary never
+# reach that check. A run of digits directly before a match is a split tail unless it is
+# a complete three-digit group, a neighbouring value whose first group it could have
+# completed ("Antal 12 1 080,06", "Tidigare saldo 0,00 1 350,00"), an identifier
+# attachment ("SE000000000001 473,08", "Mätarnummer:400041", "Andel 1/2024"), a date or
+# clock component ("2024-03-05", "05-03-2024", "1 feb-24") or a year after a month name
+# ("29 mars 2024"). Month names mirror source_date(), so the first three letters are
+# enough. A minus sign is deliberately not an attachment: it belongs to the value, never
+# to a date part. A two-digit neighbour of a space-grouped amount stays a split tail
+# ("12 34 567,89") even when the line prints a separate count there.
+MISGROUPED = re.compile(r"(?<![\w,.:/])\d+$")
 MONTH_TOKEN = re.compile(
-    r"(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\w*[ \u00a0\u202f]$", re.I
+    r"(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\w*(?:-\d{2,4})?$", re.I
 )
 DATE_COMPONENT = re.compile(r"(?<![\w.:/-])\d{1,4}[-.:/]\d{1,2}(?:[-.:/]\d{1,4})?$")
+DIGITS = re.compile(r"\d+")
+SPACE_GROUPED = re.compile(r"\d[ \u00a0\u202f]\d")
 SEPARATORS = " \u00a0\u202f"
 
 
-def valid_number(value: str, match: re.Match) -> bool:
-    """Reject a match that only continues a mis-grouped run of digits."""
-    prefix = value[: match.start()].rstrip(SEPARATORS)
-    run = MISGROUPED.search(prefix)
+def valid_number(value: str, match: re.Match, amount: str | None = None) -> bool:
+    """Reject a match that starts inside a number or only continues a split tail."""
+    prefix = value[: match.start()]
+    if prefix and (prefix[-1].isdigit() or prefix[-1] in ",."):
+        return False
+    body = prefix.rstrip(SEPARATORS)
+    run = MISGROUPED.search(body)
     if run is None:
         return True
-    if MONTH_TOKEN.search(prefix[: run.start()]) is not None:
+    head = body[: run.start()].rstrip(SEPARATORS)
+    if MONTH_TOKEN.search(head) is not None or MONTH_TOKEN.search(body) is not None:
         return True
-    return DATE_COMPONENT.search(prefix) is not None
+    if DATE_COMPONENT.search(body) is not None:
+        return True
+    if len(run.group()) >= 4:
+        return False
+    if len(run.group()) == 3:
+        return True
+    # A one- or two-digit run can only be a split tail when the amount is space-grouped
+    # and one more digit would overfill its first group; otherwise it is a neighbour.
+    number = amount or match.groupdict().get("amount") or match.group(0)
+    first = DIGITS.search(number)
+    if first is None or len(run.group()) + len(first.group()) <= 3:
+        return True
+    return SPACE_GROUPED.search(number) is None
 
 
 def find_number(value: str, pattern: re.Pattern) -> re.Match | None:

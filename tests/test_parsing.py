@@ -8,7 +8,7 @@ import pytest
 
 from bills.categories import waste_cost_subcategory
 from bills.parsing.common import header, last_money, reconcile
-from bills.parsing.layout_helpers import price_quantities
+from bills.parsing.layout_helpers import due_amount, price_quantities
 from bills.parsing.normalization import money, quantity, source_date, source_period
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Candidate, Evidence, Section
@@ -530,6 +530,11 @@ def test_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
         last_money(Evidence(1, "Summa 1234 567,89 kr", (0, 0, 500, 20)))
 
 
+def test_two_digit_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
+    with pytest.raises(ValueError, match="Invalid monetary amount"):
+        last_money(Evidence(1, "Summa 12 34 567,89 kr", (0, 0, 500, 20)))
+
+
 def test_malformed_negative_run_does_not_yield_a_positive_amount():
     # The sign of a negative value must not read as the separator of a date component.
     with pytest.raises(ValueError, match="Invalid monetary amount"):
@@ -573,6 +578,8 @@ def test_iso_date_adjacent_amount_is_still_read():
         ("Summa exkl moms 1 080,06 1 350,00 kr", 135000),
         ("Tidigare saldo 0,00 1 350,00 kr", 135000),
         ("Antal 12 1 080,06 kr", 108006),
+        ("Antal 12 1080,06 kr", 108006),
+        ("Antal 12 34,56 kr", 3456),
         ("Antal 130 1 080,06 kr", 108006),
         ("Sida 12 av 20 1 080,06 kr", 108006),
         ("05-03-2024 1 080,06 kr", 108006),
@@ -640,6 +647,23 @@ def test_header_totals_row_after_a_full_month_name_is_still_read():
     ) == (108006, 27002, -8, 135000)
 
 
+def test_amount_due_does_not_start_inside_a_digit_run():
+    candidate = Candidate(
+        "synthetic", "v1", "1", "", None, None, "SEK", None, None, None, None, None, {}
+    )
+    due_amount(candidate, [Evidence(1, "1234 567,89 kr Belopp att betala", (0, 0, 500, 20))])
+    assert candidate.amount_due_minor is None
+    assert "Missing or invalid amount_due_minor" in candidate.issues
+
+
+def test_amount_due_reads_a_labelled_value_whole():
+    candidate = Candidate(
+        "synthetic", "v1", "1", "", None, None, "SEK", None, None, None, None, None, {}
+    )
+    due_amount(candidate, [Evidence(1, "1 234 567,89 kr Belopp att betala", (0, 0, 500, 20))])
+    assert candidate.amount_due_minor == 123456789
+
+
 def test_misgrouped_price_quantity_is_rejected_but_date_adjacent_quantities_are_kept():
     candidate = Candidate(
         "synthetic", "v1", "1", "", None, None, "SEK", None, None, None, None, None, {}
@@ -648,9 +672,10 @@ def test_misgrouped_price_quantity_is_rejected_but_date_adjacent_quantities_are_
     item = re.compile(r"^(?:Energiavgift|Avläsning)\b", re.I)
     lines = [
         Evidence(1, "Avläsning 1 mar 2024 321,125 kWh 8321,125", (0, 0, 500, 20)),
+        Evidence(1, "Energiavgift 1 feb-24 40,125 kWh 10,00 öre/kWh 10,00 kr", (0, 0, 500, 20)),
         Evidence(1, "Energiavgift 1234 567,5 kWh 4,00 öre/kWh 12,85 kr", (0, 0, 500, 20)),
     ]
-    assert list(price_quantities(candidate, section, lines, item)) == [321125]
+    assert list(price_quantities(candidate, section, lines, item)) == [321125, 40125]
 
 
 def test_misgrouped_waste_charge_row_is_flagged_without_a_wrong_split(tmp_path):
