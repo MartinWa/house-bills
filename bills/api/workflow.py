@@ -5,6 +5,7 @@ from dataclasses import asdict
 from django.contrib.admin.models import ADDITION, CHANGE
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Prefetch
 from django.http import FileResponse, HttpResponse
 from ninja import File, Router, Status
 from ninja.files import UploadedFile
@@ -63,11 +64,10 @@ def document_representation(document):
         )
     elif document.can_discard_manual_entry:
         links["cancel"] = f"{path}/cancel"
-    invoices = list(document.invoices.order_by("pk").values_list("id", flat=True))
-    for key in document.invoices.filter(status=Invoice.Status.APPROVED).values_list(
-        "pk", flat=True
-    ):
-        links[f"invoice_{key}"] = resource_path("invoices", key)
+    invoices = list(document.invoices.all())
+    for invoice in invoices:
+        if invoice.status == Invoice.Status.APPROVED:
+            links[f"invoice_{invoice.pk}"] = resource_path("invoices", invoice.pk)
     return {
         "id": document.pk,
         "source": document.source,
@@ -78,7 +78,7 @@ def document_representation(document):
         "storage_pending": document.storage_needs_attention,
         "extraction_revision": document.extraction_revision,
         "created_at": document.created_at,
-        "invoice_ids": invoices,
+        "invoice_ids": [invoice.pk for invoice in invoices],
         "deletion_token": deletion_token(document),
         "links": links,
     }
@@ -116,6 +116,9 @@ def documents(request):
             "storage_state": Document.StorageState.values,
             "source": Document.Source.values,
         },
+    )
+    queryset = queryset.prefetch_related(
+        Prefetch("invoices", queryset=Invoice.objects.order_by("pk"))
     )
     return page_response(
         request,

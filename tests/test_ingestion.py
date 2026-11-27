@@ -681,3 +681,45 @@ def test_reserved_publication_destination_is_not_reused(pdf, user):
     approve(document, pdf, user)
     document.refresh_from_db()
     assert document.original_path == expected[:-4] + "-1.pdf"
+
+
+def test_ledger_import_keeps_zero_gross_service_lines_and_reconciles(user, tmp_path):
+    house = Property.objects.create(name="Synthetic House", slug="synthetic-house")
+    vendor = Vendor.objects.create(name="Synthetic Utilities", slug="synthetic-utilities")
+    row = {
+        "property_id": house.pk,
+        "vendor": "Synthetic Utilities",
+        "date": "2024-01-15",
+        "reference": "",
+        "sheet": "Synthetic",
+        "total": 100.25,
+        "services": {"water": 100.0, "waste": 0.0},
+        "row": {"property_id": house.pk, "date": "2024-01-15", "total": 100.25},
+    }
+    source = tmp_path / "comparison.json"
+    source.write_text(json.dumps({"only_manual": [row]}), encoding="utf-8")
+    call_command(
+        "import_ledger_invoices",
+        "--source",
+        str(source),
+        "--actor",
+        user.username,
+        "--vendor",
+        f"Synthetic Utilities={vendor.slug}",
+        "--property",
+        f"{house.pk}={house.slug}",
+        "--period",
+        f"{vendor.slug}=10:30",
+        "--commit",
+        stdout=io.StringIO(),
+    )
+    invoice = Invoice.objects.get()
+    sections = {section.service: section for section in invoice.sections.all()}
+    assert set(sections) == {"water", "waste"}
+    assert sections["waste"].gross_minor == 0
+    assert sections["waste"].net_minor == 0 and sections["waste"].vat_minor == 0
+    assert sections["water"].gross_minor == 10000
+    # Zero lines add nothing: rounding is still the total minus the section grosses.
+    assert invoice.invoice_total_minor == 10025
+    assert invoice.rounding_minor == 25
+    assert invoice.net_minor == 8000 and invoice.vat_minor == 2000

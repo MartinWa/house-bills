@@ -1,12 +1,13 @@
 """HTTP contract checks use invented records and disposable original storage."""
 
 import json
+from contextlib import contextmanager
 
 import pytest
 from django.test import Client
 
 from bills.api.auth import PREFIX
-from bills.models import ApiToken
+from bills.models import ApiToken, Invoice
 
 BASE = PREFIX
 
@@ -98,3 +99,28 @@ def approve_manual(client, house, vendor):
     )
     assert response.status_code == 201, response.content
     return document, response.json()
+
+
+@contextmanager
+def editable_allocations(*invoices):
+    """Let a test edit allocation rows of approved invoices directly.
+
+    Migration 0029 blocks UPDATE/DELETE on billing sections and usages while the
+    parent invoice is approved; the review service rewrites rows only after
+    demoting the invoice to review. Demote the given invoices, yield, then
+    restore each invoice's original approval state.
+    """
+    previous = {
+        row.pk: (row.status, row.approved_at, row.approved_by_id)
+        for row in Invoice.objects.filter(pk__in=[invoice.pk for invoice in invoices])
+    }
+    Invoice.objects.filter(pk__in=previous).update(
+        status=Invoice.Status.REVIEW, approved_at=None, approved_by=None
+    )
+    try:
+        yield
+    finally:
+        for pk, (status, approved_at, approved_by_id) in previous.items():
+            Invoice.objects.filter(pk=pk).update(
+                status=status, approved_at=approved_at, approved_by_id=approved_by_id
+            )

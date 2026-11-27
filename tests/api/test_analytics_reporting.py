@@ -21,7 +21,7 @@ from bills.power_reporting import summarize_billed_power
 from bills.reporting import reporting_reader
 
 from ..test_reporting import allocation, demand_allocation, usage
-from .helpers import BASE
+from .helpers import BASE, editable_allocations
 from .test_reporting_contract import get, records
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -170,8 +170,11 @@ def test_calendar_keys_whole_intervals_signs_and_context(api_client, ledger, mon
 def test_cost_year_compact_unknown_and_distinct_counts(api_client):
     client, house, _, invoices, sections, _ = records(api_client, count=2)
     Invoice.objects.filter(pk=invoices[0].pk).update(invoice_date=date(2025, 12, 31))
-    BillingSection.objects.filter(pk=sections[0].pk).update(net_minor=0, vat_minor=0, gross_minor=0)
-    BillingSection.objects.filter(pk=sections[1].pk).update(gross_minor=None)
+    with editable_allocations(*invoices):
+        BillingSection.objects.filter(pk=sections[0].pk).update(
+            net_minor=0, vat_minor=0, gross_minor=0
+        )
+        BillingSection.objects.filter(pk=sections[1].pk).update(gross_minor=None)
     response = get(
         client, "costs?group_by=invoice_year&currency=SEK&include_waste=false&" + COMPACT
     )
@@ -189,7 +192,8 @@ def test_power_statistics_are_complete_and_cancel_exact_credits(api_client):
         api_client, count=211, utility="electricity", subcategory="electricity_demand"
     )
     for index, amount in enumerate((5000, -5000, 3000, 0, -2000)):
-        Usage.objects.filter(pk=usages[index].pk).update(quantity_milli=amount)
+        with editable_allocations(invoices[index]):
+            Usage.objects.filter(pk=usages[index].pk).update(quantity_milli=amount)
         if amount < 0:
             Invoice.objects.filter(pk=invoices[index].pk).update(kind="credit")
     with reporting_reader() as reader:
@@ -234,9 +238,11 @@ def test_availability_and_empty_range_are_distinct(api_client, ledger):  # noqa:
 
 def test_consumption_cutoff_coverage_zero_and_basis(api_client, ledger):  # noqa: F811
     client = api_client[0]
-    for year, quantity in ((2023, 0), (2024, 1000)):
-        for month in (1, 2):
-            water(ledger, year, month, quantity)
+    made = [
+        water(ledger, year, month, quantity)
+        for year, quantity in ((2023, 0), (2024, 1000))
+        for month in (1, 2)
+    ]
     response = get(client, "comparisons?metric=consumption&year=2024&category=water")
     comparison = response["comparisons"][0]
     assert comparison["cutoff"] == "2024-02-29" and comparison["comparison_cutoff"] == "2023-02-28"
@@ -245,7 +251,8 @@ def test_consumption_cutoff_coverage_zero_and_basis(api_client, ledger):  # noqa
         "nonpositive_baseline"
     ]
     assert [row["year"] for row in response["annuals"]] == [2022, 2023, 2024]
-    Usage.objects.filter(start=date(2024, 1, 1)).delete()
+    with editable_allocations(*made):
+        Usage.objects.filter(start=date(2024, 1, 1)).delete()
     comparison = get(client, "comparisons?metric=consumption&year=2024&category=water")[
         "comparisons"
     ][0]
@@ -270,9 +277,11 @@ def test_cost_comparisons_use_expectations_and_unknown_cumulative(api_client, le
     VendorBillingSchedule.objects.create(
         vendor=vendor, start_month=date(2023, 1, 1), first_expected_month=date(2023, 1, 1)
     )
-    for year, net in ((2023, 10000), (2024, 12000)):
-        for month in (1, 2):
-            water(ledger, year, month, 1000, net=net)
+    made = [
+        water(ledger, year, month, 1000, net=net)
+        for year, net in ((2023, 10000), (2024, 12000))
+        for month in (1, 2)
+    ]
     response = get(
         client,
         f"comparisons?metric=costs&year=2024&category=water&property_id={house.pk}&history=true",
@@ -281,7 +290,10 @@ def test_cost_comparisons_use_expectations_and_unknown_cumulative(api_client, le
     assert comparison["comparable"] and comparison["absolute_change"] == 5000
     assert Decimal(comparison["percentage_change"]) == 20
     assert comparison["current_coverage"]["expectation_count"] == 2
-    BillingSection.objects.filter(invoice__invoice_date=date(2024, 1, 28)).update(gross_minor=None)
+    with editable_allocations(*made):
+        BillingSection.objects.filter(invoice__invoice_date=date(2024, 1, 28)).update(
+            gross_minor=None
+        )
     response = get(client, "comparisons?metric=costs&year=2024&category=water")
     assert "unknown_amount" in response["comparisons"][0]["reasons"]
     assert all(
@@ -421,7 +433,7 @@ def test_history_preserves_recent_absent_years_and_months(api_client, ledger, me
 def test_unit_costs_aggregate_costs_and_usage_independently(api_client, ledger):  # noqa: F811
     client = api_client[0]
     start, end = date(2024, 1, 1), date(2024, 2, 1)
-    ledger["make"](
+    invoice = ledger["make"](
         [
             allocation(
                 ledger["houses"][0],
@@ -442,7 +454,8 @@ def test_unit_costs_aggregate_costs_and_usage_independently(api_client, ledger):
     assert group["allocation_count"] == 1 and group["usage_count"] == 2 and group["comparable"]
     assert abs(Decimal(group["rate_minor_per_unit"]) - Decimal(12500) / 6) < Decimal("1e-20")
     assert group["last_billed_day"] == "2024-01-31"
-    Usage.objects.all().update(basis="estimated")
+    with editable_allocations(invoice):
+        Usage.objects.all().update(basis="estimated")
     group = get(client, "unit-costs?category=water")["groups"][0]
     assert "estimated_quantity" in group["reasons"] and group["rate_minor_per_unit"] is None
 
@@ -629,7 +642,8 @@ def test_unit_cost_exclusions_are_scoped_to_each_house(api_client, ledger):
 def test_unknown_cost_period_cannot_be_excluded_by_invoice_date(api_client, ledger):
     water(ledger, 2024, 1, 10000)
     later = water(ledger, 2025, 5, 10000)
-    BillingSection.objects.filter(invoice=later).update(start=None, end=None)
+    with editable_allocations(later):
+        BillingSection.objects.filter(invoice=later).update(start=None, end=None)
     result = get(
         api_client[0], "unit-costs?category=water&date_from=2024-01-01&date_to=2024-01-31"
     )["groups"][0]

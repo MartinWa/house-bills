@@ -9,7 +9,7 @@ from django.db import connections
 from bills.api import schemas
 from bills.models import BillingSection, Document, Invoice, Property, Subcategory, Usage, Vendor
 
-from .helpers import BASE, setup
+from .helpers import BASE, editable_allocations, setup
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -168,9 +168,10 @@ def test_custom_groups_counts_and_credit_arithmetic(api_client):
     other_house = Property.objects.create(name="Another synthetic house", slug="another-house")
     other_vendor = Vendor.objects.create(name="Another synthetic vendor", slug="another-vendor")
     Invoice.objects.filter(pk=invoices[1].pk).update(kind="credit", vendor=other_vendor)
-    BillingSection.objects.filter(pk=sections[1].pk).update(
-        property=other_house, net_minor=-100, vat_minor=-25, gross_minor=-125
-    )
+    with editable_allocations(invoices[1]):
+        BillingSection.objects.filter(pk=sections[1].pk).update(
+            property=other_house, net_minor=-100, vat_minor=-25, gross_minor=-125
+        )
     extra = BillingSection.objects.bulk_create(
         [
             BillingSection(
@@ -243,7 +244,8 @@ def test_custom_groups_counts_and_credit_arithmetic(api_client):
 def test_unknown_money_does_not_turn_into_a_partial_total(api_client, mode):
     client, _, _, invoices, sections, _ = records(api_client, count=2)
     Invoice.objects.filter(pk=invoices[1].pk).update(invoice_date=invoices[0].invoice_date)
-    BillingSection.objects.filter(pk=sections[1].pk).update(net_minor=None, gross_minor=None)
+    with editable_allocations(invoices[1]):
+        BillingSection.objects.filter(pk=sections[1].pk).update(net_minor=None, gross_minor=None)
     result = get(client, "costs?mode=" + mode)
     assert result["groups"][0]["net_minor"] is None
     assert result["groups"][0]["gross_minor"] is None
@@ -293,16 +295,18 @@ def test_historical_catalogue_labels_and_issue_reasons(api_client):
         is_active=False,
         is_waste_fraction=True,
     )
-    client, _, _, _, sections, _ = records(
+    client, _, _, invoices, sections, _ = records(
         api_client, utility="waste", subcategory="synthetic-fraction"
     )
     for kind in ("costs", "consumption"):
         result = get(client, kind + "?group_by=subcategory")
         assert result["groups"][0]["subcategory_name"] == "Historical fraction"
-    BillingSection.objects.filter(pk=sections[0].pk).update(subcategory=None)
+    with editable_allocations(invoices[0]):
+        BillingSection.objects.filter(pk=sections[0].pk).update(subcategory=None)
     assert get(client, "costs")["items"][0]["subcategory_name"] == "Unspecified"
-    Usage.objects.filter(section=sections[0]).delete()
-    BillingSection.objects.filter(pk=sections[0].pk).update(category="electricity")
+    with editable_allocations(invoices[0]):
+        Usage.objects.filter(section=sections[0]).delete()
+        BillingSection.objects.filter(pk=sections[0].pk).update(category="electricity")
     Usage.objects.bulk_create(
         [
             Usage(
@@ -336,11 +340,12 @@ def test_rows_groups_totals_and_labels_share_a_snapshot(api_client, monkeypatch)
         calls.append(mode)
         if len(calls) == 1:
             with writer.cursor() as cursor:
-                cursor.execute(
-                    "UPDATE bills_billingsection SET net_minor=200, vat_minor=50, "
-                    "gross_minor=250 WHERE id=%s",
-                    [sections[0].pk],
-                )
+                with editable_allocations(invoices[0]):
+                    cursor.execute(
+                        "UPDATE bills_billingsection SET net_minor=200, vat_minor=50, "
+                        "gross_minor=250 WHERE id=%s",
+                        [sections[0].pk],
+                    )
                 cursor.execute(
                     "UPDATE bills_property SET name='Corrected name' WHERE id=%s",
                     [sections[0].property_id],
@@ -372,9 +377,10 @@ def test_rows_groups_totals_and_labels_share_a_snapshot(api_client, monkeypatch)
 def test_custom_totals_group_guard_is_not_bypassed(api_client, monkeypatch):
     import bills.api_reporting as reporting
 
-    client, _, _, _, sections, _ = records(api_client, count=2)
+    client, _, _, invoices, sections, _ = records(api_client, count=2)
     other = Property.objects.create(name="Another house", slug="another-house")
-    BillingSection.objects.filter(pk=sections[1].pk).update(property=other)
+    with editable_allocations(invoices[1]):
+        BillingSection.objects.filter(pk=sections[1].pk).update(property=other)
     monkeypatch.setattr(reporting, "MAX_GROUPS", 1)
     response = client.get(BASE + "/reports/costs?group_by=currency")
     assert response.status_code == 422

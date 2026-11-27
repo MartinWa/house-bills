@@ -540,13 +540,12 @@ class Command(BaseCommand):
         sections, net_total, vat_total, gross_total = [], 0, 0, 0
         for index, (service, amount) in enumerate(sorted(item["services"].items()), 1):
             gross = minor_units(amount)
-            if gross == 0:
-                continue
             net = derived_net(gross)
             vat = gross - net
             net_total += net
             vat_total += vat
             gross_total += gross
+            # A printed zero-cost line is still a transcribed section.
             sections.append(
                 {
                     "section_id": f"ledger-{index}-{service}",
@@ -556,7 +555,7 @@ class Command(BaseCommand):
                     "gross_minor": gross,
                 }
             )
-        if not sections:
+        if not any(section["gross_minor"] for section in sections):
             raise ValueError("All service allocations are zero.")
         total = minor_units(item["total"])
         rounding = total - gross_total

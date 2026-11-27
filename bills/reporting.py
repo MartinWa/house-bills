@@ -10,6 +10,7 @@ from django.db import connection
 from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Service, Usage
 from .power_reporting import summarize_billed_power
+from .reporting_data import bounded_facts
 from .waste_reporting import read_waste_details, read_waste_report
 
 SELECTION_REASONS = {
@@ -105,10 +106,11 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             """,
             usage_params,
         )
-        breakdown = _rows(
-            reader,
-            SELECTED_USAGE
-            + f"""
+        breakdown = bounded_facts(
+            _rows(
+                reader,
+                SELECTED_USAGE
+                + f"""
             SELECT property_id, property_name, utility, unit, source_service, subcategory, basis,
                    source_selection, sum(quantity_milli) AS quantity_milli
             FROM selected_usage WHERE {usage_where}
@@ -116,24 +118,29 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
                      basis, source_selection
             ORDER BY property_name, property_id, utility, source_service, subcategory, basis
             """,
-            usage_params,
+                usage_params,
+            )
         )
-        issues = _rows(
-            reader,
-            f"""
+        issues = bounded_facts(
+            _rows(
+                reader,
+                f"""
             SELECT * FROM reporting_electricity_selection
             WHERE source_selection = 'needs_review' AND {usage_where}
             ORDER BY property_name, property_id, period_start, invoice_id, usage_id
             """,
-            usage_params,
+                usage_params,
+            )
         )
-        billed_power = _rows(
-            reader,
-            f"""
+        billed_power = bounded_facts(
+            _rows(
+                reader,
+                f"""
             SELECT * FROM reporting_electricity_demand WHERE {usage_where}
             ORDER BY property_name, property_id, period_start DESC, invoice_id, usage_id
             """,
-            usage_params,
+                usage_params,
+            )
         )
         # Costs use invoice dates; usage and its issues use billed periods.
         # Identify sources from every displayed part of the same report snapshot.

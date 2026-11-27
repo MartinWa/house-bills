@@ -49,7 +49,14 @@ class ReportingSnapshot:
                     ).fetchone()[0]
                     query = re.sub(r"^CREATE VIEW\s+\w+\s+AS\s+", "", definition, flags=re.I)
                     anchor = "FROM reporting_usage WHERE"
-                    if query.count(anchor) != 1:
+                    # The injected predicate must sit in the source CTE feeding
+                    # the positives partition, i.e. before that CTE.
+                    positives = query.find("positives AS")
+                    if (
+                        query.count(anchor) != 1
+                        or positives == -1
+                        or query.index(anchor) > positives
+                    ):
                         raise RuntimeError("Unsupported canonical electricity selection definition")
                     query = query.replace(anchor, f"{anchor} {house_filter} AND", 1)
                     source = f"({query})"
@@ -187,7 +194,11 @@ def consumption_groups(buckets):
 
 
 def surviving_intervals(rows):
-    """Exact signed corrections cancel observations for physical coverage only."""
+    """Exact signed corrections cancel observations for physical coverage only.
+
+    Credits pair on (property, vendor, source service, period, |quantity|),
+    matching the cancellation rule of the reporting_electricity_selection view.
+    """
     positives, credits = defaultdict(list), defaultdict(list)
     for row in sorted(
         rows, key=lambda row: (row["invoice_date"], row["invoice_id"], row["usage_id"])
@@ -196,8 +207,6 @@ def surviving_intervals(rows):
             row["property_id"],
             row["vendor_id"],
             row["source_service"],
-            row["unit"],
-            row["subcategory"],
             row["period_start"],
             row["period_end"],
             abs(row["quantity_milli"]),
