@@ -275,7 +275,7 @@ version. Everything else under `bills.parsing` is internal.
 Amounts read through `last_money` and `header` reject a match that starts inside a digit
 run, and reject a preceding run of digits that would overfill a group, so the tail of a
 mis-grouped number is never read as a value of its own. Three-digit groups, neighbouring
-counts, ungrouped amounts, identifiers, dates and month names stay valid. `valid_number`
+counts, ungrouped amounts, signed amounts, identifiers, dates and month names stay valid. `valid_number`
 exposes that check to a parser that iterates `AMOUNT` itself; its optional third argument
 is the matched amount, for patterns whose match starts at a label. `last_money` raises
 `Missing monetary amount` when a line carries no amount and `Invalid monetary amount`

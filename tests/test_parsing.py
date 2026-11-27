@@ -580,6 +580,7 @@ def test_iso_date_adjacent_amount_is_still_read():
         ("Antal 12 1 080,06 kr", 108006),
         ("Antal 12 1080,06 kr", 108006),
         ("Antal 12 34,56 kr", 3456),
+        ("Antal 12 -34 567,89 kr", -3456789),
         ("Antal 130 1 080,06 kr", 108006),
         ("Sida 12 av 20 1 080,06 kr", 108006),
         ("05-03-2024 1 080,06 kr", 108006),

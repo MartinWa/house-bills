@@ -17,8 +17,9 @@ AMOUNT = re.compile(rf"(?<![\w,.])(?P<amount>{NUMBER})\s+kr\b", re.I)
 # clock component ("2024-03-05", "05-03-2024", "1 feb-24") or a year after a month name
 # ("29 mars 2024"). Month names mirror source_date(), so the first three letters are
 # enough. A minus sign is deliberately not an attachment: it belongs to the value, never
-# to a date part. A two-digit neighbour of a space-grouped amount stays a split tail
-# ("12 34 567,89") even when the line prints a separate count there.
+# to a date part, and a signed amount starts a value of its own ("Antal 12 -34 567,89").
+# A two-digit neighbour of a space-grouped amount stays a split tail ("12 34 567,89")
+# even when the line prints a separate count there.
 MISGROUPED = re.compile(r"(?<![\w,.:/])\d+$")
 MONTH_TOKEN = re.compile(
     r"(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\w*(?:-\d{2,4})?$", re.I
@@ -26,6 +27,7 @@ MONTH_TOKEN = re.compile(
 DATE_COMPONENT = re.compile(r"(?<![\w.:/-])\d{1,4}[-.:/]\d{1,2}(?:[-.:/]\d{1,4})?$")
 DIGITS = re.compile(r"\d+")
 SPACE_GROUPED = re.compile(r"\d[ \u00a0\u202f]\d")
+SIGNS = "\u2212-+"
 SEPARATORS = " \u00a0\u202f"
 
 
@@ -34,6 +36,9 @@ def valid_number(value: str, match: re.Match, amount: str | None = None) -> bool
     prefix = value[: match.start()]
     if prefix and (prefix[-1].isdigit() or prefix[-1] in ",."):
         return False
+    number = amount or match.groupdict().get("amount") or match.group(0)
+    if number[:1] in SIGNS:
+        return True
     body = prefix.rstrip(SEPARATORS)
     run = MISGROUPED.search(body)
     if run is None:
@@ -49,7 +54,6 @@ def valid_number(value: str, match: re.Match, amount: str | None = None) -> bool
         return True
     # A one- or two-digit run can only be a split tail when the amount is space-grouped
     # and one more digit would overfill its first group; otherwise it is a neighbour.
-    number = amount or match.groupdict().get("amount") or match.group(0)
     first = DIGITS.search(number)
     if first is None or len(run.group()) + len(first.group()) <= 3:
         return True
