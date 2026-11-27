@@ -2,6 +2,7 @@
 
 import re
 
+from .common import find_number, valid_number
 from .normalization import DATE, NUMBER, money, quantity, source_date, text
 from .types import Candidate, Identifier
 
@@ -102,7 +103,8 @@ def price_quantities(candidate, section, lines, item, *, decode=text):
     for line in lines:
         if not item.match(decode(line)):
             continue
-        match = QUANTITY.search(decode(line))
+        value = decode(line)
+        match = find_number(value, QUANTITY)
         if not match:
             continue
         try:
@@ -130,6 +132,8 @@ def due_amount(candidate, lines, *, decode=text):
         value = decode(line)
         match = re.search(rf"Belopp att betala\s*:?\s*({NUMBER})\s*kr\b", value, re.I)
         match = match or re.search(rf"({NUMBER})\s*kr\s*Belopp att betala\s*:?$", value, re.I)
+        if match and not valid_number(value, match, match[1]):
+            match = None
         if match:
             values.append((match[1], line))
         elif re.fullmatch(r"Belopp att betala\s*:?", value, re.I):

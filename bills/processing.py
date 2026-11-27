@@ -26,7 +26,13 @@ from .parsing.registry import (
     take_failures,
 )
 from .parsing.validation import ContractError, safe_candidate, validate_candidate
-from .services import StaleReviewError, record_extraction, resolve_section_property
+from .services import (
+    ElectricityUsagePeriod,
+    StaleReviewError,
+    overlaps_electricity,
+    record_extraction,
+    resolve_section_property,
+)
 from .storage import open_original, private_path
 from .waste_costs import configured_section_configuration
 
@@ -236,16 +242,20 @@ def parse_document(document_id, *, force=False, expected_revision=None):
                         f"Missing usage period in {section.section_id} needs review."
                     )
                     continue
-                for other, other_house, other_service in electricity:
-                    if (
-                        house_id == other_house
-                        and section.service == other_service
-                        and usage.basis == other.basis
-                        and usage.start < other.end
-                        and other.start < usage.end
-                    ):
+                # The stored proposal gives an unclassified electricity usage its
+                # section's network/supply source; compare that same effective source.
+                subcategory = usage.subcategory or (
+                    section.service
+                    if section.service in ("electricity_network", "electricity_supply")
+                    else ""
+                )
+                current = ElectricityUsagePeriod(
+                    house_id, subcategory or None, usage.basis, usage.start, usage.end
+                )
+                for other in electricity:
+                    if overlaps_electricity(current, other):
                         candidate.issues.append("Overlapping electricity usage needs review.")
-                electricity.append((usage, house_id, section.service))
+                electricity.append(current)
         if error:
             candidate.issues.append(error)
         kind = (

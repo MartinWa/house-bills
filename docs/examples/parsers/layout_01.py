@@ -28,6 +28,7 @@ split_electricity_demand = api.split_electricity_demand
 split_waste_costs = api.split_waste_costs
 starts = api.starts
 text = api.text
+valid_number = api.valid_number
 waste_cost_subcategory = api.waste_cost_subcategory
 waste_subcategory = api.waste_subcategory
 
@@ -87,7 +88,12 @@ def read_header(pages):
             ],
             key=lambda line: line.bbox[0],
         )
-        amounts = [(match, line) for line in nearby for match in AMOUNT.finditer(text(line))]
+        amounts = []
+        for line in nearby:
+            value = text(line)
+            amounts.extend(
+                (match, line) for match in AMOUNT.finditer(value) if valid_number(value, match)
+            )
         if len(amounts) == 4:
             recovered = True
             for field, key, (match, line) in zip(

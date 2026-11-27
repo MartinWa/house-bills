@@ -266,11 +266,21 @@ Parsers import only `bills.parsing.api`, which re-exports the candidate types
 `anchor`, `starts`, `text`, `normalized_text`), extraction helpers (`header`,
 `reconcile`, `find`, `AMOUNT`, `QUANTITY`, `capture`, `empty_header`, `installation`,
 `identity_fields`, `cost_period`, `due_amount`, `price_quantities`, `tax_basis`,
-`last_money`), the classification lookups `waste_subcategory` and
+`last_money`, `valid_number`), the classification lookups `waste_subcategory` and
 `waste_cost_subcategory`, and the host-invoked split operations `split_waste_costs` and
 `split_electricity_demand`. `API_VERSION = 1` keeps
 those names, signatures and value conventions stable; breaking changes require a new
 version. Everything else under `bills.parsing` is internal.
+
+Amounts read through `last_money` and `header` reject a match that starts inside a digit
+run, and reject a preceding run of digits that would overfill a group, so the tail of a
+mis-grouped number is never read as a value of its own. Three-digit groups, neighbouring
+counts, ungrouped amounts, signed amounts, identifiers, dates and month names stay valid. `valid_number`
+exposes that check to a parser that iterates `AMOUNT` itself; its optional third argument
+is the matched amount, for patterns whose match starts at a label. `last_money` raises
+`Missing monetary amount` when a line carries no amount and `Invalid monetary amount`
+when its final amount is such a tail, instead of falling back to an earlier match on the
+line.
 
 A module declares the version it targets and the loader rejects a mismatch before the
 module reaches the registry:

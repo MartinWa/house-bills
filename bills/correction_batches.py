@@ -3,6 +3,7 @@
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management.base import CommandError
+from django.db import IntegrityError
 
 from .services import approve_document_review
 
@@ -38,6 +39,12 @@ def run_corrections(invoices, *, planner, reviewer, note, output, error_output, 
         except ValidationError as exc:
             failed += 1
             error_output(f"Invoice {invoice.pk}: {'; '.join(exc.messages)}")
+            continue
+        except IntegrityError as exc:
+            # A concurrent approval can take the invoice identity first; this invoice
+            # counts as failed and the batch continues with the remaining invoices.
+            failed += 1
+            error_output(f"Invoice {invoice.pk}: {exc}")
             continue
         changed += 1
     action = "Updated" if reviewer is not None else "Would update"

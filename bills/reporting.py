@@ -10,6 +10,7 @@ from django.db import connection
 from .categories import CATEGORY_LABELS, subcategory_label
 from .models import Service, Usage
 from .power_reporting import summarize_billed_power
+from .reporting_data import bounded_query
 from .waste_reporting import read_waste_details, read_waste_report
 
 SELECTION_REASONS = {
@@ -105,7 +106,7 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             """,
             usage_params,
         )
-        breakdown = _rows(
+        breakdown = bounded_query(
             reader,
             SELECTED_USAGE
             + f"""
@@ -118,7 +119,7 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             """,
             usage_params,
         )
-        issues = _rows(
+        issues = bounded_query(
             reader,
             f"""
             SELECT * FROM reporting_electricity_selection
@@ -127,7 +128,7 @@ def read_report(*, property_id=None, date_from=None, date_to=None):
             """,
             usage_params,
         )
-        billed_power = _rows(
+        billed_power = bounded_query(
             reader,
             f"""
             SELECT * FROM reporting_electricity_demand WHERE {usage_where}

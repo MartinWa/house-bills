@@ -78,6 +78,9 @@ jobs:
             # Before the first publication, the package does not exist yet.
             grep -Fq '(HTTP 404)' "$RUNNER_TEMP/registry-error"
           fi
+      - name: Date the OS package layer
+        id: os-package-date
+        run: echo "date=$(date +%F)" >> "$GITHUB_OUTPUT"
       - name: Build the amd64 image by digest
         id: amd64
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -88,6 +91,7 @@ jobs:
           outputs: type=image,name=${{ steps.release.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             HOUSE_BILLS_VERSION=${{ steps.release.outputs.version }}
+            OS_PACKAGE_DATE=${{ steps.os-package-date.outputs.date }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.release.outputs.commit }}
@@ -104,6 +108,7 @@ jobs:
           outputs: type=image,name=${{ steps.release.outputs.image }},push-by-digest=true,name-canonical=true,push=true
           build-args: |
             HOUSE_BILLS_VERSION=${{ steps.release.outputs.version }}
+            OS_PACKAGE_DATE=${{ steps.os-package-date.outputs.date }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.release.outputs.commit }}

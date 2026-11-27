@@ -77,6 +77,9 @@ records. It has no tenant or per-property isolation. Parsing is synchronous;
 NAS timing has not been measured. Reports use invoice dates for costs and whole
 billed consumption periods, without calendar-month proration. Selected demand and waste
 fraction charges are separated; remaining fee details stay in the original PDF.
+The only outbound request the application itself makes is the optional release
+update check against the GitHub API (api.github.com), enabled by default and
+disabled with `HOUSE_BILLS_UPDATE_CHECK=false`.
 Folder import, historical OCR, Grafana access transport and an in-application
 extension/package system are not implemented. The image ships no parser code: every
 invoice layout is installed from an operator-managed, read-only directory of single-file

@@ -31,7 +31,12 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Enable auto-merge for patch updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        # Patch updates auto-merge for the two dependency ecosystems the suite covers;
+        # workflow (github-actions) and base-image (docker) patches stay manual. The
+        # action reports the branch-name ecosystem, so npm arrives as npm_and_yarn.
+        if: >-
+          steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
+          contains(fromJSON('["uv","npm_and_yarn"]'), steps.metadata.outputs.package-ecosystem)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}

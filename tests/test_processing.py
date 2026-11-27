@@ -394,6 +394,69 @@ def test_specific_then_delivery_address_then_default_mapping(tmp_path, configure
     assert "Overlapping electricity usage needs review." in fallback.candidate["issues"]
 
 
+def test_extraction_overlap_uses_the_usage_subcategory_not_the_section_service(
+    tmp_path, configured, monkeypatch
+):
+    vendor, houses = configured
+    vendor.default_property = houses[0]
+    vendor.save()
+    vendor.property_identifiers.filter(kind="installation", value=f"{2:018}").delete()
+    installed = registry.installed(layout_02.FAMILY, layout_02.VERSION)
+    original_parse = installed.parse
+
+    def divergent_parse(pages, *, candidate):
+        original_parse(pages, candidate=candidate)
+        first, second = candidate.sections
+        # The first usage claims the network source inside a supply allocation; the
+        # second section becomes a network allocation with an unclassified usage.
+        first.usages[0] = replace(first.usages[0], subcategory="electricity_network")
+        second.service = "electricity_network"
+        return candidate
+
+    monkeypatch.setattr(installed, "parse", divergent_parse)
+    _, attempt, _, _ = upload(tmp_path, shared_supply())
+    assert list(attempt.candidate["routing"]["section_properties"].values()) == [
+        houses[0].pk,
+        houses[0].pk,
+    ]
+    assert "Overlapping electricity usage needs review." in attempt.candidate["issues"]
+
+
+def test_extraction_overlap_compares_unclassified_sources_and_distinct_sources_differently(
+    tmp_path, configured, monkeypatch
+):
+    vendor, houses = configured
+    vendor.default_property = houses[0]
+    vendor.save()
+    vendor.property_identifiers.filter(kind="installation", value=f"{2:018}").delete()
+    installed = registry.installed(layout_02.FAMILY, layout_02.VERSION)
+    original_parse = installed.parse
+
+    def unclassified_parse(pages, *, candidate):
+        original_parse(pages, candidate=candidate)
+        for section in candidate.sections:
+            section.service = "electricity"
+            section.usages = [replace(usage, subcategory="") for usage in section.usages]
+        return candidate
+
+    monkeypatch.setattr(installed, "parse", unclassified_parse)
+    _, attempt, _, _ = upload(tmp_path, shared_supply())
+    assert "Overlapping electricity usage needs review." in attempt.candidate["issues"]
+
+    def distinct_parse(pages, *, candidate):
+        original_parse(pages, candidate=candidate)
+        first, second = candidate.sections
+        first.usages[0] = replace(first.usages[0], subcategory="electricity_network")
+        second.usages[0] = replace(second.usages[0], subcategory="electricity_supply")
+        return candidate
+
+    monkeypatch.setattr(installed, "parse", distinct_parse)
+    pages = shared_supply()
+    pages[0][2] = "OCR-/fakturanummer: 880004"
+    _, attempt, _, _ = upload(tmp_path, pages, filename="distinct.pdf")
+    assert "Overlapping electricity usage needs review." not in attempt.candidate["issues"]
+
+
 def test_duplicate_and_simultaneous_initial_processing_make_one_attempt(tmp_path, configured):
     document, initial, pdf, _ = upload(tmp_path, shared_supply())
     with pdf.open("rb") as handle:

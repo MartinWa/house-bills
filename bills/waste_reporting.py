@@ -171,7 +171,10 @@ def read_waste_report(reader, cost_where, cost_params, *, filters=None):
             }
         return entries[key]
 
-    total = {"currency": "SEK", **dict.fromkeys(MONEY_FIELDS, 0)}
+    currencies = {row["currency"] for row in costs}
+    if len(currencies) > 1:
+        raise ValidationError("Waste costs span several currencies and cannot be totalled.")
+    total = {"currency": next(iter(currencies), "SEK"), **dict.fromkeys(MONEY_FIELDS, 0)}
     property_totals = {}
     for row in costs:
         target = entry(row)

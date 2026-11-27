@@ -14,9 +14,14 @@ permissions. Restrict accounts, application access and proxy peers to trusted us
 Originals, extracted evidence, identifiers, accounts and approval history stay in
 local private storage. Static serving does not expose originals. The application
 does not send telemetry or make outbound extraction/API calls, and serves its
-own frontend assets. Dependency installation, image pulls, CI and operator-run
-audits require external access. Operator-added software can change that boundary.
-Opening PDFs also relies on the browser's PDF viewer.
+own frontend assets, except the optional release update check that queries the
+GitHub releases API (api.github.com) for the newest stable version while
+HOUSE_BILLS_UPDATE_CHECK is not false (default on). Dependency installation,
+image pulls, CI and operator-run audits require external access. Operator-added
+software can change that boundary.
+Opening PDFs also relies on the browser's PDF viewer. Chromium's built-in viewer
+ignores a response's CSP sandbox, so that header protects clients which do apply CSP
+to plugin documents; the viewer's own isolation is the practical boundary.
 
 Treat databases, originals, environment files, staging receipts and backups as
 sensitive. Backup packages include accounts, password hashes, sessions and

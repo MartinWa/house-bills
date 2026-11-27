@@ -733,4 +733,8 @@ def source(request, pk, download=True):
         handle, as_attachment=download, filename=filename, content_type="application/pdf"
     )
     response["Cache-Control"] = "private, no-store"
+    # Clients that apply CSP to a plugin document treat it as an opaque origin, so the
+    # original cannot script or embed at the app origin. A built-in PDF viewer, Chromium's
+    # included, ignores this header and relies on its own isolation: defence in depth.
+    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
     return response

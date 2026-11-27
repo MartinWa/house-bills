@@ -8,12 +8,71 @@ from .normalization import DATE, NUMBER, money, source_date, text
 from .types import Candidate, Evidence, Identifier
 
 AMOUNT = re.compile(rf"(?<![\w,.])(?P<amount>{NUMBER})\s+kr\b", re.I)
+# A match that begins inside a digit run is the middle of the printed value, not a value
+# of its own ("1234 567,89" read from "234"); patterns with their own left boundary never
+# reach that check. A run of digits directly before a match is a split tail unless it is
+# a complete three-digit group, a neighbouring value whose first group it could have
+# completed ("Antal 12 1 080,06", "Tidigare saldo 0,00 1 350,00"), an identifier
+# attachment ("SE000000000001 473,08", "Mätarnummer:400041", "Andel 1/2024"), a date or
+# clock component ("2024-03-05", "05-03-2024", "1 feb-24") or a year after a month name
+# ("29 mars 2024"). Month names mirror source_date(), so the first three letters are
+# enough. A minus sign is deliberately not an attachment: it belongs to the value, never
+# to a date part, and a signed amount starts a value of its own ("Antal 12 -34 567,89").
+# A two-digit neighbour of a space-grouped amount stays a split tail ("12 34 567,89")
+# even when the line prints a separate count there.
+MISGROUPED = re.compile(r"(?<![\w,.:/])\d+$")
+MONTH_TOKEN = re.compile(
+    r"(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\w*(?:-\d{2,4})?$", re.I
+)
+DATE_COMPONENT = re.compile(r"(?<![\w.:/-])\d{1,4}[-.:/]\d{1,2}(?:[-.:/]\d{1,4})?$")
+DIGITS = re.compile(r"\d+")
+SPACE_GROUPED = re.compile(r"\d[ \u00a0\u202f]\d")
+SIGNS = "\u2212-+"
+SEPARATORS = " \u00a0\u202f"
+
+
+def valid_number(value: str, match: re.Match, amount: str | None = None) -> bool:
+    """Reject a match that starts inside a number or only continues a split tail."""
+    prefix = value[: match.start()]
+    if prefix and (prefix[-1].isdigit() or prefix[-1] in ",."):
+        return False
+    number = amount or match.groupdict().get("amount") or match.group(0)
+    if number[:1] in SIGNS:
+        return True
+    body = prefix.rstrip(SEPARATORS)
+    run = MISGROUPED.search(body)
+    if run is None:
+        return True
+    head = body[: run.start()].rstrip(SEPARATORS)
+    if MONTH_TOKEN.search(head) is not None or MONTH_TOKEN.search(body) is not None:
+        return True
+    if DATE_COMPONENT.search(body) is not None:
+        return True
+    if len(run.group()) >= 4:
+        return False
+    if len(run.group()) == 3:
+        return True
+    # A one- or two-digit run can only be a split tail when the amount is space-grouped
+    # and one more digit would overfill its first group; otherwise it is a neighbour.
+    first = DIGITS.search(number)
+    if first is None or len(run.group()) + len(first.group()) <= 3:
+        return True
+    return SPACE_GROUPED.search(number) is None
+
+
+def find_number(value: str, pattern: re.Pattern) -> re.Match | None:
+    """Return the first match of the pattern that is not a mis-grouped tail."""
+    return next((match for match in pattern.finditer(value) if valid_number(value, match)), None)
 
 
 def last_money(line: Evidence) -> int:
-    matches = list(AMOUNT.finditer(text(line)))
+    """Read the final amount; a malformed final match is an error, not a fallback."""
+    value = text(line)
+    matches = list(AMOUNT.finditer(value))
     if not matches:
         raise ValueError("Missing monetary amount")
+    if not valid_number(value, matches[-1]):
+        raise ValueError("Invalid monetary amount")
     return money(matches[-1]["amount"])
 
 
@@ -69,8 +128,9 @@ def header(pages: list[list[Evidence]], family: str, version="v1", revision="2")
     )
     if horizontal is not None:
         try:
-            row = lines[horizontal + 1]
-            values = list(AMOUNT.finditer(text(row)))
+            row_evidence = lines[horizontal + 1]
+            row = text(row_evidence)
+            values = [match for match in AMOUNT.finditer(row) if valid_number(row, match)]
             if len(values) != 4:
                 raise ValueError("Invalid header totals row")
             for field, key, match in zip(
@@ -79,7 +139,7 @@ def header(pages: list[list[Evidence]], family: str, version="v1", revision="2")
                 values,
                 strict=True,
             ):
-                candidate.header_evidence[key] = row
+                candidate.header_evidence[key] = row_evidence
                 setattr(candidate, field, money(match["amount"]))
         except ValueError, IndexError:
             candidate.issues.append("Missing or invalid header totals row")

@@ -370,7 +370,8 @@ def check(credentials, environment, overview=None, *, extra_check=None):
             "--network",
             "house-bills-api-check_default",
             "--mount",
-            f"type=bind,source={Path.cwd()},target=/app,readonly",
+            f"type=bind,source={Path.cwd() / 'tests' / 'browser' / 'api_grafana.cjs'},"
+            "target=/app/tests/browser/api_grafana.cjs,readonly",
             "--entrypoint",
             "node",
             "house-bills:browser",

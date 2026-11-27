@@ -492,3 +492,58 @@ def test_upload_is_bounded_and_authorized_before_parsing(api_client, settings, m
         BASE + "/documents", {"pdf": SimpleUploadedFile("large.pdf", b"%PDF-" + b"x" * 30)}
     )
     assert anonymous.status_code == 401 and anonymous["WWW-Authenticate"] == "Bearer"
+
+
+def test_documents_list_uses_a_constant_number_of_queries(api_client, monkeypatch):
+    from django.db.backends.base.base import BaseDatabaseWrapper
+
+    client, _, _, _ = api_client
+    house, vendor = setup(client)
+    # API GETs read through a copied query-only connection (bills.api.snapshots);
+    # count the queries issued on that reader.
+    readers = []
+    original_copy = BaseDatabaseWrapper.copy
+
+    def spying_copy(self, alias=None):
+        reader = original_copy(self, alias)
+        reader.force_debug_cursor = True
+        readers.append(reader)
+        return reader
+
+    monkeypatch.setattr(BaseDatabaseWrapper, "copy", spying_copy)
+
+    def approve(reference):
+        response = send(client, "post", "/manual-invoices", {"idempotency_key": reference})
+        assert response.status_code == 201, response.content
+        document = response.json()["document"]
+        source = client.get(document["links"]["review"]).json()
+        edits = manual_body(house, vendor)
+        edits["header"]["reference"] = reference
+        result = send(
+            client,
+            "post",
+            f"/documents/{document['id']}/reviews",
+            {"review_token": source["review_token"], "edits": edits},
+        )
+        assert result.status_code == 201, result.content
+
+    def listed_query_count(query):
+        readers.clear()
+        response = client.get(BASE + "/documents" + query)
+        assert response.status_code == 200, response.content
+        return response, len(readers[-1].queries_log)
+
+    approve("SYNTHETIC-QUERY-1")
+    response, baseline = listed_query_count("?limit=1")
+    assert response.json()["count"] == 1
+    for index in range(2, 7):
+        approve(f"SYNTHETIC-QUERY-{index}")
+    response, grown = listed_query_count("?limit=50")
+    payload = response.json()
+    assert payload["count"] == 6 and len(payload["items"]) == 6
+    for item in payload["items"]:
+        assert len(item["invoice_ids"]) == 1
+        assert f"invoice_{item['invoice_ids'][0]}" in item["links"]
+    # One page, one count and one prefetched invoice batch replace the per-row
+    # invoice queries; at most the deletion-token lookup may scale per row.
+    assert grown - baseline <= payload["count"] - 1

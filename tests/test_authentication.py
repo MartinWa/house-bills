@@ -1,5 +1,11 @@
+import hashlib
+
 import pytest
 from django.test import Client
+
+from bills import storage
+from bills.models import Document
+from house_bills.middleware import BASELINE_CSP
 
 pytestmark = pytest.mark.django_db
 
@@ -61,3 +67,44 @@ def test_bad_credentials_and_external_next_cannot_grant_access(client, user):
 def test_private_storage_has_no_public_route(client, user):
     client.force_login(user)
     assert client.get("/private-files/synthetic.pdf").status_code == 404
+
+
+def test_pages_carry_baseline_content_security_policy(client, user):
+    response = client.get("/login/")
+    assert response.status_code == 200
+    assert response["Content-Security-Policy"] == BASELINE_CSP
+    client.force_login(user)
+    response = client.get("/invoices/")
+    assert response.status_code == 200
+    assert response["Content-Security-Policy"] == BASELINE_CSP
+
+
+def test_private_source_view_keeps_sandboxed_csp_over_baseline(client, user, settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path / "originals"
+    payload = b"%PDF-synthetic-original-bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    document = Document.objects.create(
+        source=Document.Source.UPLOAD,
+        sha256=digest,
+        original_filename="synthetic.pdf",
+        original_path=f"inbox/{digest}.pdf",
+        storage_state=Document.StorageState.INBOX,
+        state=Document.State.REVIEW,
+    )
+    target = storage.private_path(document.original_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(payload)
+    client.force_login(user)
+    view = client.get(f"/documents/{document.pk}/view/")
+    assert view.status_code == 200
+    assert view["Content-Disposition"].startswith("inline")
+    assert view["Content-Security-Policy"] == "default-src 'none'; sandbox"
+    download = client.get(f"/documents/{document.pk}/source/")
+    assert download.status_code == 200
+    assert download["Content-Security-Policy"] == "default-src 'none'; sandbox"
+
+
+def test_csrf_cookie_is_httponly(client):
+    response = client.get("/login/")
+    assert response.status_code == 200
+    assert response.cookies["csrftoken"]["httponly"]

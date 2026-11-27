@@ -187,8 +187,8 @@ def validate_candidate(candidate) -> None:
         for key, value in candidate.header_evidence.items():
             _text(key, MAX_CONTEXT_LENGTH, "header evidence key", errors)
             _evidence(value, f"header evidence {key}", errors)
-    if not isinstance(candidate.requires_review, bool):
-        errors.append("invalid requires_review")
+    if candidate.requires_review is not True:
+        errors.append("requires_review must be True")
     if not isinstance(candidate.issues, list) or len(candidate.issues) > MAX_ISSUES:
         errors.append("invalid issues")
     else:

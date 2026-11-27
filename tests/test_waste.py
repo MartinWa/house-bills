@@ -26,6 +26,7 @@ from bills.models import (
 )
 from bills.reporting import read_report, reporting_reader
 
+from .api.helpers import editable_allocations
 from .test_invoice_coverage import coverage  # noqa: F401
 from .test_reporting import allocation, ledger, usage  # noqa: F401
 
@@ -151,9 +152,10 @@ def test_signed_weights_retain_their_basis_and_unknown_costs_remain_unknown(ledg
         ("reversal", -2000),
     }
     # Older approved sections may retain incomplete monetary facts.
-    BillingSection.objects.filter(invoice=invoice).update(
-        net_minor=None, vat_minor=None, gross_minor=None
-    )
+    with editable_allocations(invoice):
+        BillingSection.objects.filter(invoice=invoice).update(
+            net_minor=None, vat_minor=None, gross_minor=None
+        )
     report = read_report()
     assert report["waste_total"]["gross_minor"] is None
     assert report["waste_fractions"][0]["cost"]["gross_minor"] is None
@@ -478,3 +480,43 @@ def test_fraction_kind_is_stable_and_group_defaults_include_garden(coverage):
             Subcategory.objects.filter(pk=key).update(is_waste_fraction=True)
     service.delete()
     assert not ServiceVendorAssignment.objects.exists()
+
+
+def test_waste_total_carries_the_rows_currency_and_rejects_mixed_currencies(ledger):
+    from bills.waste_reporting import read_waste_report
+
+    house = ledger["houses"][0]
+    ledger["make"]([allocation(house, service="waste", net=16000)], source=Document.Source.MANUAL)
+    report = read_report()
+    assert report["waste_total"]["currency"] == "SEK"
+    assert report["waste_total"]["gross_minor"] == 20000
+
+    class StubReader:
+        def __init__(self, *results):
+            self.results = list(results)
+
+        def execute(self, sql, params=()):
+            return iter(self.results.pop(0))
+
+    def cost_row(currency):
+        return {
+            "property_id": 1,
+            "property_name": "Synthetic house",
+            "subcategory": "",
+            "fraction_name": None,
+            "is_waste_fraction": 0,
+            "currency": currency,
+            "net_minor": 100,
+            "vat_minor": 25,
+            "gross_minor": 125,
+        }
+
+    report = read_waste_report(StubReader([cost_row("EUR")], [], []), "1=1", [])
+    assert report["waste_total"] == {
+        "currency": "EUR",
+        "net_minor": 100,
+        "vat_minor": 25,
+        "gross_minor": 125,
+    }
+    with pytest.raises(ValidationError):
+        read_waste_report(StubReader([cost_row("SEK"), cost_row("EUR")], [], []), "1=1", [])

@@ -3,7 +3,7 @@
 import re
 from dataclasses import replace
 
-from .common import last_money
+from .common import find_number, last_money
 from .normalization import NUMBER, PERIOD, money, quantity, source_period, text
 from .types import Usage
 from .waste_costs import BILLED_AMOUNT, CONTRACT, TAX, allocated_vat
@@ -64,14 +64,14 @@ def _split_section(section, source):
     parts, warnings = [], []
     for index, line in enumerate(fees, 1):
         value = text(line)
-        amount = BILLED_AMOUNT.search(value)
+        amount = find_number(value, BILLED_AMOUNT)
         if amount is None:
             raise ValueError("The printed Effektavgift charge is missing or invalid.")
         period = source_period(value) if PERIOD.search(value) else (section.start, section.end)
         usages = []
         # Unit prices may separate "/" from "kW"; retain the original source evidence.
         power_text = re.sub(r"/\s+", "/", PERIOD.sub("", value))
-        power = POWER.search(power_text)
+        power = find_number(power_text, POWER)
         try:
             if power is not None:
                 if power[2].casefold() != "kw":

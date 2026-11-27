@@ -24,7 +24,7 @@ from bills.models import (
 from bills.services import approve_review, record_extraction
 
 from ..test_invoice_coverage import coverage  # noqa: F401
-from .helpers import BASE
+from .helpers import BASE, editable_allocations
 from .test_reporting_contract import get, records
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -441,15 +441,17 @@ def test_invoice_costs_complete_filtered_null_signed_and_paged(api_client):
     assert selected["gross_minor"] == 125 and selected["allocation_count"] == 206
     assert selected["source"] == "manual" and len(selected["properties"]) == 1
     assert get(client, "invoice-costs?offset=2")["items"] == []
-    BillingSection.objects.filter(pk=sections[0].pk).update(
-        net_minor=None, vat_minor=None, gross_minor=None
-    )
+    with editable_allocations(invoices[0]):
+        BillingSection.objects.filter(pk=sections[0].pk).update(
+            net_minor=None, vat_minor=None, gross_minor=None
+        )
     unknown = get(client, "invoice-costs?sort=-gross_minor")
     assert unknown["items"][-1]["gross_minor"] is None
     Invoice.objects.filter(pk=invoices[1].pk).update(kind="credit")
-    BillingSection.objects.filter(pk=sections[1].pk).update(
-        net_minor=-100, vat_minor=-25, gross_minor=-125
-    )
+    with editable_allocations(invoices[1]):
+        BillingSection.objects.filter(pk=sections[1].pk).update(
+            net_minor=-100, vat_minor=-25, gross_minor=-125
+        )
     assert get(client, "invoice-costs?sort=gross_minor")["items"][0]["gross_minor"] == -125
 
 
@@ -558,7 +560,7 @@ def test_one_snapshot_for_union_labels_membership_and_stats(api_client, coverage
 def test_invoice_amount_and_labels_share_snapshot(api_client, monkeypatch):
     import bills.api_reporting as reports
 
-    client, house, _, _, sections, _ = records(api_client)
+    client, house, _, invoices, sections, _ = records(api_client)
     original_reader = reports.reporting_reader
 
     class ConcurrentReader:
@@ -569,9 +571,10 @@ def test_invoice_amount_and_labels_share_snapshot(api_client, monkeypatch):
             result = self.connection.execute(sql, params)
             if sql.endswith("SELECT count(*) FROM grouped"):
                 Property.objects.filter(pk=house["id"]).update(name="Changed concurrently")
-                BillingSection.objects.filter(pk=sections[0].pk).update(
-                    net_minor=200, vat_minor=50, gross_minor=250
-                )
+                with editable_allocations(invoices[0]):
+                    BillingSection.objects.filter(pk=sections[0].pk).update(
+                        net_minor=200, vat_minor=50, gross_minor=250
+                    )
             return result
 
     @contextmanager

@@ -33,8 +33,10 @@ from bills.parsing.reader import read_pdf
 from bills.parsing.types import Candidate, Evidence, Section
 from bills.parsing.types import Usage as ProposedUsage
 from bills.reporting import read_report, reporting_reader
+from bills.reporting_data import ReportingSnapshot, surviving_intervals
 from bills.services import approve_review, record_extraction
 from bills.storage import ingest_pdf
+from bills.waste_reporting import ReportTooBroad
 from tests.examples import layout_02
 
 from .synthetic import shared_supply, write_pdf
@@ -1109,3 +1111,144 @@ def test_report_database_failure_shows_retry_feedback_without_partial_totals(
     response = client.get(reverse("bills:reports"))
     assert response.status_code == 503 and b"Reports are unavailable" in response.content
     assert response.context["costs"] == response.context["consumption"] == []
+
+
+class SchemaOverrideReader:
+    """Serve a doctored view definition while delegating data reads."""
+
+    def __init__(self, delegate, definition):
+        self.delegate = delegate
+        self.definition = definition
+
+    def execute(self, sql, params=()):
+        if "sqlite_schema" in sql:
+            definition = self.definition
+
+            class SchemaResult:
+                def fetchone(self):
+                    return (definition,)
+
+            return SchemaResult()
+        return self.delegate.execute(sql, params)
+
+
+def test_house_filter_injection_rejects_anchor_after_the_positives_cte(ledger):
+    house, other = ledger["houses"]
+    ledger["make"]([allocation(house, usages=[usage()])])
+    with reporting_reader() as reader:
+        installed = reader.execute(
+            "SELECT sql FROM sqlite_schema WHERE type='view' AND name=?",
+            ["reporting_electricity_selection"],
+        ).fetchone()[0]
+        # The installed definition injects the house filter into its source CTE.
+        snapshot = ReportingSnapshot(
+            SchemaOverrideReader(reader, installed), {"property_id": [house.pk]}
+        )
+        assert [row["property_id"] for row in snapshot.facts("selection")] == [house.pk]
+        snapshot = ReportingSnapshot(
+            SchemaOverrideReader(reader, installed), {"property_id": [other.pk]}
+        )
+        assert snapshot.facts("selection") == []
+        # A definition whose only anchor sits after the positives CTE is rejected.
+        reordered = (
+            "CREATE VIEW reporting_electricity_selection AS "
+            "WITH positives AS (SELECT 1 AS one), "
+            "electricity AS (SELECT * FROM reporting_usage WHERE utility = 'electricity') "
+            "SELECT * FROM electricity"
+        )
+        snapshot = ReportingSnapshot(
+            SchemaOverrideReader(reader, reordered), {"property_id": [house.pk]}
+        )
+        with pytest.raises(RuntimeError, match="Unsupported canonical electricity selection"):
+            snapshot.facts("selection")
+
+
+def test_surviving_intervals_pairs_credits_like_the_selection_view():
+    def row(quantity, usage_id, **changes):
+        base = {
+            "property_id": 1,
+            "vendor_id": 2,
+            "utility": "electricity",
+            "source_service": "electricity_network",
+            "unit": "kWh",
+            "subcategory": "",
+            "period_start": "2024-02-01",
+            "period_end": "2024-03-01",
+            "quantity_milli": quantity,
+            "invoice_date": "2024-03-05",
+            "invoice_id": usage_id,
+            "usage_id": usage_id,
+        }
+        return {**base, **changes}
+
+    # Unit or subcategory differences do not block an exact signed cancellation.
+    surviving, unmatched = surviving_intervals(
+        [row(100_000, 1), row(-100_000, 2, subcategory="electricity_network")]
+    )
+    assert surviving == [] and unmatched == 0
+    surviving, unmatched = surviving_intervals([row(100_000, 1), row(-100_000, 2, unit="Wh")])
+    assert surviving == [] and unmatched == 0
+    # A different quantity or period still does not cancel.
+    surviving, unmatched = surviving_intervals([row(100_000, 1), row(-90_000, 2)])
+    assert [item["usage_id"] for item in surviving] == [1] and unmatched == 1
+    surviving, unmatched = surviving_intervals(
+        [row(100_000, 1), row(-100_000, 2, period_start="2024-01-01", period_end="2024-02-01")]
+    )
+    assert [item["usage_id"] for item in surviving] == [1] and unmatched == 1
+
+
+def test_surviving_intervals_keep_other_utility_fractions_apart():
+    def row(quantity, usage_id, subcategory):
+        return {
+            "property_id": 1,
+            "vendor_id": 2,
+            "utility": "waste",
+            "source_service": "waste",
+            "unit": "kg",
+            "subcategory": subcategory,
+            "period_start": "2024-02-01",
+            "period_end": "2024-03-01",
+            "quantity_milli": quantity,
+            "invoice_date": "2024-03-05",
+            "invoice_id": usage_id,
+            "usage_id": usage_id,
+        }
+
+    # Same vendor, property, period and magnitude, but a different waste fraction.
+    surviving, unmatched = surviving_intervals(
+        [row(10_000, 1, "matavfall"), row(-10_000, 2, "restavfall")]
+    )
+    assert [item["usage_id"] for item in surviving] == [1] and unmatched == 1
+    # An identical fraction still cancels.
+    surviving, unmatched = surviving_intervals(
+        [row(10_000, 1, "matavfall"), row(-10_000, 2, "matavfall")]
+    )
+    assert surviving == [] and unmatched == 0
+
+
+def test_bounded_query_applies_the_limit_before_loading_rows(monkeypatch):
+    import bills.reporting_data as reporting_data
+
+    statements = []
+
+    class StubReader:
+        def execute(self, sql, params):
+            statements.append(sql)
+            return [{"value": value} for value in range(5)]
+
+    monkeypatch.setattr(reporting_data, "MAX_FACTS", 2)
+    with pytest.raises(ReportTooBroad, match="100,000 analytical source facts"):
+        reporting_data.bounded_query(StubReader(), "SELECT value FROM reporting_usage", [])
+    assert statements[-1].endswith("LIMIT 3")
+
+
+def test_read_report_bounds_breakdown_issues_and_billed_power(ledger, monkeypatch):
+    import bills.reporting_data as reporting_data
+
+    house = ledger["houses"][0]
+    for _ in range(3):
+        ledger["make"]([allocation(house, usages=[usage()])])
+    assert len(read_report()["issues"]) == 3
+    monkeypatch.setattr(reporting_data, "MAX_FACTS", 2)
+    with pytest.raises(ReportTooBroad, match="100,000 analytical source facts"):
+        read_report()
