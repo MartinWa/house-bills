@@ -204,6 +204,15 @@ def test_stale_allocation_rows_are_reported_as_not_editable(section, usage):
         section.delete()
 
 
+def test_usage_of_a_removed_section_is_reported_as_not_editable(section, usage):
+    # A correction can replace the section and its usages; the stale usage row
+    # reports the intended ValidationError instead of Invoice.DoesNotExist.
+    BillingSection.objects.filter(pk=section.pk).delete()
+    assert not Usage.objects.filter(pk=usage.pk).exists()
+    with pytest.raises(ValidationError, match="review service"):
+        usage.save()
+
+
 def test_approval_requires_complete_identity_and_audit_metadata(invoice, django_user_model):
     actor = django_user_model.objects.create_user("synthetic-reviewer")
     with pytest.raises(IntegrityError), transaction.atomic():

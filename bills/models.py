@@ -1038,7 +1038,7 @@ class AllocationModel(ValidatedModel):
         abstract = True
 
     def assert_editable(self):
-        invoices = [self._invoice()]
+        invoices = []
         if not self._state.adding:
             previous = type(self).objects.filter(pk=self.pk).first()
             if previous is None:
@@ -1047,6 +1047,7 @@ class AllocationModel(ValidatedModel):
                     "Approved allocations can only be changed through the review service."
                 )
             invoices.append(previous._invoice())
+        invoices.append(self._invoice())
         if any(invoice.status == Invoice.Status.APPROVED for invoice in invoices):
             raise ValidationError(
                 "Approved allocations can only be changed through the review service."
