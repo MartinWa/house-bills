@@ -88,7 +88,8 @@ def header(pages: list[list[Evidence]], family: str, version="v1", revision="2")
     )
     if horizontal is not None:
         try:
-            row = text(lines[horizontal + 1])
+            row_evidence = lines[horizontal + 1]
+            row = text(row_evidence)
             values = [match for match in AMOUNT.finditer(row) if valid_number(row, match)]
             if len(values) != 4:
                 raise ValueError("Invalid header totals row")
@@ -98,7 +99,7 @@ def header(pages: list[list[Evidence]], family: str, version="v1", revision="2")
                 values,
                 strict=True,
             ):
-                candidate.header_evidence[key] = row
+                candidate.header_evidence[key] = row_evidence
                 setattr(candidate, field, money(match["amount"]))
         except ValueError, IndexError:
             candidate.issues.append("Missing or invalid header totals row")
