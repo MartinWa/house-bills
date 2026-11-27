@@ -484,3 +484,99 @@ print('Reporting migration, reversal and exact row preservation verified.')
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_approved_allocation_guard_blocks_low_level_writes_and_is_reversible(tmp_path):
+    data = tmp_path / "allocation-guard-data"
+    data.mkdir()
+    script = r"""
+from datetime import date
+import django
+django.setup()
+from django.db import connection, IntegrityError, transaction
+from django.db.migrations.executor import MigrationExecutor
+from django.utils import timezone
+
+auth = ('auth', '0012_alter_user_first_name_max_length')
+old = [('bills', '0028_invoice_document_unique'), auth]
+new = [('bills', '0029_approved_allocation_guard'), auth]
+executor = MigrationExecutor(connection)
+executor.migrate(old)
+apps = executor.loader.project_state(old).apps
+actor = apps.get_model('auth', 'User').objects.create(username='synthetic-guard-checker')
+house = apps.get_model('bills', 'Property').objects.create(name='Synthetic House', slug='house')
+vendor = apps.get_model('bills', 'Vendor').objects.create(name='Synthetic Vendor', slug='vendor')
+document = apps.get_model('bills', 'Document').objects.create(
+    sha256='e' * 64, original_filename='synthetic.pdf')
+Invoice = apps.get_model('bills', 'Invoice')
+invoice = Invoice.objects.bulk_create([Invoice(
+    document=document, vendor=vendor, reference='SYNTHETIC-GUARD-001',
+    invoice_date=date(2024, 3, 5), net_minor=100, vat_minor=25, rounding_minor=0,
+    invoice_total_minor=125, amount_due_minor=125, status='approved',
+    approved_at=timezone.now(), approved_by=actor, review_revision=1)])[0]
+Section = apps.get_model('bills', 'BillingSection')
+section = Section.objects.bulk_create([Section(
+    invoice=invoice, property=house, section_id='section', category='electricity',
+    net_minor=100, vat_minor=25, gross_minor=125,
+    start=date(2024, 2, 1), end=date(2024, 3, 1))])[0]
+Usage = apps.get_model('bills', 'Usage')
+usage = Usage.objects.bulk_create([Usage(
+    section=section, position=0, utility='electricity', unit='kWh', quantity_milli=1000,
+    start=date(2024, 2, 1), end=date(2024, 3, 1), basis='billed')])[0]
+apps.get_model('bills', 'ReviewRevision').objects.create(
+    invoice=invoice, revision=1, actor=actor, snapshot={'values': {}})
+
+GUARD = 'Approved allocations can only be changed through the review service'
+EXPECTED = {
+    'bills_billingsection_approved_update', 'bills_billingsection_approved_delete',
+    'bills_usage_approved_update', 'bills_usage_approved_delete'}
+
+def guard_triggers():
+    with connection.cursor() as cursor:
+        return {row[0] for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%approved%'"
+        ).fetchall()}
+
+assert not guard_triggers()
+executor = MigrationExecutor(connection)
+executor.migrate(new)
+assert guard_triggers() == EXPECTED
+
+for sql, pk in (
+    ('UPDATE bills_billingsection SET net_minor=1 WHERE id=%s', section.pk),
+    ('UPDATE bills_usage SET quantity_milli=1 WHERE id=%s', usage.pk),
+    ('DELETE FROM bills_usage WHERE id=%s', usage.pk),
+    ('DELETE FROM bills_billingsection WHERE id=%s', section.pk),
+):
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(sql, [pk])
+    except IntegrityError as exc:
+        assert GUARD in str(exc), exc
+    else:
+        raise AssertionError(f'low-level write was not blocked: {sql}')
+
+# Whole-document deletion removes the review revisions first, then cascades.
+with transaction.atomic():
+    apps.get_model('bills', 'ReviewRevision').objects.filter(invoice_id=invoice.pk).delete()
+    Invoice.objects.filter(pk=invoice.pk).delete()
+assert not Invoice.objects.exists()
+
+executor = MigrationExecutor(connection)
+executor.migrate(old)
+assert not guard_triggers()
+print('Approved allocation guard verified in both directions.')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={
+            **os.environ,
+            "DJANGO_SETTINGS_MODULE": "house_bills.settings.development",
+            "HOUSE_BILLS_DATA_DIR": str(data),
+            "HOUSE_BILLS_STATE_DIR": str(tmp_path / "allocation-guard-state"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

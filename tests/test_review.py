@@ -730,6 +730,69 @@ def test_invalid_corrections_show_errors_and_retain_approved_rows(
     assert invoice.reviews.count() == 1 and document.extractions.count() == 1
 
 
+def test_overlap_check_uses_the_usage_subcategory_not_the_allocation_service(
+    client, configured, tmp_path
+):
+    document, _ = upload(client, tmp_path)
+    invoice = approved(client, document)
+    old_rows = list(BillingSection.objects.values())
+    path, data = review_data(client, document)
+    house = configured[2][0].pk
+    # The second allocation's service differs from its usage's source, but both
+    # usages end up on the same source and property.
+    data.update(
+        {
+            "sections-1-property": str(house),
+            "sections-1-subcategory": "electricity_network",
+        }
+    )
+    response = client.post(path, data)
+    assert response.status_code == 400 and "Overlapping electricity" in response.content.decode()
+    invoice.refresh_from_db()
+    assert invoice.status == "approved" and invoice.review_revision == 1
+    assert list(BillingSection.objects.values()) == old_rows
+
+
+def test_overlap_check_treats_unclassified_sources_on_both_sides_as_equal(
+    client, configured, tmp_path
+):
+    document, _ = upload(client, tmp_path)
+    invoice = approved(client, document)
+    path, data = review_data(client, document)
+    house = configured[2][0].pk
+    data.update(
+        {
+            "sections-1-property": str(house),
+            "usages-0-subcategory": "",
+            "usages-1-subcategory": "",
+        }
+    )
+    response = client.post(path, data)
+    assert response.status_code == 400 and "Overlapping electricity" in response.content.decode()
+    invoice.refresh_from_db()
+    assert invoice.status == "approved" and invoice.review_revision == 1
+
+
+def test_distinct_usage_sources_on_one_property_do_not_overlap(client, configured, tmp_path):
+    document, _ = upload(client, tmp_path)
+    invoice = approved(client, document)
+    path, data = review_data(client, document)
+    data.update(
+        {
+            "sections-1-property": str(configured[2][0].pk),
+            "usages-1-subcategory": "electricity_network",
+        }
+    )
+    response = client.post(path, data)
+    assert response.status_code == 302, response.content.decode()
+    invoice.refresh_from_db()
+    assert invoice.status == "approved" and invoice.review_revision == 2
+    assert set(Usage.objects.values_list("subcategory_id", flat=True)) == {
+        "electricity_network",
+        "electricity_supply",
+    }
+
+
 def test_correction_and_reparse_proposals_preserve_edits_until_accepted(
     client, configured, tmp_path
 ):

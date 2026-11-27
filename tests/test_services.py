@@ -9,6 +9,7 @@ from threading import Barrier
 
 import pytest
 from django.core.exceptions import ValidationError
+from django.core.management.base import CommandError
 from django.db import IntegrityError, connection, connections, transaction
 
 from bills.models import (
@@ -26,8 +27,10 @@ from bills.models import (
 from bills.parsing.reader import read_pdf
 from bills.parsing.types import Evidence, Identifier
 from bills.services import (
+    ElectricityUsagePeriod,
     StaleReviewError,
     approve_review,
+    overlaps_electricity,
     record_extraction,
     resolve_section_property,
 )
@@ -387,6 +390,150 @@ def test_approved_rows_and_audit_attempts_reject_direct_model_edits(setup):
         attempt.delete()
     with pytest.raises(ValidationError, match="immutable"):
         approved.reviews.get().delete()
+
+
+def test_overlaps_electricity_keys_on_property_source_basis_and_half_open_period():
+    base = ElectricityUsagePeriod(
+        1, "electricity_supply", "billed", date(2024, 2, 1), date(2024, 3, 1)
+    )
+    overlapping = ElectricityUsagePeriod(
+        1, "electricity_supply", "billed", date(2024, 2, 15), date(2024, 3, 15)
+    )
+    assert overlaps_electricity(base, overlapping)
+    # Unclassified sources compare equal to each other, not to a named source.
+    assert not overlaps_electricity(
+        base, ElectricityUsagePeriod(1, None, "billed", date(2024, 2, 1), date(2024, 3, 1))
+    )
+    assert overlaps_electricity(
+        ElectricityUsagePeriod(1, None, "billed", date(2024, 2, 1), date(2024, 3, 1)),
+        ElectricityUsagePeriod(1, None, "billed", date(2024, 2, 20), date(2024, 3, 20)),
+    )
+    # Touching half-open periods, other properties, sources and bases do not overlap.
+    assert not overlaps_electricity(
+        base,
+        ElectricityUsagePeriod(
+            1, "electricity_supply", "billed", date(2024, 3, 1), date(2024, 4, 1)
+        ),
+    )
+    assert not overlaps_electricity(
+        base,
+        ElectricityUsagePeriod(
+            2, "electricity_supply", "billed", date(2024, 2, 1), date(2024, 3, 1)
+        ),
+    )
+    assert not overlaps_electricity(
+        base,
+        ElectricityUsagePeriod(
+            1, "electricity_network", "billed", date(2024, 2, 1), date(2024, 3, 1)
+        ),
+    )
+    assert not overlaps_electricity(
+        base,
+        ElectricityUsagePeriod(
+            1, "electricity_supply", "estimated", date(2024, 2, 1), date(2024, 3, 1)
+        ),
+    )
+
+
+def test_approval_rejects_overlap_when_usage_subcategory_overrides_section_service(setup):
+    proposed = copy.deepcopy(setup["candidate"])
+    first, second = proposed.sections
+    # The usage source wins over its allocation's service; both usages end up supply.
+    first.service = "electricity_network"
+    first.usages[0] = replace(first.usages[0], subcategory="electricity_supply")
+    second.identifiers = first.identifiers
+    with pytest.raises(ValidationError, match="Overlapping electricity usage"):
+        approve(setup, candidate=proposed)
+    setup["invoice"].refresh_from_db()
+    assert setup["invoice"].status == "review" and BillingSection.objects.count() == 0
+
+
+def test_approval_rejects_overlap_when_both_usage_sources_are_unclassified(setup):
+    proposed = copy.deepcopy(setup["candidate"])
+    for section in proposed.sections:
+        section.service = "electricity"
+    proposed.sections[1].identifiers = proposed.sections[0].identifiers
+    with pytest.raises(ValidationError, match="Overlapping electricity usage"):
+        approve(setup, candidate=proposed)
+    assert Usage.objects.count() == 0
+
+
+def test_approval_allows_overlapping_periods_for_distinct_usage_sources(setup):
+    proposed = copy.deepcopy(setup["candidate"])
+    proposed.sections[0].usages[0] = replace(
+        proposed.sections[0].usages[0], subcategory="electricity_network"
+    )
+    proposed.sections[1].usages[0] = replace(
+        proposed.sections[1].usages[0], subcategory="electricity_supply"
+    )
+    proposed.sections[1].identifiers = proposed.sections[0].identifiers
+    invoice = approve(setup, candidate=proposed)
+    assert invoice.status == "approved"
+    assert set(Usage.objects.values_list("subcategory_id", flat=True)) == {
+        "electricity_network",
+        "electricity_supply",
+    }
+
+
+def test_database_blocks_low_level_writes_to_approved_allocations(setup):
+    approved = approve(setup)
+    section = approved.sections.first()
+    usage = Usage.objects.first()
+    with pytest.raises(IntegrityError, match="review service"), transaction.atomic():
+        BillingSection.objects.filter(pk=section.pk).update(net_minor=1)
+    with pytest.raises(IntegrityError, match="review service"), transaction.atomic():
+        Usage.objects.filter(pk=usage.pk).update(quantity_milli=1)
+    with pytest.raises(IntegrityError, match="review service"), transaction.atomic():
+        Usage.objects.filter(pk=usage.pk).delete()
+    with pytest.raises(IntegrityError, match="review service"), transaction.atomic():
+        BillingSection.objects.filter(pk=section.pk).delete()
+    # The review service still rewrites rows while the invoice is back in review.
+    corrected = approve(setup, expected_revision=1, note="Corrected after the guard")
+    assert corrected.status == "approved" and corrected.review_revision == 2
+    assert corrected.sections.count() == 2 and Usage.objects.count() == 2
+
+
+def test_run_corrections_counts_integrity_errors_as_failed_and_continues(setup, monkeypatch):
+    from bills import correction_batches
+
+    others = [
+        Invoice.objects.create(
+            document=Document.objects.create(
+                sha256=f"{index}" * 64, original_filename=f"{index}.pdf"
+            )
+        )
+        for index in ("b", "c")
+    ]
+    invoices = [setup["invoice"], *others]
+    attempted = []
+
+    def fake_approve(document_id, **kwargs):
+        attempted.append(document_id)
+        if document_id == setup["document"].pk:
+            raise IntegrityError(
+                "UNIQUE constraint failed: bills_invoice.vendor_id, bills_invoice.reference"
+            )
+        if document_id == others[0].document_id:
+            raise ValidationError("Synthetic validation failure")
+        return kwargs["expected_invoice_id"]
+
+    monkeypatch.setattr(correction_batches, "approve_document_review", fake_approve)
+    output, errors = [], []
+    with pytest.raises(CommandError, match="2 invoices could not be corrected"):
+        correction_batches.run_corrections(
+            invoices,
+            planner=lambda invoice: ({}, []),
+            reviewer=setup["actor"],
+            note="Synthetic correction batch",
+            output=output.append,
+            error_output=errors.append,
+            failure_message=(
+                "{failed} invoices could not be corrected; successful corrections were retained."
+            ),
+        )
+    assert attempted == [invoice.document_id for invoice in invoices]
+    assert output == ["Updated 1 invoices; 0 unchanged; 2 failed. Invoice totals retained."]
+    assert len(errors) == 2 and all(error.startswith("Invoice ") for error in errors)
 
 
 @pytest.mark.django_db(transaction=True)

@@ -23,6 +23,7 @@ from .review_edits import (
     evidence_page,
     normalize_review_identifier,
 )
+from .services import ElectricityUsagePeriod, overlaps_electricity
 
 IDENTIFIER_KINDS = [
     ("customer_account", "Customer account"),
@@ -410,20 +411,18 @@ class ReviewForms:
             if data["utility"] != utilities.get(service):
                 form.add_error("utility", "Consumption must match the allocation's category.")
             if data["utility"] == "electricity" and data["unit"] == "kWh":
-                source = (
+                # The form's last billed day is inclusive; periods compare half-open.
+                current = ElectricityUsagePeriod(
                     section.cleaned_data["property"].pk,
-                    service,
-                    data.get("subcategory"),
+                    data.get("subcategory") or None,
                     data["basis"],
+                    data["start"],
+                    data["end"] + timedelta(days=1),
                 )
-                for other, other_source in electricity:
-                    if (
-                        source == other_source
-                        and data["start"] <= other["end"]
-                        and (other["start"] <= data["end"])
-                    ):
+                for other in electricity:
+                    if overlaps_electricity(current, other):
                         form.add_error("start", "Overlapping electricity consumption needs review.")
-                electricity.append((data, source))
+                electricity.append(current)
         for form in self.identifiers.active_forms:
             scope = form.cleaned_data["scope"]
             if scope != INVOICE_SCOPE and scope not in sections:

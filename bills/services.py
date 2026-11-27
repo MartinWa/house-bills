@@ -2,6 +2,8 @@
 
 import json
 from dataclasses import asdict
+from datetime import date
+from typing import NamedTuple
 
 from django.core.exceptions import ValidationError
 from django.db import DatabaseError, transaction
@@ -25,6 +27,31 @@ from .validators import normalize_identifier
 
 class StaleReviewError(ValidationError):
     pass
+
+
+class ElectricityUsagePeriod(NamedTuple):
+    """Overlap key for billed electricity: property, source subcategory, basis, period."""
+
+    property_id: int | None
+    subcategory_id: str | None
+    basis: str
+    start: date
+    end: date
+
+
+def overlaps_electricity(a, b):
+    """Half-open period overlap of two electricity usages on the same property/source/basis.
+
+    A reversal and its replacement can share a period, but two measurements with the
+    same basis cannot silently become a sum.
+    """
+    return (
+        a.property_id == b.property_id
+        and a.subcategory_id == b.subcategory_id
+        and a.basis == b.basis
+        and a.start < b.end
+        and b.start < a.end
+    )
 
 
 PROVENANCE_KEYS = {
@@ -283,18 +310,19 @@ def validate_allocations(invoice):
             if usage.utility == Usage.Utility.ELECTRICITY and usage.unit == "kWh":
                 # A reversal and its replacement can overlap. Two positive-source
                 # measurements with the same basis cannot silently become a sum.
-                for other, property_id, source in electricity:
-                    if (
-                        section.property_id == property_id
-                        and usage.subcategory_id == source
-                        and usage.basis == other.basis
-                        and usage.start < other.end
-                        and other.start < usage.end
-                    ):
+                current = ElectricityUsagePeriod(
+                    section.property_id,
+                    usage.subcategory_id,
+                    usage.basis,
+                    usage.start,
+                    usage.end,
+                )
+                for other in electricity:
+                    if overlaps_electricity(current, other):
                         raise ValidationError(
                             "Overlapping electricity usage for this property/source needs review."
                         )
-                electricity.append((usage, section.property_id, usage.subcategory_id))
+                electricity.append(current)
     if (
         totals["net_minor"] != invoice.net_minor
         or totals["vat_minor"] != invoice.vat_minor
