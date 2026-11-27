@@ -527,9 +527,7 @@ apps.get_model('bills', 'ReviewRevision').objects.create(
     invoice=invoice, revision=1, actor=actor, snapshot={'values': {}})
 
 GUARD = 'Approved allocations can only be changed through the review service'
-EXPECTED = {
-    'bills_billingsection_approved_update', 'bills_billingsection_approved_delete',
-    'bills_usage_approved_update', 'bills_usage_approved_delete'}
+EXPECTED = {'bills_billingsection_approved_update', 'bills_usage_approved_update'}
 
 def guard_triggers():
     with connection.cursor() as cursor:
@@ -545,8 +543,6 @@ assert guard_triggers() == EXPECTED
 for sql, pk in (
     ('UPDATE bills_billingsection SET net_minor=1 WHERE id=%s', section.pk),
     ('UPDATE bills_usage SET quantity_milli=1 WHERE id=%s', usage.pk),
-    ('DELETE FROM bills_usage WHERE id=%s', usage.pk),
-    ('DELETE FROM bills_billingsection WHERE id=%s', section.pk),
 ):
     try:
         with transaction.atomic(), connection.cursor() as cursor:

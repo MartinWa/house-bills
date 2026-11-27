@@ -5,6 +5,7 @@ from django.test import Client
 
 from bills import storage
 from bills.models import Document
+from house_bills.middleware import BASELINE_CSP
 
 pytestmark = pytest.mark.django_db
 
@@ -71,11 +72,11 @@ def test_private_storage_has_no_public_route(client, user):
 def test_pages_carry_baseline_content_security_policy(client, user):
     response = client.get("/login/")
     assert response.status_code == 200
-    assert response["Content-Security-Policy"] == "default-src 'self'; frame-ancestors 'none'"
+    assert response["Content-Security-Policy"] == BASELINE_CSP
     client.force_login(user)
     response = client.get("/invoices/")
     assert response.status_code == 200
-    assert response["Content-Security-Policy"] == "default-src 'self'; frame-ancestors 'none'"
+    assert response["Content-Security-Policy"] == BASELINE_CSP
 
 
 def test_private_source_view_keeps_sandboxed_csp_over_baseline(client, user, settings, tmp_path):

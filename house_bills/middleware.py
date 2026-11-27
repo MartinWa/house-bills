@@ -2,7 +2,9 @@
 
 from django.utils.deprecation import MiddlewareMixin
 
-BASELINE_CSP = "default-src 'self'; frame-ancestors 'none'"
+# style-src needs 'unsafe-inline' for the <noscript><style> upload fallback in
+# bills/templates/bills/documents.html; script-src stays strict via default-src.
+BASELINE_CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
 
 
 class ContentSecurityPolicyMiddleware(MiddlewareMixin):

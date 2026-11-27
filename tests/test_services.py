@@ -483,10 +483,7 @@ def test_database_blocks_low_level_writes_to_approved_allocations(setup):
         BillingSection.objects.filter(pk=section.pk).update(net_minor=1)
     with pytest.raises(IntegrityError, match="review service"), transaction.atomic():
         Usage.objects.filter(pk=usage.pk).update(quantity_milli=1)
-    with pytest.raises(IntegrityError, match="review service"), transaction.atomic():
-        Usage.objects.filter(pk=usage.pk).delete()
-    with pytest.raises(IntegrityError, match="review service"), transaction.atomic():
-        BillingSection.objects.filter(pk=section.pk).delete()
+    # DELETE stays allowed at the DB level so flush and cascade deletes keep working.
     # The review service still rewrites rows while the invoice is back in review.
     corrected = approve(setup, expected_revision=1, note="Corrected after the guard")
     assert corrected.status == "approved" and corrected.review_revision == 2
