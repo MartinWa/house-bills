@@ -1168,6 +1168,7 @@ def test_surviving_intervals_pairs_credits_like_the_selection_view():
         base = {
             "property_id": 1,
             "vendor_id": 2,
+            "utility": "electricity",
             "source_service": "electricity_network",
             "unit": "kWh",
             "subcategory": "",
@@ -1194,6 +1195,51 @@ def test_surviving_intervals_pairs_credits_like_the_selection_view():
         [row(100_000, 1), row(-100_000, 2, period_start="2024-01-01", period_end="2024-02-01")]
     )
     assert [item["usage_id"] for item in surviving] == [1] and unmatched == 1
+
+
+def test_surviving_intervals_keep_other_utility_fractions_apart():
+    def row(quantity, usage_id, subcategory):
+        return {
+            "property_id": 1,
+            "vendor_id": 2,
+            "utility": "waste",
+            "source_service": "waste",
+            "unit": "kg",
+            "subcategory": subcategory,
+            "period_start": "2024-02-01",
+            "period_end": "2024-03-01",
+            "quantity_milli": quantity,
+            "invoice_date": "2024-03-05",
+            "invoice_id": usage_id,
+            "usage_id": usage_id,
+        }
+
+    # Same vendor, property, period and magnitude, but a different waste fraction.
+    surviving, unmatched = surviving_intervals(
+        [row(10_000, 1, "matavfall"), row(-10_000, 2, "restavfall")]
+    )
+    assert [item["usage_id"] for item in surviving] == [1] and unmatched == 1
+    # An identical fraction still cancels.
+    surviving, unmatched = surviving_intervals(
+        [row(10_000, 1, "matavfall"), row(-10_000, 2, "matavfall")]
+    )
+    assert surviving == [] and unmatched == 0
+
+
+def test_bounded_query_applies_the_limit_before_loading_rows(monkeypatch):
+    import bills.reporting_data as reporting_data
+
+    statements = []
+
+    class StubReader:
+        def execute(self, sql, params):
+            statements.append(sql)
+            return [{"value": value} for value in range(5)]
+
+    monkeypatch.setattr(reporting_data, "MAX_FACTS", 2)
+    with pytest.raises(ReportTooBroad, match="100,000 analytical source facts"):
+        reporting_data.bounded_query(StubReader(), "SELECT value FROM reporting_usage", [])
+    assert statements[-1].endswith("LIMIT 3")
 
 
 def test_read_report_bounds_breakdown_issues_and_billed_power(ledger, monkeypatch):

@@ -16,6 +16,12 @@ def bounded_facts(rows):
     return result
 
 
+def bounded_query(reader, sql, params):
+    """Read at most one row past the bound so the count is checked before loading."""
+    rows = reader.execute(f"{sql} LIMIT {MAX_FACTS + 1}", params)
+    return bounded_facts(dict(row) for row in rows)
+
+
 class ReportingSnapshot:
     """Cache source selection before applying vendor, classification or date filters.
 
@@ -193,24 +199,33 @@ def consumption_groups(buckets):
     return result
 
 
+def cancellation_key(row):
+    """Electricity pairs as in the selection view; other utilities keep unit and fraction."""
+    key = (
+        row["property_id"],
+        row["vendor_id"],
+        row["source_service"],
+        row["period_start"],
+        row["period_end"],
+        abs(row["quantity_milli"]),
+    )
+    # Synthetic example rows omit utility; they keep the stricter key.
+    return key if row.get("utility") == "electricity" else (*key, row["unit"], row["subcategory"])
+
+
 def surviving_intervals(rows):
     """Exact signed corrections cancel observations for physical coverage only.
 
-    Credits pair on (property, vendor, source service, period, |quantity|),
-    matching the cancellation rule of the reporting_electricity_selection view.
+    Electricity credits pair on (property, vendor, source service, period, |quantity|),
+    matching the cancellation rule of the reporting_electricity_selection view. Other
+    utilities extend that key with unit and subcategory, so a credit for one waste
+    fraction never cancels a different fraction's weight.
     """
     positives, credits = defaultdict(list), defaultdict(list)
     for row in sorted(
         rows, key=lambda row: (row["invoice_date"], row["invoice_id"], row["usage_id"])
     ):
-        key = (
-            row["property_id"],
-            row["vendor_id"],
-            row["source_service"],
-            row["period_start"],
-            row["period_end"],
-            abs(row["quantity_milli"]),
-        )
+        key = cancellation_key(row)
         (credits if row["quantity_milli"] < 0 else positives)[key].append(row)
     surviving, unmatched = [], 0
     for key in positives.keys() | credits.keys():

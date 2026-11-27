@@ -231,11 +231,13 @@ available.
 
 Exact signed corrections are retained. For overlap detection only, an equal negative
 quantity cancels one positive with the same property, vendor, source service and exact
-period, pairing older positive invoice dates/IDs first. Each negative can cancel at most
-one positive. The original, negative and replacement rows all remain in the selected
-series, so their integer sum is the corrected quantity. An unmatched negative remains
-a signed credit; a partial reversal does not silently resolve overlapping positive
-periods. No invoice history or source evidence is rewritten by reporting.
+period, pairing older positive invoice dates/IDs first. Outside that electricity view,
+the analytics coverage pairing also requires the same unit and sub-category, so a credit
+for one waste fraction never cancels another fraction's weight. Each negative can cancel
+at most one positive. The original, negative and replacement rows all remain in the
+selected series, so their integer sum is the corrected quantity. An unmatched negative
+remains a signed credit; a partial reversal does not silently resolve overlapping
+positive periods. No invoice history or source evidence is rewritten by reporting.
 
 ## Queries and read consistency
 
