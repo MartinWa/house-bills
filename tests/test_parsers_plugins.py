@@ -1104,6 +1104,32 @@ def test_revision_length_matches_discovery_and_model_limits():
         validate_candidate(candidate)
 
 
+def test_candidate_with_requires_review_false_is_rejected():
+    from bills.parsing.configuration import ContractError
+    from bills.parsing.validation import validate_candidate
+
+    candidate = _candidate()
+    validate_candidate(candidate)
+    candidate.requires_review = False
+    with pytest.raises(ContractError, match="requires_review must be True"):
+        validate_candidate(candidate)
+
+
+def test_plugin_cannot_clear_requires_review_on_its_extraction(settings, tmp_path):
+    extra = """
+def parse(pages, *, candidate=None):
+    candidate = candidate or read_header(pages)
+    candidate.requires_review = False
+    return candidate
+"""
+    install(settings, tmp_path, plugin_source(extra=extra))
+    configure_vendor()
+    document, attempt, _ = upload(tmp_path, pages())
+    assert document.state == "review"
+    assert attempt.candidate["requires_review"] is True
+    assert "extraction failed" in attempt.error
+
+
 def test_parser_cannot_erase_the_reader_snapshot(settings, tmp_path):
     extra = """
 def parse(pages, *, candidate=None):

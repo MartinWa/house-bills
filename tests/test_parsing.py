@@ -1,15 +1,18 @@
 import hashlib
 import json
+import re
 from dataclasses import replace
 from datetime import date
 
 import pytest
 
 from bills.categories import waste_cost_subcategory
-from bills.parsing.common import last_money, reconcile
+from bills.parsing.common import header, last_money, reconcile
+from bills.parsing.layout_helpers import price_quantities
 from bills.parsing.normalization import money, quantity, source_date, source_period
 from bills.parsing.reader import read_pdf
-from bills.parsing.types import Evidence
+from bills.parsing.types import Candidate, Evidence, Section
+from bills.parsing.waste_costs import split_waste_costs
 from tests.examples import layout_01, layout_02, layout_02_v2
 
 from .synthetic import multi_service, shared_supply, write_pdf
@@ -520,3 +523,106 @@ def test_quantity_precision_and_date_conventions():
 )
 def test_amounts_do_not_absorb_unit_or_identifier_digits(text, expected):
     assert last_money(Evidence(1, text, (0, 0, 500, 20))) == expected
+
+
+def test_misgrouped_totals_line_does_not_yield_the_digit_run_tail():
+    with pytest.raises(ValueError, match="Missing monetary amount"):
+        last_money(Evidence(1, "Summa 1234 567,89 kr", (0, 0, 500, 20)))
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("Summa 1 234 567,89 kr", 123456789),
+        ("29 mar 2024 1 080,06 kr 270,02 kr -0,08 kr 1 350,00 kr", 135000),
+    ],
+)
+def test_last_money_keeps_grouped_and_date_adjacent_amounts(text, expected):
+    assert last_money(Evidence(1, text, (0, 0, 500, 20))) == expected
+
+
+def _header_pages(totals_row):
+    return [
+        [
+            Evidence(1, "Fakturadatum: 2024-01-01", (0, 0, 500, 20)),
+            Evidence(1, "Summa exkl moms Moms Öresutjämning Att betala", (0, 0, 500, 20)),
+            Evidence(1, totals_row, (0, 0, 500, 20)),
+        ]
+    ]
+
+
+def test_misgrouped_header_totals_row_is_flagged_as_invalid():
+    candidate = header(_header_pages("1 000,00 kr 250,00 kr 0,00 kr 1234 567,89 kr"), "synthetic")
+    assert candidate.amount_due_minor is None
+    assert "Missing or invalid header totals row" in candidate.issues
+
+
+def test_header_totals_row_after_a_printed_date_is_still_read():
+    candidate = header(
+        _header_pages("29 mar 2024 1 080,06 kr 270,02 kr -0,08 kr 1 350,00 kr"), "synthetic"
+    )
+    assert (
+        candidate.net_minor,
+        candidate.vat_minor,
+        candidate.rounding_minor,
+        candidate.amount_due_minor,
+    ) == (108006, 27002, -8, 135000)
+
+
+def test_misgrouped_price_quantity_is_rejected_but_date_adjacent_quantities_are_kept():
+    candidate = Candidate(
+        "synthetic", "v1", "1", "", None, None, "SEK", None, None, None, None, None, {}
+    )
+    section = Section("section_01", "electricity_supply", [])
+    item = re.compile(r"^(?:Energiavgift|Avläsning)\b", re.I)
+    lines = [
+        Evidence(1, "Avläsning 1 mar 2024 321,125 kWh 8321,125", (0, 0, 500, 20)),
+        Evidence(1, "Energiavgift 1234 567,5 kWh 4,00 öre/kWh 12,85 kr", (0, 0, 500, 20)),
+    ]
+    assert list(price_quantities(candidate, section, lines, item)) == [321125]
+
+
+def test_misgrouped_waste_charge_row_is_flagged_without_a_wrong_split(tmp_path):
+    pages = [
+        [
+            line.replace("30,00 kr", "1234 567,89 kr") if isinstance(line, str) else line
+            for line in page
+        ]
+        for page in multi_service()
+    ]
+    path = write_pdf(tmp_path / "synthetic.pdf", pages)
+    evidence_pages = read_pdf(path)
+    candidate = layout_01.parse(evidence_pages)
+    sources, warnings = split_waste_costs(
+        candidate, evidence_pages, {"section_02": {"matavfall", "restavfall"}}
+    )
+    assert sources == {}
+    assert warnings == ["section_02: The printed Restavfall charge is missing or invalid."]
+    assert [
+        (section.section_id, section.subcategory, section.net_minor)
+        for section in candidate.sections
+    ] == [
+        ("section_01", "", 44000),
+        ("section_02", "waste_collection", 11160),
+        ("section_03", "tradgardsavfall", 8000),
+        ("section_04", "", 22846),
+        ("section_04_electricity_demand", "electricity_demand", 15000),
+    ]
+
+
+def test_misgrouped_demand_charge_is_flagged_without_a_wrong_split(tmp_path):
+    pages = [
+        [
+            line.replace("150,00 kr", "1234 567,89 kr") if isinstance(line, str) else line
+            for line in page
+        ]
+        for page in multi_service()
+    ]
+    candidate = parse_synthetic(tmp_path, pages)
+    assert "section_04: The printed Effektavgift charge is missing or invalid." in candidate.issues
+    network = [
+        (section.section_id, section.net_minor)
+        for section in candidate.sections
+        if section.service == "electricity_network"
+    ]
+    assert network == [("section_04", 37846)]

@@ -6,7 +6,7 @@ from fractions import Fraction
 
 from bills.categories import waste_cost_subcategory
 
-from .common import last_money
+from .common import find_number, last_money
 from .normalization import NUMBER, money, text
 
 CONTRACT = re.compile(
@@ -112,7 +112,7 @@ def _split_section(section, lines, tracked, existing_parts=()):
         if key not in tracked:
             continue
         # Container headings and measurements never establish a monetary split.
-        billed = BILLED_AMOUNT.search(value)
+        billed = find_number(value, BILLED_AMOUNT)
         if not billed:
             raise ValueError(f"The printed {match[1]} charge is missing or invalid.")
         amount = money(billed[1])

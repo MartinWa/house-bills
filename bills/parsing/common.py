@@ -8,10 +8,29 @@ from .normalization import DATE, NUMBER, money, source_date, text
 from .types import Candidate, Evidence, Identifier
 
 AMOUNT = re.compile(rf"(?<![\w,.])(?P<amount>{NUMBER})\s+kr\b", re.I)
+# A standalone run of four or more digits directly before a match is an invalid
+# digit grouping whose tail must not be read as a number of its own ("1234 567,89").
+# Digits attached to an identifier ("SE000000000001 473,08") and a year following
+# a month name ("1 mar 2024 321,125") are separate tokens and stay valid.
+MISGROUPED = re.compile(
+    r"(?<!\w)(?<!(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec) )\d{4,}[ \u00a0\u202f]$",
+    re.I,
+)
+
+
+def valid_number(value: str, match: re.Match) -> bool:
+    """Reject a match that only continues a mis-grouped run of digits."""
+    return MISGROUPED.search(value[: match.start()]) is None
+
+
+def find_number(value: str, pattern: re.Pattern) -> re.Match | None:
+    """Return the first match of the pattern that is not a mis-grouped tail."""
+    return next((match for match in pattern.finditer(value) if valid_number(value, match)), None)
 
 
 def last_money(line: Evidence) -> int:
-    matches = list(AMOUNT.finditer(text(line)))
+    value = text(line)
+    matches = [match for match in AMOUNT.finditer(value) if valid_number(value, match)]
     if not matches:
         raise ValueError("Missing monetary amount")
     return money(matches[-1]["amount"])
@@ -69,8 +88,8 @@ def header(pages: list[list[Evidence]], family: str, version="v1", revision="2")
     )
     if horizontal is not None:
         try:
-            row = lines[horizontal + 1]
-            values = list(AMOUNT.finditer(text(row)))
+            row = text(lines[horizontal + 1])
+            values = [match for match in AMOUNT.finditer(row) if valid_number(row, match)]
             if len(values) != 4:
                 raise ValueError("Invalid header totals row")
             for field, key, match in zip(
