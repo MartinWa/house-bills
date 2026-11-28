@@ -30,8 +30,9 @@ enabled. A locked-out attempt gets a bare 429 Too Many Requests response instead
 styled login form. Only that lockout counter row is stored. `AXES_ENABLE_ACCESS_FAILURE_LOG`
 is `False` and `AXES_DISABLE_ACCESS_LOG` is `True`, so no per-event rows are written,
 while axes still logs every failure and successful sign-in at INFO to the container log
-through the `axes` logger. Only staff accounts can use the admin, subject to model
-permissions.
+through the `axes` logger. That covers axes records only: Django still stores login
+sessions and each account's last sign-in timestamp. Only staff accounts can use the
+admin, subject to model permissions.
 Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and invoice property
 rules. **Administration** and **Sign out** are in the header's **User** menu.

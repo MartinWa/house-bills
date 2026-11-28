@@ -146,6 +146,34 @@ def test_allow_marker_exempts_a_line(tmp_path):
     assert findings_for(tmp_path, line) == []
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Mail me at someone@corp.example. Thanks",  # hygiene: allow
+        "Write to someone@corp.example)",  # hygiene: allow
+    ],
+)
+def test_an_address_that_ends_a_sentence_or_bracket_is_reported(tmp_path, line):
+    assert findings_for(tmp_path, line) == ["email address"]
+
+
+def test_a_sentence_final_exempt_address_stays_unreported(tmp_path):
+    assert findings_for(tmp_path, "Owner: owner@example.com.") == []  # hygiene: allow
+
+
+def test_a_near_miss_of_a_reserved_domain_is_reported(tmp_path):
+    line = "Owner: owner@example.company"  # hygiene: allow
+    assert findings_for(tmp_path, line) == ["email address"]
+
+
+def test_a_real_assignment_after_a_placeholder_is_reported(tmp_path):
+    line = (
+        'SECRET_KEY = "synthetic-test-secret-not-for-real-install" '
+        'PASSWORD = "0123456789abcdef0123456789abcdef"'  # hygiene: allow
+    )
+    assert findings_for(tmp_path, line) == ["assigned secret"]
+
+
 def png_chunk(kind, data):
     return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", 0)
 

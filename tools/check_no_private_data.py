@@ -79,7 +79,10 @@ SYMLINK_FINDING = "symbolic link not inspected"
 EMAIL_LOCAL_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
 EMAIL_DOMAIN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
 EMAIL_DOMAIN_PATTERN = re.compile(r"[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}")
-EMAIL_EXEMPT_DOMAIN = re.compile(r"example\.(?:com|org|net|invalid)\b")
+# Exact names, not a prefix test: "example.company" is a real domain, not reserved.
+EMAIL_EXEMPT_DOMAINS = frozenset({"example.com", "example.org", "example.net", "example.invalid"})
+# Sentence punctuation that can trail an address in prose and is not part of it.
+EMAIL_TRAILING_CHARS = ".,;:!?)]}>\"'"
 EMAIL_LOCAL_LIMIT = 64
 EMAIL_DOMAIN_LIMIT = 255
 
@@ -106,6 +109,8 @@ def address_at(line: str, position: int) -> bool:
 
     The local and domain parts are bounded by their RFC lengths, so the scan of a long
     line stays linear instead of restarting an unbounded pattern at every character.
+    Trailing sentence punctuation is trimmed first, so an address that ends a sentence or
+    sits just before a closing bracket or quote is still recognised.
     """
     start = position
     while start > 0 and position - start < EMAIL_LOCAL_LIMIT:
@@ -119,10 +124,10 @@ def address_at(line: str, position: int) -> bool:
         end += 1
     if start == position:
         return False
-    domain = line[position + 1 : end]
+    domain = line[position + 1 : end].rstrip(EMAIL_TRAILING_CHARS)
     if not EMAIL_DOMAIN_PATTERN.fullmatch(domain):
         return False
-    return EMAIL_EXEMPT_DOMAIN.match(domain) is None
+    return domain not in EMAIL_EXEMPT_DOMAINS
 
 
 def has_email(line: str) -> bool:
@@ -166,6 +171,18 @@ def skip_bytes(stream, count: int) -> bool:
     return True
 
 
+def rule_matches(label: str, pattern: re.Pattern[str], line: str) -> bool:
+    """Return whether any match on the line counts as a finding.
+
+    A conditional rule inspects every match, so a placeholder value early on the line
+    cannot hide a real value assigned later on the same line.
+    """
+    placeholder = PLACEHOLDER_CHECKS.get(label)
+    if placeholder is None:
+        return pattern.search(line) is not None
+    return any(not placeholder(match) for match in pattern.finditer(line))
+
+
 def line_findings(path: str, line_number: int, raw: bytes) -> list[str]:
     if len(raw) > MAX_LINE_BYTES:
         return [f"{path}: line {line_number} is too long to scan"]
@@ -176,12 +193,8 @@ def line_findings(path: str, line_number: int, raw: bytes) -> list[str]:
     for label, pattern, markers in CONTENT_PATTERNS:
         if not any(marker in line for marker in markers):
             continue
-        match = pattern.search(line)
-        if not match:
-            continue
-        if PLACEHOLDER_CHECKS.get(label, lambda _match: False)(match):
-            continue
-        findings.append(f"{path}:{line_number}: {label}")
+        if rule_matches(label, pattern, line):
+            findings.append(f"{path}:{line_number}: {label}")
     if has_email(line):
         findings.append(f"{path}:{line_number}: email address")
     return findings

@@ -24,14 +24,16 @@ own bucket by sending that header; a wildcard or untrusted proxy peer could stil
 it (evasion only; see the proxy trust warning in the
 [deployment guide](docs/deployment.md)).
 
-What is stored is only that lockout counter row, with the request data axes filters
-before writing it, kept until it expires and removed during later authentication
-activity; a backup taken while a lockout is active can therefore contain it. Database
-logging of individual events is off (`AXES_ENABLE_ACCESS_FAILURE_LOG = False` and
-`AXES_DISABLE_ACCESS_LOG = True`), yet axes still emits each failure and each successful
-sign-in at INFO, which the `axes` logger writes to the container log: only the database
-rows are gone, not the log records. No separate reverse-proxy throttle is required,
-though one remains compatible.
+Under these settings the only authentication record axes writes is that lockout counter
+row, with the request data it filters before writing it, kept until it expires and
+removed during later authentication activity; a backup taken while a lockout is active
+can therefore contain it. Database logging of individual events is off
+(`AXES_ENABLE_ACCESS_FAILURE_LOG = False` and `AXES_DISABLE_ACCESS_LOG = True`), yet axes
+still emits each failure and each successful sign-in at INFO, which the `axes` logger
+writes to the container log: only the database rows are gone, not the log records. This
+covers axes records only: Django itself still stores login sessions and each account's
+last sign-in timestamp, and backups contain both. No separate reverse-proxy throttle is
+required, though one remains compatible.
 
 Originals, extracted evidence, identifiers, accounts and approval history stay in
 local private storage. Static serving does not expose originals. The application
