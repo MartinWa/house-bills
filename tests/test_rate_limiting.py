@@ -1,7 +1,7 @@
 """django-axes locks one username and connection address after repeated wrong passwords."""
 
 import pytest
-from axes.models import AccessAttempt
+from axes.models import AccessAttempt, AccessFailureLog, AccessLog
 from axes.utils import reset
 from django.test import override_settings
 
@@ -79,3 +79,12 @@ def test_a_blocked_retry_does_not_extend_the_lockout(client, user, path):
     assert blocked.status_code == 429
     attempt.refresh_from_db()
     assert (attempt.attempt_time, attempt.failures_since_start) == locked
+
+
+@override_settings(AXES_ENABLED=True)
+def test_sign_in_activity_is_not_written_to_the_axes_log_tables(client, user):
+    assert sign_in(client, "/login/", user.username, CORRECT_PASSWORD).status_code == 302
+    sign_in(client, "/login/", user.username, WRONG_PASSWORD, **VISITOR_ADDRESS)
+
+    assert AccessLog.objects.count() == 0
+    assert AccessFailureLog.objects.count() == 0

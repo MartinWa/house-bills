@@ -20,14 +20,16 @@ change the loopback host port; the container listens on port 8000. The server ap
 migrations before starting Django's development reloader. Login and logout use Django's
 built-in authentication, with POST and CSRF protection for logout, and django-axes
 limits sign-in attempts: five wrong passwords for one username and connection address
-pair lock that pair for an hour, a success resets the count, and a blocked retry neither
-extends the lockout nor adds a database row. The address is the connection's peer
-address, which Waitress resolves from the trusted proxy's `X-Forwarded-For` when
-`HOUSE_BILLS_TRUST_PROXY` is enabled. A locked-out attempt gets a bare 429 Too Many
-Requests response instead of the styled login form. Failures and lockouts are logged to
-the container log through the `axes` logger, and no per-attempt failure log is kept:
-only the lockout counter for the username and address pair, which expires with the
-cooloff. Only staff accounts can use the admin, subject to model permissions.
+pair lock that pair for up to an hour, a success resets the count, and a blocked retry
+neither extends the lockout nor adds a row. Failures are counted in a rolling window, so
+the lockout can end before the hour once the oldest failures expire. The address is the
+connection's peer address, which Waitress resolves from the trusted proxy's
+`X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is enabled. A locked-out attempt gets a
+bare 429 Too Many Requests response instead of the styled login form. Only the lockout
+counter is stored, one row per username, address and user agent with filtered request
+data until it expires; successful sign-ins and failures are logged to the container log
+through the `axes` logger and not stored. Only staff accounts can use the admin, subject
+to model permissions.
 Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and invoice property
 rules. **Administration** and **Sign out** are in the header's **User** menu.

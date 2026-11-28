@@ -9,15 +9,21 @@ import pytest
 
 from tools.check_no_private_data import (
     ALLOW_MARKER,
-    MAX_SCAN_BYTES,
+    MAX_LINE_BYTES,
     PNG_SIGNATURE,
-    candidate_files,
-    content_violations,
+    SYMLINK_MODE,
+    BlobReader,
+    BlobReadError,
+    IndexEntry,
     find_violations,
+    index_entries,
+    index_violations,
     inside_work_tree,
     is_violation,
     main,
-    worktree_content_violations,
+    modified_paths,
+    untracked_files,
+    worktree_violations,
 )
 
 REPOSITORY = Path(__file__).resolve().parent.parent
@@ -71,15 +77,16 @@ def test_a_force_added_pdf_original_is_refused_by_name():
     assert is_violation("documents/SYNTHETIC-INVOICE.PDF")
 
 
-def test_the_documented_query_example_stays_committable_but_dumps_do_not():
+def test_the_documented_query_example_is_exempt_by_exact_path_only():
     assert not is_violation("docs/reporting-examples.sql")
     assert is_violation("docs/export.sql")
+    assert is_violation("copy/docs/reporting-examples.sql")
 
 
 def findings_for(tmp_path, text):
     path = tmp_path / "sample.txt"
     path.write_text(text + "\n", encoding="utf-8")
-    return [finding.rsplit(": ", 1)[-1] for finding in worktree_content_violations([str(path)])]
+    return [finding.rsplit(": ", 1)[-1] for finding in worktree_violations([str(path)])]
 
 
 @pytest.mark.parametrize(
@@ -140,26 +147,29 @@ def test_png_text_metadata_is_reported(tmp_path):
         PNG_SIGNATURE + png_chunk(b"tEXt", b"Comment\x00synthetic") + png_chunk(b"IEND", b"")
     )
 
-    assert worktree_content_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
+    assert worktree_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
 
 
 def test_a_large_image_still_reports_metadata(tmp_path):
     image = tmp_path / "huge.png"
     image.write_bytes(
         PNG_SIGNATURE
-        + png_chunk(b"IDAT", b"\x00" * MAX_SCAN_BYTES)
+        + png_chunk(b"IDAT", b"\x00" * MAX_LINE_BYTES)
         + png_chunk(b"tEXt", b"Comment\x00synthetic")
         + png_chunk(b"IEND", b"")
     )
 
-    assert worktree_content_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
+    assert worktree_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
 
 
-def test_an_oversized_text_file_is_skipped(tmp_path):
-    text = tmp_path / "huge.log"
-    text.write_bytes(b"a" * (MAX_SCAN_BYTES + 1))
+def test_a_line_past_the_cap_is_reported_and_the_rest_is_still_scanned(tmp_path):
+    path = tmp_path / "long.log"
+    path.write_bytes(b"a" * (MAX_LINE_BYTES + 1) + b"\n" + PRIVATE_LINE.encode())
 
-    assert worktree_content_violations([str(text)]) == []
+    assert worktree_violations([str(path)]) == [
+        f"{path}: line 1 is too long to scan",
+        f"{path}:2: email address",
+    ]
 
 
 def test_an_untracked_symlink_is_reported_and_not_followed(tmp_path):
@@ -168,7 +178,7 @@ def test_an_untracked_symlink_is_reported_and_not_followed(tmp_path):
     link = tmp_path / "notes-link.md"
     link.symlink_to(target)
 
-    assert worktree_content_violations([str(link)]) == [f"{link}: symlink, not followed"]
+    assert worktree_violations([str(link)]) == [f"{link}: symbolic link not inspected"]
 
 
 def test_tracked_content_is_read_from_the_index_not_the_working_tree(scratch_repository):
@@ -177,10 +187,45 @@ def test_tracked_content_is_read_from_the_index_not_the_working_tree(scratch_rep
     git("add", "notes.md")
     notes.unlink()
 
-    assert content_violations(["notes.md"]) == ["notes.md:1: email address"]
-    assert worktree_content_violations(["notes.md"]) == [
-        "notes.md: unreadable, content not inspected"
-    ]
+    assert index_violations(index_entries()) == ["notes.md:1: email address"]
+    assert worktree_violations(["notes.md"]) == ["notes.md: unreadable, content not inspected"]
+
+
+def test_an_unstaged_change_is_scanned_too(scratch_repository):
+    notes = Path("notes.md")
+    notes.write_text("synthetic notes\n", encoding="utf-8")
+    git("add", "notes.md")
+    notes.write_text(PRIVATE_LINE, encoding="utf-8")
+
+    assert index_violations(index_entries()) == []
+    assert modified_paths() == ["notes.md"]
+    assert worktree_violations(modified_paths()) == ["notes.md:1: email address"]
+
+
+def test_a_staged_symlink_is_reported_before_any_exemption(scratch_repository):
+    Path("private-notes.md").write_text(PRIVATE_LINE, encoding="utf-8")
+    Path("notes-link.md").symlink_to("private-notes.md")
+    git("add", "notes-link.md")
+
+    modes = {entry.path: entry.mode for entry in index_entries()}
+    assert modes["notes-link.md"] == SYMLINK_MODE
+    assert index_violations(index_entries()) == ["notes-link.md: symbolic link not inspected"]
+
+
+def test_a_symlink_at_an_exempt_path_is_still_reported():
+    entry = IndexEntry(SYMLINK_MODE, "0" * 40, "docs/reporting-examples.sql")
+
+    assert not is_violation(entry.path)
+    assert index_violations([entry]) == ["docs/reporting-examples.sql: symbolic link not inspected"]
+
+
+def test_a_missing_blob_fails_the_check(scratch_repository):
+    reader = BlobReader()
+    try:
+        with pytest.raises(BlobReadError):
+            reader.blob("0" * 40)
+    finally:
+        reader.close()
 
 
 def test_untracked_mode_reuses_the_name_and_content_checks(scratch_repository):
@@ -189,8 +234,7 @@ def test_untracked_mode_reuses_the_name_and_content_checks(scratch_repository):
     Path("dump.db").write_text("synthetic dump\n", encoding="utf-8")
     Path("export.csv").write_text("synthetic export\n", encoding="utf-8")
 
-    assert candidate_files() == []
-    untracked = candidate_files(untracked=True)
+    untracked = untracked_files()
     assert "notes.md" in untracked
     assert "dump.db" in untracked
     assert "export.csv" not in untracked

@@ -99,8 +99,9 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 # Per username and connection address (the peer, which the trusted proxy's forwarded
-# address resolves in Waitress): five failures block that pair for one hour, a retry
-# neither extends the lockout nor adds a per-attempt database row.
+# address resolves in Waitress): five failures block that pair for up to one hour, a
+# retry does not extend it, and only one counter row per username, address and user
+# agent is kept until it expires. No access or failure log is stored.
 AXES_ENABLED = True
 AXES_FAILURE_LIMIT = 5
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
@@ -108,6 +109,7 @@ AXES_COOLOFF_TIME = 1
 AXES_RESET_ON_SUCCESS = True
 AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = False
 AXES_ENABLE_ACCESS_FAILURE_LOG = False
+AXES_DISABLE_ACCESS_LOG = True
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "bills:invoices"
 LOGOUT_REDIRECT_URL = "login"

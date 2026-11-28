@@ -4,11 +4,10 @@ A line that legitimately needs to look like private data (for example a security
 contact address) can opt out of the content scan by carrying the marker
 ``hygiene: allow``.
 
-Tracked files are read from the git index, so the scan covers what a commit would
-contain even when the working copy differs. ``--untracked`` additionally scans
-working-tree files that git reports as untracked and not ignored. Symlinks are never
-followed, image metadata is streamed instead of loaded whole, and a file that cannot
-be inspected is reported rather than passed.
+The check enumerates the git index, reports symbolic links without opening them, reads
+each blob by object id in bounded pieces, and also scans a tracked file's working-tree
+copy when it differs from the index, so an unstaged secret is caught too. ``--untracked``
+adds the working-tree files that git reports as untracked and not ignored.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 BAD_SUFFIXES = (
@@ -38,11 +38,12 @@ BAD_SUFFIXES = (
     ".zip",
 )
 BAD_DIRECTORIES = frozenset({"planning", "reference", "test-data"})
-# A documented query example, not a database dump, stays committable despite its suffix.
+# An exact path, matched by membership: a documented query example rather than a dump.
 ALLOWED_PATHS = frozenset({"docs/reporting-examples.sql"})
-MAX_SCAN_BYTES = 2 * 1024 * 1024
+MAX_LINE_BYTES = 2 * 1024 * 1024
 READ_CHUNK_BYTES = 64 * 1024
 ALLOW_MARKER = "hygiene: allow"
+SYMLINK_MODE = "120000"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 PNG_METADATA_CHUNKS = frozenset({b"tEXt", b"iTXt", b"zTXt", b"eXIf"})
 JPEG_EXIF_MARKER = b"Exif\x00\x00"
@@ -53,29 +54,46 @@ ASSIGNED_SECRET = re.compile(
 # A deliberately fake value names itself as fake instead of being exempted by file.
 PLACEHOLDER_SECRET_MARKERS = ("synthetic", "test-only", "replace-with", "not-for-real")
 
+# Each rule is tried only when one of its literal markers occurs in the line, which keeps
+# long single-line files cheap to scan.
 CONTENT_PATTERNS = (
-    ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-    ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), ("PRIVATE KEY",)),
+    ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}"), ("AKIA",)),
     (
         "GitHub token",
         re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{20,}"),
+        ("gh", "github_pat_"),
     ),
-    ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
-    ("assigned secret", ASSIGNED_SECRET),
+    ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"), ("xox",)),
+    ("assigned secret", ASSIGNED_SECRET, (":", "=")),
     (
         "email address",
         re.compile(
             r"[A-Za-z0-9._%+-]+@(?!example\.(?:com|org|net|invalid)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
         ),
+        ("@",),
     ),
     (
         "absolute host path",
         re.compile(
             r"(?:[A-Za-z]:\\Users\\|/Users/[A-Za-z]|/home/(?!developer\b)[A-Za-z]|/(?:root|srv|mnt)/)"
         ),
+        ("/", "\\"),
     ),
 )
 UNTRACKED_HELP = "also scan files that are untracked but not ignored by .gitignore"
+SYMLINK_FINDING = "symbolic link not inspected"
+
+
+class BlobReadError(RuntimeError):
+    """Raised when git cannot supply the staged content that the index declares."""
+
+
+@dataclass(frozen=True)
+class IndexEntry:
+    mode: str
+    object_id: str
+    path: str
 
 
 def is_placeholder_secret(match: re.Match[str]) -> bool:
@@ -116,21 +134,57 @@ def skip_bytes(stream, count: int) -> bool:
     return True
 
 
-def text_findings(path: str, stream) -> list[str]:
-    data = stream.read(MAX_SCAN_BYTES + 1)
-    if len(data) > MAX_SCAN_BYTES:
+def line_findings(path: str, line_number: int, raw: bytes) -> list[str]:
+    if len(raw) > MAX_LINE_BYTES:
+        return [f"{path}: line {line_number} is too long to scan"]
+    line = raw.decode("utf-8", errors="ignore")
+    if ALLOW_MARKER in line:
         return []
     findings = []
-    for line_number, line in enumerate(data.decode("utf-8", errors="ignore").splitlines(), 1):
-        if ALLOW_MARKER in line:
+    for label, pattern, markers in CONTENT_PATTERNS:
+        if not any(marker in line for marker in markers):
             continue
-        for label, pattern in CONTENT_PATTERNS:
-            match = pattern.search(line)
-            if not match:
+        match = pattern.search(line)
+        if not match:
+            continue
+        if PLACEHOLDER_CHECKS.get(label, lambda _match: False)(match):
+            continue
+        findings.append(f"{path}:{line_number}: {label}")
+    return findings
+
+
+def text_findings(path: str, stream) -> list[str]:
+    """Scan every line of the stream without buffering more than one line at a time."""
+    findings = []
+    line_number = 0
+    buffer = b""
+    too_long = False
+    while True:
+        chunk = stream.read(READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        buffer += chunk
+        if too_long:
+            end = buffer.find(b"\n")
+            if end < 0:
+                buffer = b""
                 continue
-            if PLACEHOLDER_CHECKS.get(label, lambda _match: False)(match):
-                continue
-            findings.append(f"{path}:{line_number}: {label}")
+            buffer = buffer[end + 1 :]
+            too_long = False
+            line_number += 1
+        parts = buffer.split(b"\n")
+        buffer = parts.pop()
+        for raw in parts:
+            line_number += 1
+            findings.extend(line_findings(path, line_number, raw))
+        if len(buffer) > MAX_LINE_BYTES:
+            line_number += 1
+            findings.append(f"{path}: line {line_number} is too long to scan")
+            buffer = b""
+            too_long = True
+    if buffer and not too_long:
+        line_number += 1
+        findings.extend(line_findings(path, line_number, buffer))
     return findings
 
 
@@ -194,11 +248,85 @@ class BoundedStream:
         return data
 
 
+class BlobReader:
+    """Read one staged blob at a time from a single ``git cat-file --batch`` process.
+
+    Each request is written and its whole response consumed before the next request, so
+    git never blocks on a full output pipe.
+    """
+
+    def __init__(self) -> None:
+        self.process = subprocess.Popen(
+            ["git", "cat-file", "--batch"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
+
+    def close(self) -> None:
+        self.process.stdin.close()
+        self.process.stdout.close()
+        if self.process.wait() != 0:
+            raise BlobReadError("git cat-file exited unsuccessfully")
+
+    def blob(self, object_id: str) -> BoundedStream:
+        self.process.stdin.write(f"{object_id}\n".encode())
+        self.process.stdin.flush()
+        header = self.process.stdout.readline().decode(errors="replace").split()
+        if len(header) != 3 or not header[2].isdigit():
+            raise BlobReadError(f"{object_id} is missing from the git object store")
+        return BoundedStream(self.process.stdout, int(header[2]))
+
+    def drain(self, object_id: str, blob: BoundedStream) -> None:
+        if not skip_bytes(blob, blob.remaining):
+            raise BlobReadError(f"{object_id} was read short")
+        if self.process.stdout.read(1) != b"\n":
+            raise BlobReadError(f"{object_id} was not terminated by git")
+
+
+def run_git(*arguments: str) -> bytes:
+    result = subprocess.run(["git", *arguments], capture_output=True, check=True, text=False)
+    return result.stdout
+
+
+def index_entries() -> list[IndexEntry]:
+    """Return the mode, object id and path of every entry in the git index."""
+    entries = []
+    for record in run_git("ls-files", "--stage", "-z").split(b"\0"):
+        if not record:
+            continue
+        meta, _, path = record.partition(b"\t")
+        mode, object_id, _stage = meta.decode().split()
+        entries.append(IndexEntry(mode, object_id, path.decode()))
+    return entries
+
+
+def index_violations(entries: Iterable[IndexEntry]) -> list[str]:
+    """Inspect staged content, reporting symbolic links before any exemption applies."""
+    entries = list(entries)
+    findings = [
+        f"{entry.path}: {SYMLINK_FINDING}" for entry in entries if entry.mode == SYMLINK_MODE
+    ]
+    regular = [entry for entry in entries if entry.mode != SYMLINK_MODE]
+    if not regular:
+        return findings
+    reader = BlobReader()
+    try:
+        for entry in regular:
+            blob = reader.blob(entry.object_id)
+            findings.extend(
+                stream_findings(entry.path, PurePosixPath(entry.path).name.lower(), blob)
+            )
+            reader.drain(entry.object_id, blob)
+    finally:
+        reader.close()
+    return findings
+
+
 def worktree_findings(path: str) -> list[str]:
     """Inspect one working-tree file without following links."""
     candidate = Path(path)
     if candidate.is_symlink():
-        return [f"{path}: symlink, not followed"]
+        return [f"{path}: {SYMLINK_FINDING}"]
     try:
         with candidate.open("rb") as stream:
             return stream_findings(path, candidate.name.lower(), stream)
@@ -206,67 +334,36 @@ def worktree_findings(path: str) -> list[str]:
         return [f"{path}: unreadable, content not inspected"]
 
 
-def index_findings(paths: Iterable[str]) -> list[str]:
-    """Inspect the staged content of each path, streaming one blob at a time."""
-    paths = list(paths)
-    if not paths:
-        return []
-    findings = []
-    process = subprocess.Popen(
-        ["git", "cat-file", "--batch"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-    )
-    try:
-        for path in paths:
-            process.stdin.write(f":{path}\n".encode())
-            process.stdin.flush()
-            header = process.stdout.readline().decode(errors="replace").split()
-            if len(header) != 3 or not header[2].isdigit():
-                findings.append(f"{path}: not readable from the git index")
-                continue
-            blob = BoundedStream(process.stdout, int(header[2]))
-            findings.extend(stream_findings(path, PurePosixPath(path).name.lower(), blob))
-            skip_bytes(blob, blob.remaining)
-            process.stdout.read(1)
-    finally:
-        process.stdin.close()
-        process.stdout.close()
-        process.wait()
-    return findings
-
-
-def content_violations(tracked: Iterable[str], untracked: Iterable[str] = ()) -> list[str]:
-    findings = index_findings(tracked)
-    for path in untracked:
-        findings.extend(worktree_findings(path))
-    return findings
-
-
-def worktree_content_violations(paths: Iterable[str]) -> list[str]:
+def worktree_violations(paths: Iterable[str]) -> list[str]:
     findings = []
     for path in paths:
         findings.extend(worktree_findings(path))
     return findings
 
 
-def run_git(*arguments: str) -> list[str]:
-    """Return the NUL-separated file names reported by a git listing command."""
-    result = subprocess.run(
-        ["git", *arguments],
-        capture_output=True,
-        check=True,
-        text=False,
-    )
-    return [entry.decode() for entry in result.stdout.split(b"\0") if entry]
-
-
-def tracked_files() -> list[str]:
-    return run_git("ls-files", "-z")
+def modified_paths() -> list[str]:
+    """Return tracked paths whose working-tree copy differs from the index."""
+    paths = []
+    records = run_git("status", "--porcelain", "-z", "--untracked-files=no").split(b"\0")
+    skip_next = False
+    for record in records:
+        if not record:
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        status = record[:2].decode(errors="replace")
+        path = record[3:].decode()
+        if status[0] in "RC":
+            skip_next = True
+        if status[1] not in " D" and Path(path).exists():
+            paths.append(path)
+    return paths
 
 
 def untracked_files() -> list[str]:
-    return run_git("ls-files", "-z", "--others", "--exclude-standard")
+    output = run_git("ls-files", "--others", "--exclude-standard", "-z")
+    return [entry.decode() for entry in output.split(b"\0") if entry]
 
 
 def inside_work_tree() -> bool:
@@ -278,13 +375,6 @@ def inside_work_tree() -> bool:
     return result.returncode == 0 and result.stdout.strip() == b"true"
 
 
-def candidate_files(*, untracked: bool = False) -> list[str]:
-    files = tracked_files()
-    if untracked:
-        files += untracked_files()
-    return files
-
-
 def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--untracked", action="store_true", help=UNTRACKED_HELP)
@@ -293,12 +383,14 @@ def main(argv: Iterable[str] | None = None) -> int:
         if not inside_work_tree():
             print("Hygiene check failed: run it inside a git work tree.", file=sys.stderr)
             return 2
-        tracked = tracked_files()
+        entries = index_entries()
+        changed = modified_paths()
         untracked = untracked_files() if options.untracked else []
-        violations = find_violations([*tracked, *untracked])
-        findings = content_violations(tracked, untracked)
-    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as error:
-        print(f"Hygiene check failed: git could not list files: {error}", file=sys.stderr)
+        violations = find_violations([entry.path for entry in entries] + untracked)
+        findings = index_violations(entries)
+        findings += worktree_violations([*changed, *untracked])
+    except (BlobReadError, subprocess.CalledProcessError, FileNotFoundError, OSError) as error:
+        print(f"Hygiene check failed: {error}", file=sys.stderr)
         return 2
     scope = "Tracked or untracked" if options.untracked else "Tracked"
     if violations:

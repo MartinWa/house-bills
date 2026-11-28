@@ -13,17 +13,21 @@ permissions. Restrict accounts, application access and proxy peers to trusted us
 
 Sign-in is rate limited in the application, on both `/login/` and the admin
 sign-in: five failed passwords for one username and connection address refuse further
-attempts for that pair for an hour, a successful sign-in resets the count, and a blocked
-retry neither extends the lockout nor adds a database row. The address is the
-connection's peer address, which Waitress resolves from the trusted proxy's
-`X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is enabled, so a caller cannot pick its
-own bucket by sending that header; a wildcard or untrusted proxy peer could still forge
-it (evasion only; see the proxy trust warning in the
-[deployment guide](docs/deployment.md)). Failures and lockouts are logged to the
-container log through the `axes` logger, and no failure log table is kept: only the
-lockout counter for a username and address pair is stored, and it expires with the
-cooloff, so submitted attempts do not accumulate in the database or in backups.
-No separate reverse-proxy throttle is required, though one remains compatible.
+attempts for that pair for up to an hour, a successful sign-in resets the count, and a
+blocked retry neither extends the lockout nor adds a row. Failures are counted in a
+rolling window: each counter stops counting when it expires, so the lockout can end
+before the full hour once the oldest failures age out. The address is the connection's
+peer address, which Waitress resolves from the trusted proxy's `X-Forwarded-For` when
+`HOUSE_BILLS_TRUST_PROXY` is enabled, so a caller cannot pick its own bucket by sending
+that header; a wildcard or untrusted proxy peer could still forge it (evasion only; see
+the proxy trust warning in the [deployment guide](docs/deployment.md)).
+
+What is stored is only the lockout counter: one row per username, address and user agent,
+with the request data axes filters before writing it, kept until it expires and removed
+during later authentication activity. A backup taken while a lockout is active can
+therefore contain that row. Successful sign-ins and individual failures are not stored;
+they are logged to the container log through the `axes` logger. No separate reverse-proxy
+throttle is required, though one remains compatible.
 
 Originals, extracted evidence, identifiers, accounts and approval history stay in
 local private storage. Static serving does not expose originals. The application
