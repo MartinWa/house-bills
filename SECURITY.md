@@ -11,6 +11,17 @@ Every signed-in user can access billing records; there is no tenant or
 per-property isolation. Staff configuration additionally uses Django model
 permissions. Restrict accounts, application access and proxy peers to trusted users.
 
+Sign-in is rate limited in the application, on both `/login/` and the admin
+sign-in: five failed passwords for one username and client address refuse further
+attempts for that pair for an hour, a successful sign-in resets the count, and a
+locked-out attempt is answered with a bare 429 Too Many Requests. The address is the
+trusted proxy's `X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is enabled and the
+peer address otherwise, so a wildcard or untrusted proxy peer lets a visitor spoof the
+value and evade the pairing for its own username (evasion only; see the proxy trust
+warning in the [deployment guide](docs/deployment.md)). Failures and lockouts are
+recorded in the database and logged on the `axes` logger. No separate reverse-proxy
+throttle is required, though one remains compatible.
+
 Originals, extracted evidence, identifiers, accounts and approval history stay in
 local private storage. Static serving does not expose originals. The application
 does not send telemetry or make outbound extraction/API calls, and serves its

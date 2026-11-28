@@ -205,7 +205,7 @@ part of backups: redeploy it together with the image. Adding, changing or removi
 parser requires a container restart and an explicit re-parse of the affected documents:
 
 ```sh
-cp docs/examples/parsers/*.py /srv/house-bills/parsers/   # reviewed examples only
+cp docs/examples/parsers/*.py /opt/house-bills/parsers/  # reviewed examples only
 python manage.py parsers --check
 python manage.py parse_documents 12 19
 ```

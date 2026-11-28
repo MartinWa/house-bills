@@ -72,6 +72,8 @@ jobs:
         run: |
           docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
           docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
+      - name: Check tracked files for private data
+        run: docker compose -f compose.development.yaml run --rm app python tools/check_no_private_data.py
       - name: Check Django and migration drift
         run: |
           docker compose -f compose.development.yaml run --rm app python manage.py check --database default
@@ -172,9 +174,6 @@ jobs:
             --progress-spinner off -r "$RUNNER_TEMP/audit-requirements.txt"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - name: Date the OS package layer
-        id: os-package-date
-        run: echo "date=$(date +%F)" >> "$GITHUB_OUTPUT"
       - name: Build production image without publishing
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -187,8 +186,6 @@ jobs:
           no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
           cache-from: type=gha,scope=ci-production
           cache-to: type=gha,scope=ci-production,mode=max
-          build-args: |
-            OS_PACKAGE_DATE=${{ steps.os-package-date.outputs.date }}
           github-token: ""
       - name: Verify linked runtime, startup migrations and non-root HTTP serving
         run: |

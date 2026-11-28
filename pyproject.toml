@@ -5,8 +5,9 @@ version = "0.0.1"
 description = "Swedish utility invoice extraction and review"
 requires-python = ">=3.14,<3.15"
 dependencies = [
-    "Django==5.2.18",
+    "Django==5.2.19",
     "django-ninja==1.8.0",
+    "django-axes[ipware]==9.1.0",
     "filelock==4.2.10",
     "pdfplumber==0.11.10",
     "tzdata==2026.6",

@@ -24,6 +24,8 @@ docker compose -f compose.development.yaml run --rm app ruff check bills house_b
 docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
 # Python tests
 docker compose -f compose.development.yaml run --rm app pytest -q
+# Private-data hygiene; add --untracked to include files git does not ignore yet
+docker compose -f compose.development.yaml run --rm app python tools/check_no_private_data.py
 # Build/run isolated Chromium checks
 docker compose -f compose.development.yaml build browser
 docker compose -f compose.development.yaml run --rm browser python -m tools.run_browser

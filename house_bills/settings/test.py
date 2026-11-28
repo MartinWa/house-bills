@@ -16,6 +16,8 @@ STATIC_ROOT = TEST_DATA_DIR / "staticfiles"
 STATIC_ROOT.mkdir(exist_ok=True)
 MEDIA_ROOT = TEST_DATA_DIR / "invoices"
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+# The rate-limiting regression opts in per test; parallel suites never throttle.
+AXES_ENABLED = False
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},

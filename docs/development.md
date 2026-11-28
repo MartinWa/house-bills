@@ -18,8 +18,13 @@ docker compose -f compose.development.yaml logs --tail=100 app
 Open <http://localhost:8001/> and sign in. Set `HOUSE_BILLS_DEV_PORT` in the shell to
 change the loopback host port; the container listens on port 8000. The server applies
 migrations before starting Django's development reloader. Login and logout use Django's
-built-in authentication, with POST and CSRF protection for logout. Only staff accounts
-can use the admin, subject to model permissions. Configure houses under **Properties**,
+built-in authentication, with POST and CSRF protection for logout, and django-axes
+limits sign-in attempts: five wrong passwords for one username and client address pair
+lock that pair for an hour, and a success resets the count. The address is the trusted
+proxy's `X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is enabled, otherwise the peer
+address. A locked-out attempt gets a bare 429 Too Many Requests response instead of the
+styled login form. Only staff accounts can use the admin, subject to model permissions.
+Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and invoice property
 rules. **Administration** and **Sign out** are in the header's **User** menu.
 See [configuration and the data model](data-model.md). The domain app is
@@ -73,6 +78,7 @@ parser code.
 docker compose -f compose.development.yaml build app
 docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
 docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
+docker compose -f compose.development.yaml run --rm app python tools/check_no_private_data.py
 docker compose -f compose.development.yaml run --rm app python manage.py check --database default
 docker compose -f compose.development.yaml run --rm app python manage.py makemigrations --check --dry-run
 docker compose -f compose.development.yaml run --rm app python manage.py export_api_schema --check
@@ -81,7 +87,20 @@ docker compose -f compose.development.yaml exec -T app python -m tools.check_htt
 docker compose -f compose.development.yaml exec -T app python manage.py migrate --check
 ```
 
-The HTTP checks require the development service to be running. Tests cover synthetic
+The HTTP checks require the development service to be running. The private-data check
+fails when a tracked file is private by name (a database, dump, backup, CSV export or
+PDF original, an `.env` file, or a directory kept out of the repository) or by content
+(host paths, credentials, real email addresses, PNG text and EXIF chunks, JPEG Exif
+metadata); a line that deliberately looks like private data carries the
+`hygiene: allow` marker. Before committing, add `--untracked` so the same checks also
+cover files git does not ignore yet. The check needs a git work tree and fails with a
+clear message outside one:
+
+```sh
+docker compose -f compose.development.yaml run --rm app python tools/check_no_private_data.py --untracked
+```
+
+Application tests cover synthetic
 parser results, authenticated access, CSRF, safe login redirects, the linked SQLite
 policy, short IMMEDIATE transactions, concurrent readers/writers, production settings
 and missing/pending/locked startup migrations. Domain tests cover integer money and
@@ -123,9 +142,9 @@ external network access and collects synthetic traces, screenshots and server lo
 
 `.github/workflows/ci.yml` provides these checks:
 
-- **Checks (Linux)**: locked exports, Ruff, Django, migration drift, clean development
-  startup, production Compose configuration for every override combination and synthetic
-  application/parser tests.
+- **Checks (Linux)**: locked exports, Ruff, the tracked private-data scan, Django,
+  migration drift, clean development startup, production Compose configuration for
+  every override combination and synthetic application/parser tests.
 - **Browser (Chromium)**: locked npm dependency audit and the isolated browser scenario.
 - **Container (Linux)**: actionlint, locked Python dependency audit, production build,
   HTTP/runtime checks and a Trivy audit for fixable high/critical vulnerabilities.
@@ -135,8 +154,9 @@ The production probe uses a read-only root filesystem, no network and disposable
 HTTPS/proxy behavior, static assets, upload, manual review, approval, corrections,
 duplicates, reporting and private sources. It also backs up the populated instance and
 starts a separate restored instance with migrations disabled. Tests, browser dependencies
-and private state must be absent from production. Weekly and manual rebuilds bypass
-the image cache.
+and private state must be absent from production. Weekly and manual CI rebuilds bypass
+the image cache; every release build runs without cache, so a published image is always
+built from scratch and carries the current OS packages.
 
 Separate **Dependency review**, **zizmor** and **Scorecard** workflows audit dependency
 changes, workflow security and repository posture. Actions are pinned by full commit SHA.
