@@ -3,11 +3,7 @@ FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00
 FROM ghcr.io/astral-sh/uv:0.13.10@sha256:a3ea1357342c1a4bf9a0c53a3deb1b55379aefa037338d8113d5771efa01774f AS uv-bin
 
 FROM python:3.14.10-slim-bookworm@sha256:e60ad028afdcdd14772a3d46decf0eaf616720f9102aeb4397a2045ff6718c3d AS os-base
-# CI passes the build date so the cached OS layer is rebuilt at most once a day
-# and picks up new security updates instead of being reused forever.
-ARG OS_PACKAGE_DATE=1970-01-01
-RUN echo "os packages as of ${OS_PACKAGE_DATE}" \
-    && apt-get update && apt-get upgrade -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 FROM os-base AS sqlite-build
@@ -82,7 +78,7 @@ RUN cd /opt/browser \
     && node /usr/local/lib/node_modules/npm/bin/npm-cli.js ci --ignore-scripts \
     && node /opt/browser/node_modules/playwright/cli.js install --with-deps chromium \
     && chmod -R a+rX /opt/browser /opt/playwright \
-    && rm -rf /var/lib/apt/lists/* /root/.npm
+    && rm -rf /var/lib/apt/lists/* "$HOME/.npm"
 USER 1000:1000
 CMD ["python", "-m", "tools.run_browser"]
 

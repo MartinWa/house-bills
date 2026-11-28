@@ -18,8 +18,22 @@ docker compose -f compose.development.yaml logs --tail=100 app
 Open <http://localhost:8001/> and sign in. Set `HOUSE_BILLS_DEV_PORT` in the shell to
 change the loopback host port; the container listens on port 8000. The server applies
 migrations before starting Django's development reloader. Login and logout use Django's
-built-in authentication, with POST and CSRF protection for logout. Only staff accounts
-can use the admin, subject to model permissions. Configure houses under **Properties**,
+built-in authentication, with POST and CSRF protection for logout, and django-axes
+limits sign-in attempts: five wrong passwords for one username and connection address
+pair lock that pair for up to one hour, a success resets the count, and a blocked retry
+neither extends the lockout nor adds a row. Expiry is per row: each counted failure
+refreshes the timestamp of the row for that username, address and user agent, and its
+failures age out together one hour after the most recent counted failure, so a lockout
+can end before the hour. The address is the connection's peer address, which Waitress
+resolves from the trusted proxy's `X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is
+enabled. A locked-out attempt gets a bare 429 Too Many Requests response instead of the
+styled login form. Only that lockout counter row is stored. `AXES_ENABLE_ACCESS_FAILURE_LOG`
+is `False` and `AXES_DISABLE_ACCESS_LOG` is `True`, so no per-event rows are written,
+while axes still logs every failure and successful sign-in at INFO to the container log
+through the `axes` logger. That covers axes records only: Django still stores login
+sessions and each account's last sign-in timestamp. Only staff accounts can use the
+admin, subject to model permissions.
+Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and invoice property
 rules. **Administration** and **Sign out** are in the header's **User** menu.
 See [configuration and the data model](data-model.md). The domain app is
@@ -73,6 +87,7 @@ parser code.
 docker compose -f compose.development.yaml build app
 docker compose -f compose.development.yaml run --rm app ruff check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
 docker compose -f compose.development.yaml run --rm app ruff format --check bills house_bills tests tools docs/api/example.py docs/examples/parsers manage.py
+docker compose -f compose.development.yaml run --rm app python tools/check_no_private_data.py
 docker compose -f compose.development.yaml run --rm app python manage.py check --database default
 docker compose -f compose.development.yaml run --rm app python manage.py makemigrations --check --dry-run
 docker compose -f compose.development.yaml run --rm app python manage.py export_api_schema --check
@@ -81,7 +96,23 @@ docker compose -f compose.development.yaml exec -T app python -m tools.check_htt
 docker compose -f compose.development.yaml exec -T app python manage.py migrate --check
 ```
 
-The HTTP checks require the development service to be running. Tests cover synthetic
+The HTTP checks require the development service to be running. The private-data check
+fails when a tracked file is private by name (a database, dump, backup, CSV export or
+PDF original, an `.env` file, or a directory kept out of the repository) or by content
+(host paths, credentials, real email addresses, PNG text and EXIF chunks, JPEG Exif
+metadata). Tracked files are read from the git index, so it inspects what a commit would
+contain rather than the working copy; image metadata is streamed instead of loaded whole,
+and a symlink or an unreadable file is reported instead of followed. A line that
+deliberately looks like private data carries the `hygiene: allow` marker. Before
+committing, add `--untracked` to scan the files git does not ignore yet from the working
+tree as well. The check needs a git work tree and fails with a clear message outside
+one:
+
+```sh
+docker compose -f compose.development.yaml run --rm app python tools/check_no_private_data.py --untracked
+```
+
+Application tests cover synthetic
 parser results, authenticated access, CSRF, safe login redirects, the linked SQLite
 policy, short IMMEDIATE transactions, concurrent readers/writers, production settings
 and missing/pending/locked startup migrations. Domain tests cover integer money and
@@ -123,9 +154,9 @@ external network access and collects synthetic traces, screenshots and server lo
 
 `.github/workflows/ci.yml` provides these checks:
 
-- **Checks (Linux)**: locked exports, Ruff, Django, migration drift, clean development
-  startup, production Compose configuration for every override combination and synthetic
-  application/parser tests.
+- **Checks (Linux)**: locked exports, Ruff, the tracked private-data scan, Django,
+  migration drift, clean development startup, production Compose configuration for
+  every override combination and synthetic application/parser tests.
 - **Browser (Chromium)**: locked npm dependency audit and the isolated browser scenario.
 - **Container (Linux)**: actionlint, locked Python dependency audit, production build,
   HTTP/runtime checks and a Trivy audit for fixable high/critical vulnerabilities.
@@ -135,8 +166,9 @@ The production probe uses a read-only root filesystem, no network and disposable
 HTTPS/proxy behavior, static assets, upload, manual review, approval, corrections,
 duplicates, reporting and private sources. It also backs up the populated instance and
 starts a separate restored instance with migrations disabled. Tests, browser dependencies
-and private state must be absent from production. Weekly and manual rebuilds bypass
-the image cache.
+and private state must be absent from production. Weekly and manual CI rebuilds bypass
+the image cache; every release build runs without cache, so a published image is always
+built from scratch and carries the current OS packages.
 
 Separate **Dependency review**, **zizmor** and **Scorecard** workflows audit dependency
 changes, workflow security and repository posture. Actions are pinned by full commit SHA.

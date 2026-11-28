@@ -11,6 +11,30 @@ Every signed-in user can access billing records; there is no tenant or
 per-property isolation. Staff configuration additionally uses Django model
 permissions. Restrict accounts, application access and proxy peers to trusted users.
 
+Sign-in is rate limited in the application, on both `/login/` and the admin
+sign-in: five failed passwords for one username and connection address refuse further
+attempts for that pair for up to one hour, a successful sign-in resets the count, and a
+blocked retry neither extends the lockout nor adds a row. Expiry is per row, not per
+failure: each counted failure refreshes the timestamp of the row for that username,
+address and user agent, and the failures in one row age out together one hour after its
+most recent counted failure, so the lockout can end before the full hour. The address is
+the connection's peer address, which Waitress resolves from the trusted proxy's
+`X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is enabled, so a caller cannot pick its
+own bucket by sending that header; a wildcard or untrusted proxy peer could still forge
+it (evasion only; see the proxy trust warning in the
+[deployment guide](docs/deployment.md)).
+
+Under these settings the only authentication record axes writes is that lockout counter
+row, with the request data it filters before writing it, kept until it expires and
+removed during later authentication activity; a backup taken while a lockout is active
+can therefore contain it. Database logging of individual events is off
+(`AXES_ENABLE_ACCESS_FAILURE_LOG = False` and `AXES_DISABLE_ACCESS_LOG = True`), yet axes
+still emits each failure and each successful sign-in at INFO, which the `axes` logger
+writes to the container log: only the database rows are gone, not the log records. This
+covers axes records only: Django itself still stores login sessions and each account's
+last sign-in timestamp, and backups contain both. No separate reverse-proxy throttle is
+required, though one remains compatible.
+
 Originals, extracted evidence, identifiers, accounts and approval history stay in
 local private storage. Static serving does not expose originals. The application
 does not send telemetry or make outbound extraction/API calls, and serves its

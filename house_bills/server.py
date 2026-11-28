@@ -25,7 +25,7 @@ def server_options():
         options.update(
             trusted_proxy="*",
             trusted_proxy_count=1,
-            trusted_proxy_headers={"x-forwarded-proto"},
+            trusted_proxy_headers={"x-forwarded-for", "x-forwarded-proto"},
         )
     return options
 

@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "ninja",
     "bills.apps.BillsConfig",
+    "axes",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -58,6 +59,7 @@ MIDDLEWARE = [
     "bills.api.middleware.ApiLoginRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "axes.middleware.AxesMiddleware",
 ]
 ROOT_URLCONF = "house_bills.urls"
 WSGI_APPLICATION = "house_bills.wsgi.application"
@@ -92,6 +94,22 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+# Per username and connection address (the peer, which the trusted proxy's forwarded
+# address resolves in Waitress): five failures block that pair for up to one hour, a
+# retry does not extend it, and only one counter row per username, address and user
+# agent is kept until it expires. No access or failure log is stored.
+AXES_ENABLED = True
+AXES_FAILURE_LIMIT = 5
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_COOLOFF_TIME = 1
+AXES_RESET_ON_SUCCESS = True
+AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = False
+AXES_ENABLE_ACCESS_FAILURE_LOG = False
+AXES_DISABLE_ACCESS_LOG = True
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "bills:invoices"
 LOGOUT_REDIRECT_URL = "login"
@@ -161,4 +179,5 @@ LOGGING = {
     "disable_existing_loggers": False,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {"axes": {"handlers": ["console"], "level": "INFO", "propagate": False}},
 }

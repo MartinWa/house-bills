@@ -53,6 +53,35 @@ def test_release_checks_and_attests_each_platform():
     assert "subject-digest: ${{ steps.push.outputs.digest }}" in text
 
 
+def workflow_steps(text):
+    steps, current = [], None
+    for line in text.splitlines():
+        if line.startswith("      - "):
+            current = [line]
+            steps.append(current)
+        elif current is not None:
+            current.append(line)
+    return ["\n".join(step) for step in steps]
+
+
+def test_every_release_build_is_uncached_and_carries_no_dated_os_layer():
+    release = read(".github/workflows/release.yml")
+    ci = read(".github/workflows/ci.yml")
+    workflows = [
+        path.read_text(encoding="utf-8") for path in (REPO_ROOT / ".github/workflows").glob("*.yml")
+    ]
+    builds = [step for step in workflow_steps(release) if "docker/build-push-action" in step]
+
+    # Each released image is built from scratch, so its OS packages are current.
+    assert len(builds) == 2
+    for build in builds:
+        assert "          no-cache: true" in build.splitlines()
+    # CI keeps its conditional no-cache: only a release build is always fresh.
+    assert "no-cache: true" not in [line.strip() for line in ci.splitlines()]
+    assert "OS_PACKAGE_DATE" not in read("Dockerfile")
+    assert not any("OS_PACKAGE_DATE" in text for text in workflows)
+
+
 def test_release_helpers_accept_a_platform():
     audit = read("tools/audit_image.sh")
     check = read("tools/check_release_image.sh")

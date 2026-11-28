@@ -86,4 +86,6 @@ else:
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert not result.stderr, result.stderr
+    # django-axes announces itself once at startup; nothing else may reach stderr.
+    noise = [line for line in result.stderr.splitlines() if not line.startswith("AXES: BEGIN")]
+    assert not noise, result.stderr

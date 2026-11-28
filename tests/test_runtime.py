@@ -61,7 +61,7 @@ def test_unsafe_linked_sqlite_is_reported_and_rejected(monkeypatch, tmp_path):
     assert not (tmp_path / "unsafe.sqlite3").exists()
 
 
-def test_proxy_trust_is_explicit_and_only_accepts_forwarded_scheme(monkeypatch):
+def test_proxy_trust_is_explicit_and_accepts_forwarded_scheme_and_address(monkeypatch):
     monkeypatch.delenv("HOUSE_BILLS_TRUST_PROXY", raising=False)
     options = server.server_options()
     assert options["threads"] == 2
@@ -70,7 +70,7 @@ def test_proxy_trust_is_explicit_and_only_accepts_forwarded_scheme(monkeypatch):
     monkeypatch.setenv("HOUSE_BILLS_TRUST_PROXY", "true")
     options = server.server_options()
     assert options["trusted_proxy"] == "*"
-    assert options["trusted_proxy_headers"] == {"x-forwarded-proto"}
+    assert options["trusted_proxy_headers"] == {"x-forwarded-for", "x-forwarded-proto"}
     monkeypatch.setenv("HOUSE_BILLS_TRUST_PROXY", "invalid")
     with pytest.raises(ImproperlyConfigured):
         server.server_options()

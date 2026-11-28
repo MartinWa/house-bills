@@ -20,3 +20,15 @@ backups/
 *.sqlite3
 *.sqlite3-*
 .pi/
+
+# Private exports, databases and runtime state; committed synthetic fixtures are Python sources.
+*.csv
+*.pdf
+*.db
+*.sqlite
+*.db-*
+*.sqlite-*
+*.dump
+*.bak
+/media/
+.pytest-state/
