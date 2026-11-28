@@ -17,9 +17,24 @@ from tools.check_no_private_data import (
     inside_work_tree,
     is_violation,
     main,
+    worktree_content_violations,
 )
 
 REPOSITORY = Path(__file__).resolve().parent.parent
+PRIVATE_LINE = "contact owner@" + "vendor.example.se\n"
+
+
+def git(*arguments):
+    subprocess.run(["git", *arguments], check=True)
+
+
+@pytest.fixture
+def scratch_repository(tmp_path, monkeypatch):
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+    monkeypatch.chdir(tmp_path)
+    git("init", "--quiet")
+    return tmp_path
 
 
 @pytest.mark.parametrize(
@@ -64,7 +79,7 @@ def test_the_documented_query_example_stays_committable_but_dumps_do_not():
 def findings_for(tmp_path, text):
     path = tmp_path / "sample.txt"
     path.write_text(text + "\n", encoding="utf-8")
-    return [finding.rsplit(": ", 1)[-1] for finding in content_violations([str(path)])]
+    return [finding.rsplit(": ", 1)[-1] for finding in worktree_content_violations([str(path)])]
 
 
 @pytest.mark.parametrize(
@@ -73,6 +88,10 @@ def findings_for(tmp_path, text):
         ("private key block", "-----BEGIN RSA PRIVATE KEY-----"),  # hygiene: allow
         ("AWS access key", "aws_access_key_id = " + "AKIA" + "IOSFODNN7EXAMPLE"),
         ("GitHub token", "token: " + "ghp_" + "0123456789abcdef" * 2 + "0123"),
+        (
+            "GitHub token",
+            "token: " + "github_pat_" + "0123456789abcdef0123" + "0123456789abcdef",
+        ),
         ("Slack token", "hook = https://hooks.slack.invalid/" + "xoxb-" + "123456789012"),
         ("assigned secret", 'PASSWORD = "0123456789abcdef0123456789abcdef"'),  # hygiene: allow
         ("email address", "invoice owner: person@vendor.example.se"),  # hygiene: allow
@@ -121,23 +140,50 @@ def test_png_text_metadata_is_reported(tmp_path):
         PNG_SIGNATURE + png_chunk(b"tEXt", b"Comment\x00synthetic") + png_chunk(b"IEND", b"")
     )
 
-    assert content_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
+    assert worktree_content_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
 
 
-def test_an_oversized_image_is_skipped_before_it_is_read(tmp_path):
+def test_a_large_image_still_reports_metadata(tmp_path):
     image = tmp_path / "huge.png"
     image.write_bytes(
-        PNG_SIGNATURE + png_chunk(b"tEXt", b"Comment\x00synthetic") + b"\x00" * MAX_SCAN_BYTES
+        PNG_SIGNATURE
+        + png_chunk(b"IDAT", b"\x00" * MAX_SCAN_BYTES)
+        + png_chunk(b"tEXt", b"Comment\x00synthetic")
+        + png_chunk(b"IEND", b"")
     )
 
-    assert content_violations([str(image)]) == []
+    assert worktree_content_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
 
 
-def test_untracked_mode_reuses_the_name_and_content_checks(tmp_path, monkeypatch):
-    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
-    monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
-    monkeypatch.chdir(tmp_path)
-    subprocess.run(["git", "init", "--quiet"], check=True)
+def test_an_oversized_text_file_is_skipped(tmp_path):
+    text = tmp_path / "huge.log"
+    text.write_bytes(b"a" * (MAX_SCAN_BYTES + 1))
+
+    assert worktree_content_violations([str(text)]) == []
+
+
+def test_an_untracked_symlink_is_reported_and_not_followed(tmp_path):
+    target = tmp_path / "private-notes.md"
+    target.write_text(PRIVATE_LINE, encoding="utf-8")
+    link = tmp_path / "notes-link.md"
+    link.symlink_to(target)
+
+    assert worktree_content_violations([str(link)]) == [f"{link}: symlink, not followed"]
+
+
+def test_tracked_content_is_read_from_the_index_not_the_working_tree(scratch_repository):
+    notes = Path("notes.md")
+    notes.write_text(PRIVATE_LINE, encoding="utf-8")
+    git("add", "notes.md")
+    notes.unlink()
+
+    assert content_violations(["notes.md"]) == ["notes.md:1: email address"]
+    assert worktree_content_violations(["notes.md"]) == [
+        "notes.md: unreadable, content not inspected"
+    ]
+
+
+def test_untracked_mode_reuses_the_name_and_content_checks(scratch_repository):
     Path(".gitignore").write_text("*.csv\n", encoding="utf-8")
     Path("notes.md").write_text("synthetic notes\n", encoding="utf-8")
     Path("dump.db").write_text("synthetic dump\n", encoding="utf-8")

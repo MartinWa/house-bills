@@ -98,15 +98,16 @@ AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesStandaloneBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
-# Per username and client address, taken from the trusted proxy's X-Forwarded-For and
-# otherwise from REMOTE_ADDR: five failures block that pair for one hour.
+# Per username and connection address (the peer, which the trusted proxy's forwarded
+# address resolves in Waitress): five failures block that pair for one hour, a retry
+# neither extends the lockout nor adds a per-attempt database row.
 AXES_ENABLED = True
 AXES_FAILURE_LIMIT = 5
 AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_COOLOFF_TIME = 1
 AXES_RESET_ON_SUCCESS = True
-AXES_ENABLE_ACCESS_FAILURE_LOG = True
-AXES_IPWARE_META_PRECEDENCE_ORDER = ("HTTP_X_FORWARDED_FOR", "REMOTE_ADDR")
+AXES_RESET_COOL_OFF_ON_FAILURE_DURING_LOCKOUT = False
+AXES_ENABLE_ACCESS_FAILURE_LOG = False
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "bills:invoices"
 LOGOUT_REDIRECT_URL = "login"

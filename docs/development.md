@@ -19,11 +19,15 @@ Open <http://localhost:8001/> and sign in. Set `HOUSE_BILLS_DEV_PORT` in the she
 change the loopback host port; the container listens on port 8000. The server applies
 migrations before starting Django's development reloader. Login and logout use Django's
 built-in authentication, with POST and CSRF protection for logout, and django-axes
-limits sign-in attempts: five wrong passwords for one username and client address pair
-lock that pair for an hour, and a success resets the count. The address is the trusted
-proxy's `X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is enabled, otherwise the peer
-address. A locked-out attempt gets a bare 429 Too Many Requests response instead of the
-styled login form. Only staff accounts can use the admin, subject to model permissions.
+limits sign-in attempts: five wrong passwords for one username and connection address
+pair lock that pair for an hour, a success resets the count, and a blocked retry neither
+extends the lockout nor adds a database row. The address is the connection's peer
+address, which Waitress resolves from the trusted proxy's `X-Forwarded-For` when
+`HOUSE_BILLS_TRUST_PROXY` is enabled. A locked-out attempt gets a bare 429 Too Many
+Requests response instead of the styled login form. Failures and lockouts are logged to
+the container log through the `axes` logger, and no per-attempt failure log is kept:
+only the lockout counter for the username and address pair, which expires with the
+cooloff. Only staff accounts can use the admin, subject to model permissions.
 Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and invoice property
 rules. **Administration** and **Sign out** are in the header's **User** menu.
@@ -91,10 +95,13 @@ The HTTP checks require the development service to be running. The private-data 
 fails when a tracked file is private by name (a database, dump, backup, CSV export or
 PDF original, an `.env` file, or a directory kept out of the repository) or by content
 (host paths, credentials, real email addresses, PNG text and EXIF chunks, JPEG Exif
-metadata); a line that deliberately looks like private data carries the
-`hygiene: allow` marker. Before committing, add `--untracked` so the same checks also
-cover files git does not ignore yet. The check needs a git work tree and fails with a
-clear message outside one:
+metadata). Tracked files are read from the git index, so it inspects what a commit would
+contain rather than the working copy; image metadata is streamed instead of loaded whole,
+and a symlink or an unreadable file is reported instead of followed. A line that
+deliberately looks like private data carries the `hygiene: allow` marker. Before
+committing, add `--untracked` to scan the files git does not ignore yet from the working
+tree as well. The check needs a git work tree and fails with a clear message outside
+one:
 
 ```sh
 docker compose -f compose.development.yaml run --rm app python tools/check_no_private_data.py --untracked

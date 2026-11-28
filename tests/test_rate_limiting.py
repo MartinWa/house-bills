@@ -1,6 +1,7 @@
-"""django-axes locks one username and client address after repeated wrong passwords."""
+"""django-axes locks one username and connection address after repeated wrong passwords."""
 
 import pytest
+from axes.models import AccessAttempt
 from axes.utils import reset
 from django.test import override_settings
 
@@ -9,7 +10,8 @@ pytestmark = pytest.mark.django_db
 AXES_FAILURE_LIMIT = 3
 WRONG_PASSWORD = "synthetic-wrong-password"
 CORRECT_PASSWORD = "synthetic-password"
-VISITOR_ADDRESS = {"HTTP_X_FORWARDED_FOR": "198.51.100.7"}
+VISITOR_ADDRESS = {"REMOTE_ADDR": "198.51.100.7"}
+OTHER_ADDRESS = {"REMOTE_ADDR": "198.51.100.8"}
 
 
 @pytest.fixture(autouse=True)
@@ -33,8 +35,8 @@ def other_user(django_user_model):
     )
 
 
-def sign_in(client, path, username, password, **headers):
-    return client.post(path, {"username": username, "password": password}, **headers)
+def sign_in(client, path, username, password, **meta):
+    return client.post(path, {"username": username, "password": password}, **meta)
 
 
 @pytest.mark.parametrize("path", ["/login/", "/admin/login/"])
@@ -60,7 +62,20 @@ def test_lockout_covers_one_username_and_address_pair(client, user, other_user, 
     assert locked.status_code == 429
     visitor = sign_in(client, path, other_user.username, CORRECT_PASSWORD, **VISITOR_ADDRESS)
     assert visitor.status_code == 302
-    elsewhere = sign_in(
-        client, path, user.username, CORRECT_PASSWORD, HTTP_X_FORWARDED_FOR="198.51.100.8"
-    )
+    elsewhere = sign_in(client, path, user.username, CORRECT_PASSWORD, **OTHER_ADDRESS)
     assert elsewhere.status_code == 302
+
+
+@pytest.mark.parametrize("path", ["/login/", "/admin/login/"])
+@override_settings(AXES_ENABLED=True, AXES_FAILURE_LIMIT=AXES_FAILURE_LIMIT)
+def test_a_blocked_retry_does_not_extend_the_lockout(client, user, path):
+    for _ in range(AXES_FAILURE_LIMIT):
+        sign_in(client, path, user.username, WRONG_PASSWORD, **VISITOR_ADDRESS)
+    attempt = AccessAttempt.objects.get(username=user.username)
+    locked = (attempt.attempt_time, attempt.failures_since_start)
+
+    blocked = sign_in(client, path, user.username, CORRECT_PASSWORD, **VISITOR_ADDRESS)
+
+    assert blocked.status_code == 429
+    attempt.refresh_from_db()
+    assert (attempt.attempt_time, attempt.failures_since_start) == locked

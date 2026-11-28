@@ -55,7 +55,7 @@ docker run --rm house-bills:local python -c "import secrets; print(secrets.token
 | `HOUSE_BILLS_UPDATE_CHECK` | Check public GitHub release metadata; defaults to `true`. Set `false` to disable outbound checks. |
 | `HOUSE_BILLS_MIGRATE_ON_START` | Apply migrations before serving; defaults to `true`. |
 | `HOUSE_BILLS_MAX_PDF_UPLOAD_BYTES` | Original PDF limit; defaults to 20971520 (20 MiB), with 64 KiB extra request allowance. |
-| `HOUSE_BILLS_TRUST_PROXY` | Trust the proxy's `X-Forwarded-Proto` and `X-Forwarded-For`; defaults to `false`. |
+| `HOUSE_BILLS_TRUST_PROXY` | Trust the proxy's `X-Forwarded-Proto` and `X-Forwarded-For`; the sign-in limit counts the connection address Waitress resolves from them. Defaults to `false`. |
 | `HOUSE_BILLS_PARSER_PLUGINS` | Absolute path to the operator-managed parser directory mounted read-only (recommended `/parsers`). Empty by default; without it nothing is parsed. |
 | `HOUSE_BILLS_PARSER_PLUGINS_FILE` | Read the parser directory from a Docker or Podman secret file instead of the value above. |
 | `APP_UID`, `APP_GID` | Non-root numeric container process IDs. |
@@ -112,11 +112,13 @@ When the proxy terminates HTTPS, set `HOUSE_BILLS_TRUST_PROXY=true` and configur
 discard visitor-supplied `X-Forwarded-Proto` and replace it with the original scheme,
 and to set `X-Forwarded-For` to the visitor's address. Trust applies to peers that can
 reach the application port, so restrict this network to trusted proxy peers, and never
-publish the application port directly. Waitress removes untrusted forwarding headers and
-keeps only the scheme and client-address headers when proxy trust is enabled. Because
-that trust is a wildcard peer, a visitor who reaches the port directly can spoof
-`X-Forwarded-For`: sign-in rate limiting still holds per username, but the address in the
-pairing can be evaded. Secure cookies and HTTPS redirects stay enabled.
+publish the application port directly. Waitress removes untrusted forwarding headers and,
+when proxy trust is enabled, keeps only the scheme and forwarded-address headers, which it
+resolves into the request's connection address; the sign-in limit counts that address and
+never a header the caller sets itself. Because that trust is a wildcard peer, a visitor
+who reaches the port directly can still forge the forwarded value: the limit holds per
+username, but the address pairing can be evaded. Secure cookies and HTTPS redirects stay
+enabled.
 
 ```sh
 docker compose config --quiet

@@ -4,9 +4,11 @@ A line that legitimately needs to look like private data (for example a security
 contact address) can opt out of the content scan by carrying the marker
 ``hygiene: allow``.
 
-Tracked files are scanned by default. ``--untracked`` additionally scans the files
-that git reports as untracked and not ignored, which catches private data before it
-is added to the index.
+Tracked files are read from the git index, so the scan covers what a commit would
+contain even when the working copy differs. ``--untracked`` additionally scans
+working-tree files that git reports as untracked and not ignored. Symlinks are never
+followed, image metadata is streamed instead of loaded whole, and a file that cannot
+be inspected is reported rather than passed.
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ BAD_DIRECTORIES = frozenset({"planning", "reference", "test-data"})
 # A documented query example, not a database dump, stays committable despite its suffix.
 ALLOWED_PATHS = frozenset({"docs/reporting-examples.sql"})
 MAX_SCAN_BYTES = 2 * 1024 * 1024
+READ_CHUNK_BYTES = 64 * 1024
 ALLOW_MARKER = "hygiene: allow"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 PNG_METADATA_CHUNKS = frozenset({b"tEXt", b"iTXt", b"zTXt", b"eXIf"})
@@ -53,7 +56,10 @@ PLACEHOLDER_SECRET_MARKERS = ("synthetic", "test-only", "replace-with", "not-for
 CONTENT_PATTERNS = (
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
-    ("GitHub token", re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}")),
+    (
+        "GitHub token",
+        re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{20,}"),
+    ),
     ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
     ("assigned secret", ASSIGNED_SECRET),
     (
@@ -100,51 +106,147 @@ def find_violations(paths: Iterable[str]) -> list[str]:
     return sorted(path for path in paths if is_violation(path))
 
 
-def png_metadata_chunks(data: bytes) -> list[str]:
-    chunks = []
-    offset = len(PNG_SIGNATURE)
-    while offset + 8 <= len(data):
-        length = int.from_bytes(data[offset : offset + 4], "big")
-        chunk_type = data[offset + 4 : offset + 8]
+def skip_bytes(stream, count: int) -> bool:
+    """Read past `count` bytes in bounded chunks; return whether the stream was long enough."""
+    while count > 0:
+        chunk = stream.read(min(count, READ_CHUNK_BYTES))
+        if not chunk:
+            return False
+        count -= len(chunk)
+    return True
+
+
+def text_findings(path: str, stream) -> list[str]:
+    data = stream.read(MAX_SCAN_BYTES + 1)
+    if len(data) > MAX_SCAN_BYTES:
+        return []
+    findings = []
+    for line_number, line in enumerate(data.decode("utf-8", errors="ignore").splitlines(), 1):
+        if ALLOW_MARKER in line:
+            continue
+        for label, pattern in CONTENT_PATTERNS:
+            match = pattern.search(line)
+            if not match:
+                continue
+            if PLACEHOLDER_CHECKS.get(label, lambda _match: False)(match):
+                continue
+            findings.append(f"{path}:{line_number}: {label}")
+    return findings
+
+
+def png_findings(path: str, stream) -> list[str]:
+    """Walk PNG chunk headers, skipping payloads without buffering them."""
+    if stream.read(len(PNG_SIGNATURE)) != PNG_SIGNATURE:
+        return []
+    findings = []
+    while True:
+        header = stream.read(8)
+        if len(header) < 8:
+            findings.append(f"{path}: truncated PNG chunk header")
+            break
+        length = int.from_bytes(header[:4], "big")
+        chunk_type = header[4:8]
         if chunk_type in PNG_METADATA_CHUNKS:
-            chunks.append(chunk_type.decode("latin-1"))
-        offset += 12 + length
+            findings.append(f"{path}: PNG {chunk_type.decode('latin-1')} metadata chunk")
+        if not skip_bytes(stream, length + 4):
+            findings.append(f"{path}: truncated PNG chunk data")
+            break
         if chunk_type == b"IEND":
             break
-    return chunks
+    return findings
 
 
-def content_violations(paths: Iterable[str]) -> list[str]:
+def jpeg_findings(path: str, stream) -> list[str]:
+    """Search for the Exif marker in fixed-size chunks, keeping only a small overlap."""
+    overlap = b""
+    while True:
+        chunk = stream.read(READ_CHUNK_BYTES)
+        if not chunk:
+            return []
+        window = overlap + chunk
+        if JPEG_EXIF_MARKER in window:
+            return [f"{path}: JPEG Exif metadata"]
+        overlap = window[len(window) - (len(JPEG_EXIF_MARKER) - 1) :]
+
+
+def stream_findings(path: str, name: str, stream) -> list[str]:
+    if name.endswith(".png"):
+        return png_findings(path, stream)
+    if name.endswith((".jpg", ".jpeg")):
+        return jpeg_findings(path, stream)
+    return text_findings(path, stream)
+
+
+class BoundedStream:
+    """Read at most `size` bytes of a stream that carries further blobs behind them."""
+
+    def __init__(self, stream, size: int) -> None:
+        self.stream = stream
+        self.remaining = size
+
+    def read(self, count: int = -1) -> bytes:
+        if self.remaining <= 0:
+            return b""
+        if count < 0 or count > self.remaining:
+            count = self.remaining
+        data = self.stream.read(count)
+        self.remaining -= len(data)
+        return data
+
+
+def worktree_findings(path: str) -> list[str]:
+    """Inspect one working-tree file without following links."""
+    candidate = Path(path)
+    if candidate.is_symlink():
+        return [f"{path}: symlink, not followed"]
+    try:
+        with candidate.open("rb") as stream:
+            return stream_findings(path, candidate.name.lower(), stream)
+    except OSError:
+        return [f"{path}: unreadable, content not inspected"]
+
+
+def index_findings(paths: Iterable[str]) -> list[str]:
+    """Inspect the staged content of each path, streaming one blob at a time."""
+    paths = list(paths)
+    if not paths:
+        return []
+    findings = []
+    process = subprocess.Popen(
+        ["git", "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    try:
+        for path in paths:
+            process.stdin.write(f":{path}\n".encode())
+            process.stdin.flush()
+            header = process.stdout.readline().decode(errors="replace").split()
+            if len(header) != 3 or not header[2].isdigit():
+                findings.append(f"{path}: not readable from the git index")
+                continue
+            blob = BoundedStream(process.stdout, int(header[2]))
+            findings.extend(stream_findings(path, PurePosixPath(path).name.lower(), blob))
+            skip_bytes(blob, blob.remaining)
+            process.stdout.read(1)
+    finally:
+        process.stdin.close()
+        process.stdout.close()
+        process.wait()
+    return findings
+
+
+def content_violations(tracked: Iterable[str], untracked: Iterable[str] = ()) -> list[str]:
+    findings = index_findings(tracked)
+    for path in untracked:
+        findings.extend(worktree_findings(path))
+    return findings
+
+
+def worktree_content_violations(paths: Iterable[str]) -> list[str]:
     findings = []
     for path in paths:
-        candidate = Path(path)
-        name = candidate.name.lower()
-        try:
-            if candidate.stat().st_size > MAX_SCAN_BYTES:
-                continue
-            if name.endswith(".png"):
-                data = candidate.read_bytes()
-                if data.startswith(PNG_SIGNATURE):
-                    for chunk in png_metadata_chunks(data):
-                        findings.append(f"{path}: PNG {chunk} metadata chunk")
-                continue
-            if name.endswith((".jpg", ".jpeg")):
-                if JPEG_EXIF_MARKER in candidate.read_bytes():
-                    findings.append(f"{path}: JPEG Exif metadata")
-                continue
-            text = candidate.read_text(encoding="utf-8")
-        except OSError, UnicodeDecodeError:
-            continue
-        for line_number, line in enumerate(text.splitlines(), start=1):
-            if ALLOW_MARKER in line:
-                continue
-            for label, pattern in CONTENT_PATTERNS:
-                match = pattern.search(line)
-                if not match:
-                    continue
-                if PLACEHOLDER_CHECKS.get(label, lambda _match: False)(match):
-                    continue
-                findings.append(f"{path}:{line_number}: {label}")
+        findings.extend(worktree_findings(path))
     return findings
 
 
@@ -191,12 +293,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         if not inside_work_tree():
             print("Hygiene check failed: run it inside a git work tree.", file=sys.stderr)
             return 2
-        files = candidate_files(untracked=options.untracked)
-    except (subprocess.CalledProcessError, FileNotFoundError) as error:
+        tracked = tracked_files()
+        untracked = untracked_files() if options.untracked else []
+        violations = find_violations([*tracked, *untracked])
+        findings = content_violations(tracked, untracked)
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as error:
         print(f"Hygiene check failed: git could not list files: {error}", file=sys.stderr)
         return 2
-    violations = find_violations(files)
-    findings = content_violations(files)
     scope = "Tracked or untracked" if options.untracked else "Tracked"
     if violations:
         print(f"{scope} private-data files found:")
