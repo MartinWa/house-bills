@@ -67,13 +67,6 @@ CONTENT_PATTERNS = (
     ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"), ("xox",)),
     ("assigned secret", ASSIGNED_SECRET, (":", "=")),
     (
-        "email address",
-        re.compile(
-            r"[A-Za-z0-9._%+-]+@(?!example\.(?:com|org|net|invalid)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
-        ),
-        ("@",),
-    ),
-    (
         "absolute host path",
         re.compile(
             r"(?:[A-Za-z]:\\Users\\|/Users/[A-Za-z]|/home/(?!developer\b)[A-Za-z]|/(?:root|srv|mnt)/)"
@@ -83,6 +76,12 @@ CONTENT_PATTERNS = (
 )
 UNTRACKED_HELP = "also scan files that are untracked but not ignored by .gitignore"
 SYMLINK_FINDING = "symbolic link not inspected"
+EMAIL_LOCAL_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._%+-")
+EMAIL_DOMAIN_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
+EMAIL_DOMAIN_PATTERN = re.compile(r"[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}")
+EMAIL_EXEMPT_DOMAIN = re.compile(r"example\.(?:com|org|net|invalid)\b")
+EMAIL_LOCAL_LIMIT = 64
+EMAIL_DOMAIN_LIMIT = 255
 
 
 class BlobReadError(RuntimeError):
@@ -100,6 +99,39 @@ def is_placeholder_secret(match: re.Match[str]) -> bool:
     """Return whether an assigned value names itself as a synthetic placeholder."""
     value = match.group(2).lower()
     return any(marker in value for marker in PLACEHOLDER_SECRET_MARKERS)
+
+
+def address_at(line: str, position: int) -> bool:
+    """Return whether the '@' at `position` sits inside a plausible email address.
+
+    The local and domain parts are bounded by their RFC lengths, so the scan of a long
+    line stays linear instead of restarting an unbounded pattern at every character.
+    """
+    start = position
+    while start > 0 and position - start < EMAIL_LOCAL_LIMIT:
+        if line[start - 1] not in EMAIL_LOCAL_CHARS:
+            break
+        start -= 1
+    end = position + 1
+    while end < len(line) and end - position <= EMAIL_DOMAIN_LIMIT:
+        if line[end] not in EMAIL_DOMAIN_CHARS:
+            break
+        end += 1
+    if start == position:
+        return False
+    domain = line[position + 1 : end]
+    if not EMAIL_DOMAIN_PATTERN.fullmatch(domain):
+        return False
+    return EMAIL_EXEMPT_DOMAIN.match(domain) is None
+
+
+def has_email(line: str) -> bool:
+    position = line.find("@")
+    while position >= 0:
+        if address_at(line, position):
+            return True
+        position = line.find("@", position + 1)
+    return False
 
 
 # Only these labels report a match conditionally; every other label reports on any match.
@@ -150,6 +182,8 @@ def line_findings(path: str, line_number: int, raw: bytes) -> list[str]:
         if PLACEHOLDER_CHECKS.get(label, lambda _match: False)(match):
             continue
         findings.append(f"{path}:{line_number}: {label}")
+    if has_email(line):
+        findings.append(f"{path}:{line_number}: email address")
     return findings
 
 
@@ -171,7 +205,6 @@ def text_findings(path: str, stream) -> list[str]:
                 continue
             buffer = buffer[end + 1 :]
             too_long = False
-            line_number += 1
         parts = buffer.split(b"\n")
         buffer = parts.pop()
         for raw in parts:
@@ -342,7 +375,12 @@ def worktree_violations(paths: Iterable[str]) -> list[str]:
 
 
 def modified_paths() -> list[str]:
-    """Return tracked paths whose working-tree copy differs from the index."""
+    """Return tracked paths whose working-tree copy differs from the index.
+
+    Rename and copy records carry the destination first and the original path in the
+    following NUL field, which is consumed and discarded. A file that is now a symlink
+    counts as changed even when the link is dangling, so it is reported, not skipped.
+    """
     paths = []
     records = run_git("status", "--porcelain", "-z", "--untracked-files=no").split(b"\0")
     skip_next = False
@@ -356,7 +394,10 @@ def modified_paths() -> list[str]:
         path = record[3:].decode()
         if status[0] in "RC":
             skip_next = True
-        if status[1] not in " D" and Path(path).exists():
+        if status[1] in " D":
+            continue
+        candidate = Path(path)
+        if candidate.is_symlink() or candidate.exists():
             paths.append(path)
     return paths
 

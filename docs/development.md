@@ -20,16 +20,18 @@ change the loopback host port; the container listens on port 8000. The server ap
 migrations before starting Django's development reloader. Login and logout use Django's
 built-in authentication, with POST and CSRF protection for logout, and django-axes
 limits sign-in attempts: five wrong passwords for one username and connection address
-pair lock that pair for up to an hour, a success resets the count, and a blocked retry
-neither extends the lockout nor adds a row. Failures are counted in a rolling window, so
-the lockout can end before the hour once the oldest failures expire. The address is the
-connection's peer address, which Waitress resolves from the trusted proxy's
-`X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is enabled. A locked-out attempt gets a
-bare 429 Too Many Requests response instead of the styled login form. Only the lockout
-counter is stored, one row per username, address and user agent with filtered request
-data until it expires; successful sign-ins and failures are logged to the container log
-through the `axes` logger and not stored. Only staff accounts can use the admin, subject
-to model permissions.
+pair lock that pair for up to one hour, a success resets the count, and a blocked retry
+neither extends the lockout nor adds a row. Expiry is per row: each counted failure
+refreshes the timestamp of the row for that username, address and user agent, and its
+failures age out together one hour after the most recent counted failure, so a lockout
+can end before the hour. The address is the connection's peer address, which Waitress
+resolves from the trusted proxy's `X-Forwarded-For` when `HOUSE_BILLS_TRUST_PROXY` is
+enabled. A locked-out attempt gets a bare 429 Too Many Requests response instead of the
+styled login form. Only that lockout counter row is stored. `AXES_ENABLE_ACCESS_FAILURE_LOG`
+is `False` and `AXES_DISABLE_ACCESS_LOG` is `True`, so no per-event rows are written,
+while axes still logs every failure and successful sign-in at INFO to the container log
+through the `axes` logger. Only staff accounts can use the admin, subject to model
+permissions.
 Configure houses under **Properties**,
 then vendors with their identification numbers, invoice formats and invoice property
 rules. **Administration** and **Sign out** are in the header's **User** menu.

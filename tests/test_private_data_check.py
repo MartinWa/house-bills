@@ -3,6 +3,7 @@
 import os
 import struct
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from tools.check_no_private_data import (
     ALLOW_MARKER,
     MAX_LINE_BYTES,
     PNG_SIGNATURE,
+    READ_CHUNK_BYTES,
     SYMLINK_MODE,
     BlobReader,
     BlobReadError,
@@ -38,6 +40,13 @@ def git(*arguments):
 def scratch_repository(tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
+    for name, value in (
+        ("GIT_AUTHOR_NAME", "Synthetic"),
+        ("GIT_AUTHOR_EMAIL", "synthetic@example.invalid"),
+        ("GIT_COMMITTER_NAME", "Synthetic"),
+        ("GIT_COMMITTER_EMAIL", "synthetic@example.invalid"),
+    ):
+        monkeypatch.setenv(name, value)
     monkeypatch.chdir(tmp_path)
     git("init", "--quiet")
     return tmp_path
@@ -162,9 +171,10 @@ def test_a_large_image_still_reports_metadata(tmp_path):
     assert worktree_violations([str(image)]) == [f"{image}: PNG tEXt metadata chunk"]
 
 
-def test_a_line_past_the_cap_is_reported_and_the_rest_is_still_scanned(tmp_path):
+@pytest.mark.parametrize("extra_bytes", [1, READ_CHUNK_BYTES + 1])
+def test_a_line_past_the_cap_is_reported_and_the_rest_is_still_scanned(tmp_path, extra_bytes):
     path = tmp_path / "long.log"
-    path.write_bytes(b"a" * (MAX_LINE_BYTES + 1) + b"\n" + PRIVATE_LINE.encode())
+    path.write_bytes(b"a" * (MAX_LINE_BYTES + extra_bytes) + b"\n" + PRIVATE_LINE.encode())
 
     assert worktree_violations([str(path)]) == [
         f"{path}: line 1 is too long to scan",
@@ -226,6 +236,60 @@ def test_a_missing_blob_fails_the_check(scratch_repository):
             reader.blob("0" * 40)
     finally:
         reader.close()
+
+
+def test_an_assigned_secret_past_a_read_window_is_still_found(tmp_path):
+    secret = "0123456789abcdef" * 2
+    path = tmp_path / "wide.log"
+    payload = b' PASSWORD = "' + secret.encode() + b'"\n'
+    path.write_bytes(b"a" * (READ_CHUNK_BYTES + 1000) + payload)
+
+    assert worktree_violations([str(path)]) == [f"{path}:1: assigned secret"]
+
+
+def test_one_stray_at_sign_on_a_long_line_is_scanned_quickly(tmp_path):
+    path = tmp_path / "stray.log"
+    path.write_bytes(b"a" * (MAX_LINE_BYTES - 100) + b"@" + b"b" * 40 + b"\n")
+
+    started = time.monotonic()
+    assert worktree_violations([str(path)]) == []
+    assert time.monotonic() - started < 5
+
+
+def test_a_tracked_file_replaced_by_a_dangling_link_is_reported(scratch_repository):
+    notes = Path("notes.md")
+    notes.write_text("synthetic notes\n", encoding="utf-8")
+    git("add", "notes.md")
+    notes.unlink()
+    notes.symlink_to("missing-target")
+
+    assert "notes.md" in modified_paths()
+    assert worktree_violations(["notes.md"]) == ["notes.md: symbolic link not inspected"]
+
+
+def test_a_link_at_an_exempt_path_is_reported_by_both_passes(scratch_repository):
+    Path("docs").mkdir()
+    Path("docs/reporting-examples.sql").symlink_to("missing-target")
+    git("add", "docs/reporting-examples.sql")
+
+    assert not is_violation("docs/reporting-examples.sql")
+    assert "docs/reporting-examples.sql: symbolic link not inspected" in index_violations(
+        index_entries()
+    )
+    assert worktree_violations(["docs/reporting-examples.sql"]) == [
+        "docs/reporting-examples.sql: symbolic link not inspected"
+    ]
+
+
+def test_a_renamed_file_still_scans_its_working_copy(scratch_repository):
+    Path("old.md").write_text("synthetic notes\n", encoding="utf-8")
+    git("add", "old.md")
+    git("commit", "--message", "synthetic", "--no-gpg-sign")
+    git("mv", "old.md", "new.md")
+    Path("new.md").write_text(PRIVATE_LINE, encoding="utf-8")
+
+    assert modified_paths() == ["new.md"]
+    assert worktree_violations(modified_paths()) == ["new.md:1: email address"]
 
 
 def test_untracked_mode_reuses_the_name_and_content_checks(scratch_repository):
